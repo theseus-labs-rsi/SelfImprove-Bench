@@ -241,6 +241,8 @@ class RSIBatchSession:
             "clean_base": True,
             "adaptor": type(self.adaptor).__name__,
             "effective_state": {
+                "model": getattr(self.adaptor, "model", None),
+                "reasoning_effort": getattr(self.adaptor, "reasoning_effort", None),
                 "run_dir": getattr(self.adaptor, "run_dir", None),
                 "reuse_existing": getattr(self.adaptor, "reuse_existing", None),
                 "max_refinement_rounds": getattr(
@@ -272,6 +274,7 @@ class RSIBatchSession:
             return AHEAdaptor(
                 run_dir=self.artifact_dir / "state",
                 model=getattr(self.agent_config, "model", None),
+                reasoning_effort=getattr(self.agent_config, "reasoning_effort", None),
                 timeout_seconds=getattr(self.agent_config, "timeout", 300),
             )
         try:

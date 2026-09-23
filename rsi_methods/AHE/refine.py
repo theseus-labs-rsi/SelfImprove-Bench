@@ -22,7 +22,7 @@ from uuid import uuid4
 
 from benchmark.contracts import to_jsonable
 
-from .agent import AHEAgent
+from .agent import AHEAgent, configure_reasoning_effort
 from .build import build
 from .init import AHEState
 
@@ -230,6 +230,7 @@ def _run_evolver(
     workspace: Path,
     query: str,
     model: str | None,
+    reasoning_effort: str | None,
     timeout_seconds: float,
 ) -> None:
     """Run the original Evolve Agent in a separate import namespace."""
@@ -240,6 +241,7 @@ def _run_evolver(
         "run_dir": str(state.run_dir), "evolve_agent_dir": str(state.evolve_agent_dir),
         "workspace_rel": workspace.relative_to(state.run_dir).as_posix(),
         "iteration": int(iteration_dir.name.split("_")[-1]), "query": query,
+        "reasoning_effort": reasoning_effort,
     }, ensure_ascii=False, indent=2), encoding="utf-8")
     env = os.environ.copy()
     code_root = Path(__file__).resolve().parents[2]
@@ -273,6 +275,7 @@ def refine(
     output_dir: str | Path,
     iteration: int,
     model: str | None = None,
+    reasoning_effort: str | None = None,
     candidate_count: int = 1,
     timeout_seconds: float = 1800,
 ) -> CandidateBatch:
@@ -304,8 +307,14 @@ def refine(
                 hints[index] if index < len(hints) else None,
             )
             (root / "evolution_query.md").write_text(query, encoding="utf-8")
-            _run_evolver(state, root, iteration_dir, workspace, query, model, timeout_seconds)
-            candidate_agent = build(state, workspace=workspace, model=model)
+            _run_evolver(
+                state, root, iteration_dir, workspace, query, model,
+                reasoning_effort, timeout_seconds,
+            )
+            candidate_agent = build(
+                state, workspace=workspace, model=model,
+                reasoning_effort=reasoning_effort,
+            )
             candidates.append(CandidateSpec(candidate_id, workspace, candidate_agent))
     except BaseException:
         for candidate in candidates:
@@ -407,6 +416,7 @@ def _worker(request_path: Path, result_path: Path) -> None:
 
     load_dotenv(upstream_root / ".env", override=False)
     config = AgentConfig.from_yaml(config_path=config_path)
+    configure_reasoning_effort(config, request.get("reasoning_effort"))
     # Keep the Evolve Agent on the same model-compatible request contract as
     # the coding Agent; changing its run-local YAML is unnecessary.
     config.llm_config.temperature = None

@@ -46,6 +46,8 @@ benchmark runner
 
 代码不写入 API key。模型由配置中的 `agent.model` / `game_options.gameworld.model_spec` 指定，endpoint 和 key 由外部环境变量提供。
 
+当前配置模板统一使用 `azure/gpt-5.6-sol`，推理强度为 `high`。其中 `game_options.gameworld.model_spec` 使用 catalog ID `azure-gpt-5.6-sol`，该 ID 映射到真实请求模型；不要把 API key 写入配置或 Git。
+
 ## 配置与运行
 
 三个可直接复制的配置模板位于：

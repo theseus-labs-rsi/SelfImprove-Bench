@@ -10,14 +10,15 @@
   "evolution_window": 1,
   "agent": {
     "provider": "ahe",
-    "model": "gpt-5.2",
+    "model": "azure/gpt-5.6-sol",
+    "reasoning_effort": "high",
     "timeout": 300,
     "max_attempts": 2
   },
   "game_options": {
     "gameworld": {
       "framework": "ahe",
-      "model_spec": "gpt-5.2",
+      "model_spec": "azure-gpt-5.6-sol",
       "gameworld_root": "",
       "max_steps": 100,
       "train": [

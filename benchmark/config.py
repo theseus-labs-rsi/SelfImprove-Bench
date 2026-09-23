@@ -60,6 +60,7 @@ class AgentConfig:
     provider: str = "codex"
     backend: str = "codex"
     model: str | None = None
+    reasoning_effort: str | None = None
     timeout: float = 300.0
     max_attempts: int = 3
     show_output: bool = False
@@ -261,6 +262,11 @@ def config_from_mapping(value: dict[str, Any]) -> BenchmarkConfig:
             provider=provider,
             backend=backend,
             model=agent_raw.get("model"),
+            reasoning_effort=(
+                str(agent_raw["reasoning_effort"]).strip()
+                if agent_raw.get("reasoning_effort") is not None
+                else None
+            ),
             timeout=float(timeout),
             max_attempts=max_attempts,
             show_output=bool(agent_raw.get("show_output", False)),

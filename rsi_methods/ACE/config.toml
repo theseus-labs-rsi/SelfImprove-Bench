@@ -12,21 +12,21 @@ initial_playbook_path = ""
 
 [agent]
 backend = "openai"
-model = "gpt-5.6-sol-r1-staff"
+model = "azure/gpt-5.6-sol"
 api_mode = "responses"
 max_output_tokens = 4096
-reasoning_effort = "medium"
+reasoning_effort = "high"
 output_format = "json_object"
 
 [reflector]
 backend = "openai"
-model = "gpt-5.6-sol-r1-staff"
-reasoning_effort = "medium"
+model = "azure/gpt-5.6-sol"
+reasoning_effort = "high"
 
 [curator]
 backend = "openai"
-model = "gpt-5.6-sol-r1-staff"
-reasoning_effort = "medium"
+model = "azure/gpt-5.6-sol"
+reasoning_effort = "high"
 
 [refine]
 max_output_tokens = 4096

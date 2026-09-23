@@ -26,6 +26,7 @@ class AHEAdaptor:
         run_dir: str | Path | None = None,
         *,
         model: str | None = None,
+        reasoning_effort: str | None = None,
         timeout_seconds: float = 300,
         candidate_count: int = 1,
     ) -> None:
@@ -35,6 +36,7 @@ class AHEAdaptor:
         default_dir = project_root / "outputs" / "ahe" / f"run_{uuid4().hex}"
         self.run_dir = Path(run_dir or default_dir).expanduser().resolve()
         self.model = model
+        self.reasoning_effort = reasoning_effort
         self.timeout_seconds = timeout_seconds
         self.candidate_count = candidate_count
         self.state: AHEState | None = None
@@ -66,7 +68,10 @@ class AHEAdaptor:
             raise RuntimeError("AHEAdaptor.init() must be called before build()")
         if self._agent is None:
             self._agent = build_agent(
-                self.state, model=self.model, timeout_seconds=self.timeout_seconds,
+                self.state,
+                model=self.model,
+                reasoning_effort=self.reasoning_effort,
+                timeout_seconds=self.timeout_seconds,
             )
         return self._agent
 
@@ -96,6 +101,7 @@ class AHEAdaptor:
         batch = generate_candidates(
             self.state, self.build(), feedback_results,
             output_dir=output_dir, iteration=next_round, model=self.model,
+            reasoning_effort=self.reasoning_effort,
             candidate_count=self.candidate_count,
         )
         self._refinement_round = next_round

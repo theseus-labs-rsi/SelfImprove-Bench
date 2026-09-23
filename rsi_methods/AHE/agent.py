@@ -37,6 +37,7 @@ class AHEAgent:
         artifact_dir: Path,
         *,
         model: str | None = None,
+        reasoning_effort: str | None = None,
         timeout_seconds: float = 300,
     ) -> None:
         self.workspace = workspace.resolve()
@@ -45,6 +46,7 @@ class AHEAgent:
         self.sandbox_dir = self.artifact_dir / "sandbox"
         self.upstream_root = Path(__file__).resolve().parent / "agentic-harness-engineering"
         self.model = model or os.environ.get("LLM_MODEL")
+        self.reasoning_effort = reasoning_effort
         self.timeout_seconds = timeout_seconds
         self.trace_paths: list[Path] = []
         self.artifact_dir.mkdir(parents=True, exist_ok=False)
@@ -54,7 +56,8 @@ class AHEAgent:
         self._process = multiprocessing.Process(
             target=AHEAgent._worker,
             args=(child, self.workspace, self.config_path, self.sandbox_dir,
-                  self.upstream_root, self.artifact_dir / "agent.log", self.model),
+                  self.upstream_root, self.artifact_dir / "agent.log", self.model,
+                  self.reasoning_effort),
             daemon=True,
         )
         try:
@@ -155,6 +158,7 @@ class AHEAgent:
         upstream_root: Path,
         log_path: Path,
         model: str | None,
+        reasoning_effort: str | None,
     ) -> None:
         """Initialize NexAU once, then serve turns from this candidate only."""
 
@@ -173,6 +177,7 @@ class AHEAgent:
                     if model:
                         os.environ["LLM_MODEL"] = model
                     config = AgentConfig.from_yaml(config_path=config_path)
+                    configure_reasoning_effort(config, reasoning_effort)
                     # The copied AHE YAML sets temperature=0.7 and top_p=0.95,
                     # but this benchmark model rejects both parameters. NexAU
                     # omits either request field when its value is None.
@@ -217,3 +222,32 @@ class AHEAgent:
             except BaseException as exc:
                 traceback.print_exc(file=log)
                 connection.send({"ok": False, "error": str(exc)})
+
+
+def configure_reasoning_effort(config: object, effort: str | None) -> None:
+    """Apply reasoning effort only when the installed NexAU exposes the field.
+
+    AHE is vendored against an external NexAU runtime.  Silently dropping the
+    requested setting would make an experiment's model configuration false,
+    so unsupported runtimes fail during initialization instead.
+    """
+
+    normalized = str(effort or "").strip()
+    if not normalized:
+        return
+    llm_config = getattr(config, "llm_config", None)
+    if llm_config is None:
+        raise RuntimeError("NexAU AgentConfig does not expose llm_config; cannot set reasoning_effort")
+    if isinstance(llm_config, dict):
+        if "reasoning_effort" not in llm_config:
+            raise RuntimeError("Installed NexAU LLM config does not support reasoning_effort")
+        llm_config["reasoning_effort"] = normalized
+        return
+    fields = getattr(llm_config, "model_fields", None)
+    if fields is None:
+        fields = getattr(type(llm_config), "model_fields", None)
+    if fields is not None and "reasoning_effort" not in fields:
+        raise RuntimeError("Installed NexAU LLM config does not support reasoning_effort")
+    if not hasattr(llm_config, "reasoning_effort"):
+        raise RuntimeError("Installed NexAU LLM config does not support reasoning_effort")
+    setattr(llm_config, "reasoning_effort", normalized)

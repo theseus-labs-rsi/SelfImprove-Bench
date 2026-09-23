@@ -14,6 +14,7 @@ def build(
     *,
     workspace: str | Path | None = None,
     model: str | None = None,
+    reasoning_effort: str | None = None,
     timeout_seconds: float = 300,
 ) -> AHEAgent:
     """Initialize a NexAU Agent for the selected state or a pending candidate.
@@ -30,4 +31,10 @@ def build(
     if not (selected / "code_agent.yaml").is_file():
         raise FileNotFoundError(f"AHE agent config is missing in {selected}")
     artifact_dir = state.run_dir / "agent_calls" / uuid4().hex
-    return AHEAgent(selected, artifact_dir, model=model, timeout_seconds=timeout_seconds)
+    return AHEAgent(
+        selected,
+        artifact_dir,
+        model=model,
+        reasoning_effort=reasoning_effort,
+        timeout_seconds=timeout_seconds,
+    )
