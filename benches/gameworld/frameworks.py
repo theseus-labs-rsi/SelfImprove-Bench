@@ -13,9 +13,9 @@ from typing import Any
 
 SUPPORTED_FRAMEWORKS = ("ace", "hyperagents", "ahe")
 CLIENT_MODULES = {
-    "ace": "ace_game_client",
-    "hyperagents": "hyperagents_game_client",
-    "ahe": "ahe_game_client",
+    "ace": "benches.gameworld.ace_game_client",
+    "hyperagents": "benches.gameworld.hyperagents_game_client",
+    "ahe": "benches.gameworld.ahe_game_client",
 }
 CLIENT_CLASSES = {
     "ace": "ACEGameClient",

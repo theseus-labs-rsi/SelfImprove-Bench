@@ -23,7 +23,7 @@ from benchmark.contracts import (
 )
 
 
-from integrations.gameworld.frameworks import SUPPORTED_FRAMEWORKS, client_import_spec
+from .frameworks import SUPPORTED_FRAMEWORKS, client_import_spec
 
 
 FRAMEWORK_CLIENTS = {
@@ -45,8 +45,7 @@ class GameWorldBenchmark:
         code_root = gameworld_root / "code"
         if not code_root.is_dir():
             raise FileNotFoundError(f"GameWorld code directory not found: {code_root}")
-        integration_root = Path(__file__).resolve().parents[2] / "integrations" / "gameworld"
-        for path in (integration_root, code_root):
+        for path in (code_root,):
             text = str(path)
             if text not in sys.path:
                 sys.path.insert(0, text)
