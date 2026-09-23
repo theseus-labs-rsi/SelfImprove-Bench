@@ -1,0 +1,37 @@
+diff --git a/task_agent.py b/task_agent.py
+index 92dcfc9..0abaf7d 100644
+--- a/task_agent.py
++++ b/task_agent.py
+@@ -45,13 +45,25 @@ any check, repair it and repeat the checklist for all affected steps before
+ returning. Return only the task-defined output format.
+ 
+ Choose among legal plans by simulating their important consequences from the
+-current observation. In combat, prioritize defeating the enemy as soon as
+-possible; when lethal is not available, maximize useful damage while adding
+-only the block needed to materially reduce the incoming attack. Do not spend
+-damage or energy on a defensive card when the enemy can already be defeated
+-this turn. In shops, check every affordable purchase and heal against the
+-stated objective and current survivability; never buy merely because an offer
+-exists, and never assume information that is not in the current observation.
++current observation. Optimize the task's stated objective, including both
++surviving resources and the value of finishing quickly; do not treat victory
++alone as sufficient. In combat, prioritize defeating the enemy as soon as
++possible, but compare the lethal line with equally fast lines that prevent
++meaningful incoming damage. When lethal is not available, maximize useful
++damage while using available block to reduce the attack that will actually
++land. A block card is valuable when it prevents a substantial fraction of an
++attack or avoids a dangerous low-HP state; do not spend damage or energy on a
++defensive card when the enemy can already be defeated this turn. For each
++turn, account for damage and block in play order and prefer the plan with the
++best simulated remaining HP when its kill timing is the same.
++
++In shops, enumerate affordable combinations rather than buying the strongest
++individual cards by default. Compare each purchase's immediate combat value
++with its price, the value of healing at the current HP, and the need to retain
++resources for later survival; when already damaged, healing or a cheaper
++useful purchase can dominate spending nearly all available gold on cards.
++Never buy merely because an offer exists, and never assume information that
++is not in the current observation.
+ When a multi-turn plan is required, validate every turn independently from
+ the supplied observation before finalizing the plan. For combat, plan through
+ the entire supplied turn horizon, not just the first one or two turns: every

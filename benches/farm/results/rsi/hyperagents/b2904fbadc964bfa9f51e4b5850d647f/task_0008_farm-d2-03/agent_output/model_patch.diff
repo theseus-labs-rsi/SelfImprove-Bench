@@ -1,0 +1,59 @@
+diff --git a/task_agent.py b/task_agent.py
+index 152ee7b..eff3182 100644
+--- a/task_agent.py
++++ b/task_agent.py
+@@ -28,38 +28,24 @@ class TaskAgent(AgentSystem):
+                 - new_msg_history (list): A list of messages representing the message history of the interaction.
+         """
+         instruction = inputs["instruction"]
+-        # Give the model a compact, domain-independent final-check policy. This
+-        # is useful when validity depends on state changing across ordered
+-        # actions, while leaving the task's output contract authoritative.
++        # Add a short planning policy for tasks whose reward depends on ordered
++        # state transitions. The task remains authoritative about its rules and
++        # output format.
+         instruction = (
+             instruction
+-            + "\n\nUse only the current task data or latest observation. Before "
+-            "responding, mentally simulate the proposed actions in order: "
+-            "track state after every action, and never repeat an action unless "
+-            "a new observation shows that it is still needed. Enumerate the "
+-            "meaningful choices, calculate terminal reward after costs and "
+-            "completion timing, and compare feasible quantities and start dates "
+-            "while respecting cash, capacity, occupancy, prerequisites, and the "
+-            "horizon. Include repeat cycles when timing permits. Do not choose "
+-            "the first valid plan or maximize unit margin while ignoring how "
+-            "many units can be funded and completed. Prefer the highest-value "
+-            "complete plan. Treat every omitted date as having no actions, and "
+-            "for each purchase, explicitly match its quantity to a later "
+-            "consuming action; do not buy surplus inputs or leave terminal "
+-            "leftovers when they cannot earn reward. Treat every purchased input "
+-            "as either consumed by a valid action or excluded when it cannot "
+-            "contribute to terminal reward. Treat the "
+-            "listed action order as strict: resources gained later in a date "
+-            "cannot pay for actions earlier that same date. In particular, "
+-            "verify cash immediately before every purchase, then apply harvests "
+-            "and sales only afterward; never schedule a purchase that depends on "
+-            "same-date proceeds unless the task explicitly allows that order. "
+-            "Before finalizing, independently audit each transition in the "
+-            "required order, all resource balances, completion dates, terminal "
+-            "leftovers, and absence of invalid or redundant actions; if a choice "
+-            "is close, recompute its total reward rather than relying on intuition. "
+-            "Follow the task's requested format exactly and output only the "
+-            "final answer."
++            + "\n\nPlan deliberately from the current task data. Enumerate the "
++            "meaningful alternatives (quantities, start dates, and repeat cycles) "
++            "and choose the best feasible complete plan, rather than the first "
++            "valid plan or the best unit margin alone. Simulate every proposed "
++            "date in the task's stated action order, updating cash, capacity, "
++            "occupancy, prerequisites, inventory, completion dates, and terminal "
++            "reward after each action. Do not spend proceeds or resources before "
++            "they are available, exceed capacity, or buy inputs that cannot be "
++            "consumed and earn value within the horizon. Include only actions "
++            "needed by the plan; omitted dates have no actions. Before answering, "
++            "recheck quantities, balances, timing, terminal leftovers, and all "
++            "task-specific validity constraints. Follow the requested output "
++            "format exactly and output only the final answer."
+         )
+ 
+         max_attempts = 3

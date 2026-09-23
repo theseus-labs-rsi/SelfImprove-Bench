@@ -1,0 +1,16 @@
+diff --git a/task_agent.py b/task_agent.py
+index 64e3377..f7c2d3a 100644
+--- a/task_agent.py
++++ b/task_agent.py
+@@ -37,6 +37,11 @@ class TaskAgent(AgentSystem):
+               "provide the full legal schedule needed to defeat the enemy within "
+               "the limit (including later turns, or explicitly omit only turns "
+               "where passing is intentional); do not stop after the first turn. "
++              "Before replying, simulate the listed turns in order: track enemy "
++              "HP and block, remember that damage first removes enemy block, and "
++              "continue adding legal turns until the enemy is actually at 0 HP. "
++              "Do not treat an attack that only removes block as lethal, and do "
++              "not omit a needed follow-up turn. "
+               "Use only the current observation, and do not invent future state."
+         )
+         max_attempts = 3

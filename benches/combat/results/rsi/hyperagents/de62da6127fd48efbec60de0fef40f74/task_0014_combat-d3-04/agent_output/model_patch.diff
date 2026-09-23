@@ -1,0 +1,21 @@
+diff --git a/task_agent.py b/task_agent.py
+index e523342..4103a43 100644
+--- a/task_agent.py
++++ b/task_agent.py
+@@ -82,6 +82,16 @@ class TaskAgent(AgentSystem):
+               "avoidable damage, but do not spend attacks on block or defense when a "
+               "lethal line is available. Compare alternatives by the resulting HP and "
+               "gold as well as survival. Do not spend cards or energy after lethal. "
++              "COMPLETION GATE: first solve combat as a turn-by-turn simulation and "
++              "identify the exact supplied turn on which enemy HP reaches zero. Only "
++              "then serialize the answer, including every nonlethal turn from the "
++              "start through that lethal turn (a no-play turn is allowed only when "
++              "passing is part of the selected winning simulation). A response that "
++              "ends while HP is positive is failed, even if its prefix is legal or "
++              "nearly lethal. Never return an opening prefix for the caller to continue, "
++              "and never let score optimization replace completion. If comparing "
++              "alternatives is uncertain or time is limited, return the first fully "
++              "simulated legal lethal schedule rather than a partial plan. "
+               "For score optimization, simulate at least the winning line and one "
+               "alternative line that uses available block on each incoming attack. "
+               "Do this comparison per turn, not just by comparing total damage: for "

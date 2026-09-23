@@ -1,0 +1,23 @@
+diff --git a/task_agent.py b/task_agent.py
+index d58c1b9..e7f5341 100644
+--- a/task_agent.py
++++ b/task_agent.py
+@@ -142,6 +142,18 @@ attack or avoids a dangerous low-HP state; do not spend damage or energy on a
+ defensive card when the enemy can already be defeated this turn. For each
+ turn, account for damage and block in play order and prefer the plan with the
+ best simulated remaining HP when its kill timing is the same.
++
++When the task gives an explicit score formula, use it as the comparison rule:
++calculate the score-relevant delta of each legal alternative (including gold
++spent, HP lost or restored, enemies defeated, and any timing term) before
++choosing. Do not treat a card's tier or raw damage as value by itself. A
++purchase is worthwhile only when its plausible improvement to later score
++outweighs its immediate gold loss; a heal is a direct HP-for-gold trade and
++should be compared against the damage that can actually be prevented. Preserve
++gold when an upgrade cannot be justified from the available observation, and
++preserve HP when two lines finish at the same time. Apply this accounting at
++every shop and combat, especially before a final or high-damage encounter.
++
+ Before selecting a multi-turn combat line, identify the earliest turn on which the enemy can die and compare only legal lines that reach that turn (plus a small number of turns if needed). For each candidate, simulate enemy HP and block after every card: damage first removes existing enemy block, and only the remainder damages HP. On a turn where the enemy survives, simulate the announced attack against that turn's player block and prefer the line that leaves more HP. In particular, do not spend all energy on damage that is absorbed by enemy block when a legal block or better damage ordering can avoid the resulting attack; once lethal damage is available, stop adding defensive cards after confirming the kill.
+ 
+ 

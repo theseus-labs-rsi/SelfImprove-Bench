@@ -1,0 +1,87 @@
+diff --git a/task_agent.py b/task_agent.py
+index 4784c82..9cc5188 100644
+--- a/task_agent.py
++++ b/task_agent.py
+@@ -1,6 +1,47 @@
++import json
++import re
++
+ from agent.base_agent import AgentSystem
+ from agent.llm_withtools import chat_with_agent
+ 
++
++def _extract_observation(instruction):
++    """Read only the structured current-state block, when provided."""
++    marker = "## Current stage state"
++    text = instruction.split(marker, 1)[-1] if marker in instruction else instruction
++    match = re.search(r"```json\s*(\{.*?\})\s*```", text, re.DOTALL)
++    if not match:
++        return None
++    try:
++        return json.loads(match.group(1))
++    except json.JSONDecodeError:
++        return None
++
++
++def _decision_error(decision, observation):
++    """Return a legality error for common structured action mistakes."""
++    if not observation or observation.get("decision_type") != "combat":
++        return None
++    combat = observation.get("combat", {})
++    cards = observation.get("card_catalog", {})
++    energy = observation.get("player_state", {}).get("energy_per_turn")
++    draws = {d.get("turn"): d for d in combat.get("draws", [])}
++    for entry in decision.get("turns", []):
++        turn = entry.get("turn")
++        draw = draws.get(turn)
++        if not draw:
++            return f"turn {turn} is not in the supplied combat horizon"
++        hand = list(draw.get("hand", []))
++        spent = 0
++        for card in entry.get("play", []):
++            if card not in hand:
++                return f"turn {turn}: {card!r} is not an unused card in that hand"
++            hand.remove(card)
++            spent += cards.get(card, {}).get("cost", 0)
++        if energy is not None and spent > energy:
++            return f"turn {turn}: selected cards cost {spent}, exceeding energy {energy}"
++    return None
++
+ class TaskAgent(AgentSystem):
+     def act(self, prompt, image_paths=None, max_tokens=16384):
+         """Expose the common Agent interface while retaining ``forward``."""
+@@ -101,11 +142,13 @@ hand counts, energy, enemy block, and incoming damage for every appended turn.
+ Once the enemy reaches zero, stop the plan and omit later turns.
+ """
+         max_attempts = 3
++        observation = _extract_observation(instruction)
++        correction = ""
+         prediction = None
+         new_msg_history = None
+         for attempt in range(max_attempts):
+             candidate_history = chat_with_agent(
+-                instruction,
++                instruction + correction,
+                 model=self.model,
+                 msg_history=[],
+                 logging=self.log,
+@@ -120,6 +163,19 @@ Once the enemy reaches zero, stop the plan and omit later turns.
+             if candidate_history and isinstance(candidate_history[-1], dict):
+                 candidate_text = candidate_history[-1].get("text")
+                 if isinstance(candidate_text, str) and candidate_text.strip():
++                    try:
++                        parsed = json.loads(candidate_text)
++                        error = _decision_error(parsed, observation)
++                    except json.JSONDecodeError:
++                        error = None
++                    if error:
++                        correction = (
++                            "\n\nThe previous JSON was rejected by a local legality check: "
++                            + error
++                            + ". Return a corrected task-format JSON object; audit every turn again."
++                        )
++                        self.log(f"TaskAgent rejected illegal candidate: {error}")
++                        continue
+                     prediction = candidate_text
+                     new_msg_history = candidate_history
+                     break

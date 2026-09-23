@@ -1,0 +1,155 @@
+{
+  "task_id": "combat-d4-03",
+  "mode": "sequential_stage_decisions",
+  "stages": [
+    {
+      "task_id": "combat-d4-03",
+      "stage_id": "combat_1",
+      "turns": [
+        {
+          "turn": 1,
+          "play": [
+            "bludgeon"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "combat-d4-03",
+      "stage_id": "shop_1",
+      "buy_cards": [],
+      "heal": false
+    },
+    {
+      "task_id": "combat-d4-03",
+      "stage_id": "combat_2",
+      "turns": [
+        {
+          "turn": 1,
+          "play": [
+            "carnage",
+            "iron_wave"
+          ]
+        },
+        {
+          "turn": 2,
+          "play": [
+            "pommel",
+            "guard",
+            "guard"
+          ]
+        },
+        {
+          "turn": 3,
+          "play": [
+            "carnage",
+            "iron_wave"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "combat-d4-03",
+      "stage_id": "shop_2",
+      "buy_cards": [
+        "uppercut"
+      ],
+      "heal": false
+    },
+    {
+      "task_id": "combat-d4-03",
+      "stage_id": "combat_3",
+      "turns": [
+        {
+          "turn": 1,
+          "play": [
+            "bludgeon"
+          ]
+        },
+        {
+          "turn": 2,
+          "play": [
+            "carnage",
+            "guard"
+          ]
+        },
+        {
+          "turn": 3,
+          "play": [
+            "pommel",
+            "strike",
+            "guard"
+          ]
+        },
+        {
+          "turn": 4,
+          "play": [
+            "bludgeon"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "combat-d4-03",
+      "stage_id": "shop_3",
+      "buy_cards": [
+        "fortress"
+      ],
+      "heal": true
+    },
+    {
+      "task_id": "combat-d4-03",
+      "stage_id": "combat_4",
+      "turns": [
+        {
+          "turn": 1,
+          "play": [
+            "bludgeon"
+          ]
+        },
+        {
+          "turn": 2,
+          "play": [
+            "uppercut",
+            "iron_wave"
+          ]
+        },
+        {
+          "turn": 3,
+          "play": [
+            "strike",
+            "strike",
+            "pommel"
+          ]
+        },
+        {
+          "turn": 4,
+          "play": [
+            "carnage",
+            "iron_wave"
+          ]
+        },
+        {
+          "turn": 5,
+          "play": [
+            "uppercut",
+            "strike"
+          ]
+        },
+        {
+          "turn": 6,
+          "play": [
+            "pommel",
+            "strike"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "combat-d4-03",
+      "stage_id": "shop_4",
+      "buy_cards": [],
+      "heal": true
+    }
+  ]
+}

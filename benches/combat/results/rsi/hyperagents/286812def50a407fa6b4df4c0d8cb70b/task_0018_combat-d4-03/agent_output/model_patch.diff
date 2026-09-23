@@ -1,0 +1,31 @@
+diff --git a/task_agent.py b/task_agent.py
+index e650a79..3d08151 100644
+--- a/task_agent.py
++++ b/task_agent.py
+@@ -216,17 +216,24 @@ calculation.
+         prediction = None
+         new_msg_history = None
+         for attempt in range(max_attempts):
++            # A reasoning-only/empty completion is often caused by spending the
++            # whole response budget on deliberation. Retry with a compact
++            # request so the model has room to emit the required object.
++            retry_reasoning = self.reasoning_effort if attempt == 0 else "low"
++            retry_max_tokens = inputs.get("max_tokens", 16384)
++            if attempt > 0:
++                retry_max_tokens = min(retry_max_tokens, 4096)
+             candidate_history = chat_with_agent(
+                 instruction + correction,
+                 model=self.model,
+                 msg_history=[],
+                 logging=self.log,
+-                reasoning_effort=self.reasoning_effort,
++                reasoning_effort=retry_reasoning,
+                 backend=self.backend,
+                 api_mode=self.api_mode,
+                 api_key_env=self.api_key_env,
+                 base_url_env=self.base_url_env,
+-                max_tokens=inputs.get("max_tokens", 16384),
++                max_tokens=retry_max_tokens,
+             )
+             # Preserve the task-defined output format for the benchmark to parse.
+             if candidate_history and isinstance(candidate_history[-1], dict):

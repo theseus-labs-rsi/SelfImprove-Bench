@@ -1,0 +1,27 @@
+{
+  "round": 14,
+  "changed": true,
+  "candidate_id": "refine_0014",
+  "patch_path": "C:\\Users\\DremEternal\\Desktop\\exp\\mianbi\\planning\\combat\\results\\rsi\\hyperagents\\286812def50a407fa6b4df4c0d8cb70b\\task_0014_combat-d3-04\\agent_output\\model_patch.diff",
+  "metadata": {
+    "gen_output_dir": "C:\\Users\\DremEternal\\Desktop\\exp\\mianbi\\planning\\combat\\results\\rsi\\hyperagents\\286812def50a407fa6b4df4c0d8cb70b\\task_0014_combat-d3-04",
+    "current_genid": "refine_0014",
+    "parent_genid": "refine_0013",
+    "run_baseline": null,
+    "prev_patch_files": [],
+    "curr_patch_files": [
+      "agent_output\\model_patch.diff"
+    ],
+    "refine_attempted": true,
+    "meta_agent_command_successful": true,
+    "patch_produced": true,
+    "compilation_successful": true,
+    "refine_successful": true,
+    "run_eval": true,
+    "change": {
+      "path": "agent_output\\model_patch.diff",
+      "size_bytes": 1927,
+      "sha256": "b79359a47f1d1c069c497ca55d714453e7e208a319d3145b68f54c8ede180b7e"
+    }
+  }
+}

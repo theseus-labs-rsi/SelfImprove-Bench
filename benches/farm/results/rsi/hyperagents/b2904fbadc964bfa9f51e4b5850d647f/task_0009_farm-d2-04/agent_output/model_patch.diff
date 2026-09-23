@@ -1,0 +1,45 @@
+diff --git a/task_agent.py b/task_agent.py
+index eff3182..0451deb 100644
+--- a/task_agent.py
++++ b/task_agent.py
+@@ -33,19 +33,27 @@ class TaskAgent(AgentSystem):
+         # output format.
+         instruction = (
+             instruction
+-            + "\n\nPlan deliberately from the current task data. Enumerate the "
+-            "meaningful alternatives (quantities, start dates, and repeat cycles) "
+-            "and choose the best feasible complete plan, rather than the first "
+-            "valid plan or the best unit margin alone. Simulate every proposed "
+-            "date in the task's stated action order, updating cash, capacity, "
+-            "occupancy, prerequisites, inventory, completion dates, and terminal "
+-            "reward after each action. Do not spend proceeds or resources before "
+-            "they are available, exceed capacity, or buy inputs that cannot be "
+-            "consumed and earn value within the horizon. Include only actions "
+-            "needed by the plan; omitted dates have no actions. Before answering, "
+-            "recheck quantities, balances, timing, terminal leftovers, and all "
+-            "task-specific validity constraints. Follow the requested output "
+-            "format exactly and output only the final answer."
++            + "\n\nSolve this as a constrained finite-horizon optimization problem. "
++            "First derive the objective and hard constraints from the task, then "
++            "construct and compare several feasible schedules (including different "
++            "quantities, start times, resource allocations, and repeat cycles). "
++            "Compare total terminal reward, not just unit margin or the first valid "
++            "plan. Explicitly account for every independent resource slot and for "
++            "resources that become available after completion: whenever capacity or "
++            "cash is released, check whether it can be profitably reused before the "
++            "horizon. Prefer a full-capacity allocation when it increases objective "
++            "value, while leaving capacity idle when its timing or cost makes it "
++            "unprofitable.\n"
++            "\nSimulate the selected schedule chronologically in the task's stated "
++            "action order, updating cash, capacity, occupancy, prerequisites, "
++            "inventory, completion dates, and terminal reward after each action. "
++            "Do not spend proceeds or resources before they are available, exceed "
++            "capacity, or acquire inputs that cannot be consumed and earn value "
++            "within the horizon. Include only actions needed by the plan; omitted "
++            "dates have no actions. Before answering, independently recheck every "
++            "quantity, balance, timing boundary, terminal leftover, and task-specific "
++            "validity constraint. Follow the requested output format exactly and "
++            "output only the final answer."
+         )
+ 
+         max_attempts = 3

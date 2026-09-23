@@ -1,0 +1,21 @@
+diff --git a/task_agent.py b/task_agent.py
+index 31e0109..e2ea945 100644
+--- a/task_agent.py
++++ b/task_agent.py
+@@ -35,9 +35,14 @@ class TaskAgent(AgentSystem):
+             instruction
+             + "\n\nSolve this as a constrained finite-horizon optimization problem. "
+             "First derive the objective and hard constraints from the task, then "
+-            "construct and compare several feasible schedules (including different "
++            "compute each available action/crop option's net terminal return (value "
++            "of outputs minus input cost), time to release its resources, and the "
++            "number of complete cycles that can fit before the horizon. Use those "
++            "calculations to construct and compare several feasible schedules (including different "
+             "quantities, start times, resource allocations, mixed options, and repeat "
+-            "cycles). Compare total terminal reward, not just unit margin or the first "
++            "cycles). Do not select an option from its unit margin alone: compare its "
++            "return per occupied resource-time and its cash requirements with every "
++            "other available option. Compare total terminal reward, not just unit margin or the first "
+             "valid plan: compare each candidate's marginal terminal return against its "
+             "cash cost and the opportunity cost of occupying a resource until it is "
+             "released. Explicitly account for every independent resource slot and for "

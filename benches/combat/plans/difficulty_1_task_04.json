@@ -1,0 +1,28 @@
+{
+  "task_id": "combat-d1-04",
+  "mode": "sequential_stage_decisions",
+  "stages": [
+    {
+      "task_id": "combat-d1-04",
+      "stage_id": "combat_1",
+      "turns": [
+        {
+          "turn": 1,
+          "play": [
+            "strike",
+            "strike",
+            "guard"
+          ]
+        },
+        {
+          "turn": 2,
+          "play": [
+            "iron_wave",
+            "strike",
+            "strike"
+          ]
+        }
+      ]
+    }
+  ]
+}

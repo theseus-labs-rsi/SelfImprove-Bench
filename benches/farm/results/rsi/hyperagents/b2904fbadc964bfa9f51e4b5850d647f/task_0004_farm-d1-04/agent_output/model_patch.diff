@@ -1,0 +1,35 @@
+diff --git a/task_agent.py b/task_agent.py
+index f8d0ef1..c0ed852 100644
+--- a/task_agent.py
++++ b/task_agent.py
+@@ -33,19 +33,19 @@ class TaskAgent(AgentSystem):
+         # actions, while leaving the task's output contract authoritative.
+         instruction = (
+             instruction
+-            + "\n\nBefore responding, solve from the current task data and mentally "
+-            "simulate the proposed actions in order. First enumerate the "
+-            "profitable action choices: for each option, calculate its net "
+-            "terminal reward after costs and the dates on which it can finish. "
+-            "Then compare feasible quantities and start dates, respecting "
+-            "cash at every step, capacity/occupancy, prerequisites, and the "
+-            "horizon; include repeat cycles when timing permits. Do not choose "
++            + "\n\nUse only the current task data or latest observation. Before "
++            "responding, mentally simulate the proposed actions in order: "
++            "track state after every action, and never repeat an action unless "
++            "a new observation shows that it is still needed. Enumerate the "
++            "meaningful choices, calculate terminal reward after costs and "
++            "completion timing, and compare feasible quantities and start dates "
++            "while respecting cash, capacity, occupancy, prerequisites, and the "
++            "horizon. Include repeat cycles when timing permits. Do not choose "
+             "the first valid plan or maximize unit margin while ignoring how "
+             "many units can be funded and completed. Prefer the highest-value "
+-            "complete plan, and verify the final schedule by simulating every "
+-            "state transition in the required daily order. Check that no later "
+-            "action can improve the result, that terminal leftovers are handled "
+-            "as specified, and that no invalid or redundant action remains. "
++            "complete plan, then verify every state transition in the required "
++            "order, terminal leftovers, and absence of invalid or redundant "
++            "actions. "
+             "Follow the task's requested format exactly and output only the "
+             "final answer."
+         )

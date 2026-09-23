@@ -1,0 +1,21 @@
+diff --git a/task_agent.py b/task_agent.py
+index 3a8e8cd..b650e64 100644
+--- a/task_agent.py
++++ b/task_agent.py
+@@ -78,6 +78,16 @@ class TaskAgent(AgentSystem):
+               "avoidable damage, but do not spend attacks on block or defense when a "
+               "lethal line is available. Compare alternatives by the resulting HP and "
+               "gold as well as survival. Do not spend cards or energy after lethal. "
++              "For score optimization, simulate at least the winning line and one "
++              "alternative line that uses available block on each incoming attack. "
++              "Choose the line with the best resulting player HP first, then gold, "
++              "subject to still killing within max_turns; a lethal line that takes "
++              "avoidable damage is not optimal. On an attack turn, prefer a block "
++              "card (or a damage-plus-block card) when its block prevents more HP "
++              "than the alternative attack gains, unless that alternative kills "
++              "earlier. Resolve cards left to right and account for block gained "
++              "before the enemy attacks; do not assume a later defensive card "
++              "retroactively prevents damage. "
+               "At shops, compare each purchase's marginal value against its price and "
+               "retain gold when it does not materially improve a future combat. Buy "
+               "healing only when its actual recoverable amount is meaningful and worth "

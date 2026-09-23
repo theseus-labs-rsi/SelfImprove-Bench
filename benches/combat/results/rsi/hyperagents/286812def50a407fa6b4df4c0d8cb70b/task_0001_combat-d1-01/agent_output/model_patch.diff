@@ -1,0 +1,27 @@
+diff --git a/task_agent.py b/task_agent.py
+index 09fc42f..8fc6ec8 100644
+--- a/task_agent.py
++++ b/task_agent.py
+@@ -27,7 +27,21 @@ class TaskAgent(AgentSystem):
+                 - prediction (str): The prediction made by the agent.
+                 - new_msg_history (list): A list of messages representing the message history of the interaction.
+         """
+-        instruction = inputs["instruction"]
++        # The evaluator rejects a whole stage when one planned action is
++        # illegal. Keep this guidance separate from the task prompt so it
++        # applies to any structured, stateful action task without changing
++        # the caller's schema or leaking historical evaluation data.
++        instruction = inputs["instruction"] + """
++
++Before returning the structured decision, perform one final legality pass on
++the exact current observation. For every action that consumes items, verify
++that each item is present in the current state and that its per-step
++multiplicity and total resource cost are within the limits for that step.
++Do not validate against a remembered or earlier step, and do not repeat an
++item merely because it was available elsewhere in the observation. If a
++planned action fails this check, revise it to a legal action before emitting
++the required output. Return only the task-defined output format.
++"""
+         max_attempts = 3
+         prediction = None
+         new_msg_history = None

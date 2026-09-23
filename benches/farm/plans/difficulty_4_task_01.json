@@ -1,0 +1,175 @@
+{
+  "task_id": "farm-d4-01",
+  "days": [
+    {
+      "day": 1,
+      "buy_seeds": [
+        {
+          "crop": "carrot",
+          "quantity": 10
+        }
+      ],
+      "plant": [
+        {
+          "crop": "carrot",
+          "quantity": 10
+        }
+      ],
+      "harvest": [],
+      "sell": []
+    },
+    {
+      "day": 4,
+      "buy_seeds": [],
+      "plant": [],
+      "harvest": [
+        {
+          "crop": "carrot",
+          "quantity": 10
+        }
+      ],
+      "sell": [
+        {
+          "crop": "carrot",
+          "quantity": 10
+        }
+      ]
+    },
+    {
+      "day": 5,
+      "buy_seeds": [
+        {
+          "crop": "carrot",
+          "quantity": 17
+        }
+      ],
+      "plant": [
+        {
+          "crop": "carrot",
+          "quantity": 17
+        }
+      ],
+      "harvest": [],
+      "sell": []
+    },
+    {
+      "day": 8,
+      "buy_seeds": [],
+      "plant": [],
+      "harvest": [
+        {
+          "crop": "carrot",
+          "quantity": 17
+        }
+      ],
+      "sell": [
+        {
+          "crop": "carrot",
+          "quantity": 17
+        }
+      ]
+    },
+    {
+      "day": 9,
+      "buy_seeds": [
+        {
+          "crop": "carrot",
+          "quantity": 20
+        }
+      ],
+      "plant": [
+        {
+          "crop": "carrot",
+          "quantity": 20
+        }
+      ],
+      "harvest": [],
+      "sell": []
+    },
+    {
+      "day": 12,
+      "buy_seeds": [],
+      "plant": [],
+      "harvest": [
+        {
+          "crop": "carrot",
+          "quantity": 20
+        }
+      ],
+      "sell": [
+        {
+          "crop": "carrot",
+          "quantity": 20
+        }
+      ]
+    },
+    {
+      "day": 13,
+      "buy_seeds": [
+        {
+          "crop": "carrot",
+          "quantity": 20
+        }
+      ],
+      "plant": [
+        {
+          "crop": "carrot",
+          "quantity": 20
+        }
+      ],
+      "harvest": [],
+      "sell": []
+    },
+    {
+      "day": 16,
+      "buy_seeds": [],
+      "plant": [],
+      "harvest": [
+        {
+          "crop": "carrot",
+          "quantity": 20
+        }
+      ],
+      "sell": [
+        {
+          "crop": "carrot",
+          "quantity": 20
+        }
+      ]
+    },
+    {
+      "day": 17,
+      "buy_seeds": [
+        {
+          "crop": "carrot",
+          "quantity": 20
+        }
+      ],
+      "plant": [
+        {
+          "crop": "carrot",
+          "quantity": 20
+        }
+      ],
+      "harvest": [],
+      "sell": []
+    },
+    {
+      "day": 20,
+      "buy_seeds": [],
+      "plant": [],
+      "harvest": [
+        {
+          "crop": "carrot",
+          "quantity": 20
+        }
+      ],
+      "sell": [
+        {
+          "crop": "carrot",
+          "quantity": 20
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+diff --git a/task_agent.py b/task_agent.py
+index 0abaf7d..5cf3fd5 100644
+--- a/task_agent.py
++++ b/task_agent.py
+@@ -44,6 +44,14 @@ resource total and every other stated constraint. If a proposed plan fails
+ any check, repair it and repeat the checklist for all affected steps before
+ returning. Return only the task-defined output format.
+ 
++Treat each listed hand as a finite multiset, not as an inventory. In the final
++audit, compare the count of every emitted item in a step with that item's count
++in that step's hand; a count that is even one too high makes the whole plan
++invalid. Audit every step independently, including steps after a lethal
++candidate or a previously successful-looking line. Use the observation's
++explicit hands as the only source of legality: never reconstruct, rotate, or
++reuse a hand from the deck, draw cycle, or another turn.
++
+ Choose among legal plans by simulating their important consequences from the
+ current observation. Optimize the task's stated objective, including both
+ surviving resources and the value of finishing quickly; do not treat victory

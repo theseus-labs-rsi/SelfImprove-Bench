@@ -1,0 +1,22 @@
+diff --git a/task_agent.py b/task_agent.py
+index c7f390b..670d83b 100644
+--- a/task_agent.py
++++ b/task_agent.py
+@@ -52,8 +52,15 @@ this turn. In shops, check every affordable purchase and heal against the
+ stated objective and current survivability; never buy merely because an offer
+ exists, and never assume information that is not in the current observation.
+ When a multi-turn plan is required, ensure each turn remains legal after
+-accounting for the exact hand and state changes, and do not repeat a prior
+-action without using the new resulting observation.
++accounting for the exact hand and state changes. For combat, plan through
++the entire supplied turn horizon, not just the first one or two turns:
++every turn before lethal must have a legal play (an omitted turn is still
++an enemy attack). Recompute enemy HP and block, player HP, and the exact
++hand for each listed turn; continue playing damage on later turns until
++the enemy is dead. If an early plan leaves the enemy alive, do not stop
++planning or assume the caller will request another decision for that same
++combat. Do not repeat a prior action without using the new resulting
++observation.
+ """
+         max_attempts = 3
+         prediction = None

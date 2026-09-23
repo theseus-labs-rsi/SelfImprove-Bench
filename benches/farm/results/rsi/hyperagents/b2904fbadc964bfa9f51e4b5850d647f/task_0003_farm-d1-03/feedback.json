@@ -1,0 +1,158 @@
+{
+  "task_id": "farm-d1-03",
+  "task": {
+    "task_id": "farm-d1-03",
+    "difficulty": 1,
+    "initial_money": 200,
+    "farmland_count": 8,
+    "duration_days": 8,
+    "available_crops": [
+      "blue_jazz",
+      "coffee_bean",
+      "potato",
+      "unmilled_rice"
+    ],
+    "crop_catalog": {
+      "blue_jazz": {
+        "id": "blue_jazz",
+        "name": "蓝爵",
+        "seed_price": 30,
+        "maturity_days": 7,
+        "yield_per_harvest": 2,
+        "fruit_price": 40
+      },
+      "coffee_bean": {
+        "id": "coffee_bean",
+        "name": "咖啡豆",
+        "seed_price": 450,
+        "maturity_days": 10,
+        "yield_per_harvest": 20,
+        "fruit_price": 30
+      },
+      "potato": {
+        "id": "potato",
+        "name": "土豆",
+        "seed_price": 50,
+        "maturity_days": 6,
+        "yield_per_harvest": 5,
+        "fruit_price": 20
+      },
+      "unmilled_rice": {
+        "id": "unmilled_rice",
+        "name": "未碾米",
+        "seed_price": 40,
+        "maturity_days": 8,
+        "yield_per_harvest": 10,
+        "fruit_price": 10
+      }
+    },
+    "rules": {
+      "day_numbering": "1-based",
+      "daily_operation_order": [
+        "buy_seeds",
+        "plant",
+        "harvest",
+        "sell"
+      ],
+      "harvest_day": "plant_day + maturity_days",
+      "unsold_fruit_has_no_value": true
+    },
+    "reference_daily_profits": {
+      "blue_jazz": 7.142857142857143,
+      "coffee_bean": 15.0,
+      "potato": 8.333333333333334,
+      "unmilled_rice": 7.5
+    },
+    "reference_profit": 300,
+    "reference_method": "greedy_daily_profit_lookahead"
+  },
+  "trajectory": [
+    {
+      "step_index": 0,
+      "prompt": "# 农场运营规划任务 Prompt\n\n你是一名农场经营规划 AI。请只依据输入任务中的 `available_crops` 和作物基础信息制定计划，在任务持续天数内最大化最终现金盈利。\n\n## 输入模板\n\n```json\n{\n  \"task_id\": \"farm-example\",\n  \"difficulty\": 2,\n  \"initial_money\": 200,\n  \"farmland_count\": 12,\n  \"duration_days\": 12,\n  \"available_crops\": [\"wheat\", \"corn\"],\n  \"crop_catalog\": {\n    \"wheat\": {\"id\": \"wheat\", \"name\": \"小麦\", \"seed_price\": 20, \"maturity_days\": 2, \"yield_per_harvest\": 3, \"fruit_price\": 12},\n    \"corn\": {\"id\": \"corn\", \"name\": \"玉米\", \"seed_price\": 35, \"maturity_days\": 3, \"yield_per_harvest\": 4, \"fruit_price\": 16}\n  }\n}\n```\n\n规则：第 `day` 天购买的种子才可在当天或之后种植；收获日为种植日加 `maturity_days`；每天操作顺序为购买、种植、收获、出售；农田在收获前持续占用；未出售果实和剩余种子不计入盈利；不能透支资金、种植未知作物或出售未收获果实。\n\n任务 JSON 中只包含制定计划所需的规则、资金、农田和作物信息；请最大化实际模拟利润。\n\n## 输出模板\n\n只输出合法 JSON，不要添加 Markdown 围栏或解释文字：\n\n```json\n{\n  \"task_id\": \"farm-example\",\n  \"days\": [\n    {\n      \"day\": 1,\n      \"buy_seeds\": [{\"crop\": \"wheat\", \"quantity\": 4}],\n      \"plant\": [{\"crop\": \"wheat\", \"quantity\": 4}],\n      \"harvest\": [],\n      \"sell\": []\n    },\n    {\n      \"day\": 3,\n      \"buy_seeds\": [],\n      \"plant\": [],\n      \"harvest\": [{\"crop\": \"wheat\", \"quantity\": 4}],\n      \"sell\": [{\"crop\": \"wheat\", \"quantity\": 12}]\n    }\n  ]\n}\n```\n\n可以省略没有操作的日期；每个日期最多出现一次。所有数量必须是正整数。目标是最大化模拟器返回的 `profit`。\n\n## Current task\n```json\n{\n  \"task_id\": \"farm-d1-03\",\n  \"difficulty\": 1,\n  \"initial_money\": 200,\n  \"farmland_count\": 8,\n  \"duration_days\": 8,\n  \"available_crops\": [\n    \"blue_jazz\",\n    \"coffee_bean\",\n    \"potato\",\n    \"unmilled_rice\"\n  ],\n  \"crop_catalog\": {\n    \"blue_jazz\": {\n      \"id\": \"blue_jazz\",\n      \"name\": \"蓝爵\",\n      \"seed_price\": 30,\n      \"maturity_days\": 7,\n      \"yield_per_harvest\": 2,\n      \"fruit_price\": 40\n    },\n    \"coffee_bean\": {\n      \"id\": \"coffee_bean\",\n      \"name\": \"咖啡豆\",\n      \"seed_price\": 450,\n      \"maturity_days\": 10,\n      \"yield_per_harvest\": 20,\n      \"fruit_price\": 30\n    },\n    \"potato\": {\n      \"id\": \"potato\",\n      \"name\": \"土豆\",\n      \"seed_price\": 50,\n      \"maturity_days\": 6,\n      \"yield_per_harvest\": 5,\n      \"fruit_price\": 20\n    },\n    \"unmilled_rice\": {\n      \"id\": \"unmilled_rice\",\n      \"name\": \"未碾米\",\n      \"seed_price\": 40,\n      \"maturity_days\": 8,\n      \"yield_per_harvest\": 10,\n      \"fruit_price\": 10\n    }\n  },\n  \"rules\": {\n    \"day_numbering\": \"1-based\",\n    \"daily_operation_order\": [\n      \"buy_seeds\",\n      \"plant\",\n      \"harvest\",\n      \"sell\"\n    ],\n    \"harvest_day\": \"plant_day + maturity_days\",\n    \"unsold_fruit_has_no_value\": true\n  }\n}\n```\n\nThis is a non-interactive API call. Do not inspect files, use tools, or write explanations. Compute the plan directly and return only the plan JSON object as specified above.\n",
+      "image_records": [],
+      "action": "{\"task_id\": \"farm-d1-03\", \"days\": [{\"day\": 1, \"buy_seeds\": [{\"crop\": \"potato\", \"quantity\": 4}], \"plant\": [{\"crop\": \"potato\", \"quantity\": 4}], \"harvest\": [], \"sell\": []}, {\"day\": 7, \"buy_seeds\": [], \"plant\": [], \"harvest\": [{\"crop\": \"potato\", \"quantity\": 4}], \"sell\": [{\"crop\": \"potato\", \"quantity\": 20}]}]}",
+      "environment_response": {
+        "task_id": "farm-d1-03",
+        "initial_money": 200,
+        "final_money": 400,
+        "profit": 200,
+        "reference_profit": 300,
+        "score": 0.6666666666666666,
+        "remaining_seeds": {},
+        "unsold_fruits": {},
+        "growing_crops": [],
+        "daily_log": [
+          {
+            "day": 1,
+            "bought": [
+              {
+                "crop": "potato",
+                "quantity": 4,
+                "cost": 200
+              }
+            ],
+            "planted": [
+              {
+                "crop": "potato",
+                "quantity": 4
+              }
+            ],
+            "harvested": [],
+            "sold": [],
+            "money": 0
+          },
+          {
+            "day": 7,
+            "bought": [],
+            "planted": [],
+            "harvested": [
+              {
+                "crop": "potato",
+                "quantity": 4,
+                "fruits": 20
+              }
+            ],
+            "sold": [
+              {
+                "crop": "potato",
+                "quantity": 20,
+                "revenue": 400
+              }
+            ],
+            "money": 400
+          }
+        ]
+      },
+      "success": true,
+      "score": 0.6666666666666666,
+      "feedback": "Farm plan executed successfully.",
+      "agent_call": {
+        "response_text": "{\"task_id\":\"farm-d1-03\",\"days\":[{\"day\":1,\"buy_seeds\":[{\"crop\":\"potato\",\"quantity\":4}],\"plant\":[{\"crop\":\"potato\",\"quantity\":4}],\"harvest\":[],\"sell\":[]},{\"day\":7,\"buy_seeds\":[],\"plant\":[],\"harvest\":[{\"crop\":\"potato\",\"quantity\":4}],\"sell\":[{\"crop\":\"potato\",\"quantity\":20}]}]}",
+        "reasoning": null,
+        "usage": {
+          "input_tokens": 5496,
+          "output_tokens": 367,
+          "total_tokens": 5863,
+          "cached_input_tokens": 3840,
+          "reasoning_tokens": 269
+        },
+        "provider": "openai",
+        "model": "gpt-5.6-luna-r1-staff",
+        "status": "completed",
+        "finish_reason": null
+      }
+    }
+  ],
+  "evaluation": {
+    "execution_status": "completed",
+    "success": true,
+    "score": 0.6666666666666666,
+    "feedback": "Farm plan executed successfully.",
+    "metrics": {
+      "profit": 200,
+      "reference_profit": 300,
+      "final_money": 400
+    }
+  }
+}

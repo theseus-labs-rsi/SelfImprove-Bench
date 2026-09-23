@@ -1,0 +1,73 @@
+{
+  "task_id": "farm-d3-02",
+  "days": [
+    {
+      "day": 1,
+      "buy_seeds": [
+        {
+          "crop": "tulip",
+          "quantity": 10
+        }
+      ],
+      "plant": [
+        {
+          "crop": "tulip",
+          "quantity": 10
+        }
+      ],
+      "harvest": [],
+      "sell": []
+    },
+    {
+      "day": 7,
+      "buy_seeds": [],
+      "plant": [],
+      "harvest": [
+        {
+          "crop": "tulip",
+          "quantity": 10
+        }
+      ],
+      "sell": [
+        {
+          "crop": "tulip",
+          "quantity": 20
+        }
+      ]
+    },
+    {
+      "day": 8,
+      "buy_seeds": [
+        {
+          "crop": "blue_jazz",
+          "quantity": 16
+        }
+      ],
+      "plant": [
+        {
+          "crop": "blue_jazz",
+          "quantity": 16
+        }
+      ],
+      "harvest": [],
+      "sell": []
+    },
+    {
+      "day": 15,
+      "buy_seeds": [],
+      "plant": [],
+      "harvest": [
+        {
+          "crop": "blue_jazz",
+          "quantity": 16
+        }
+      ],
+      "sell": [
+        {
+          "crop": "blue_jazz",
+          "quantity": 32
+        }
+      ]
+    }
+  ]
+}

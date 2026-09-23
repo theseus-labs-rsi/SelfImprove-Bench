@@ -1,0 +1,57 @@
+diff --git a/task_agent.py b/task_agent.py
+index 9cc5188..92dd8bf 100644
+--- a/task_agent.py
++++ b/task_agent.py
+@@ -18,6 +18,43 @@ def _extract_observation(instruction):
+         return None
+ 
+ 
++def _combat_incomplete(decision, observation):
++    """Catch the common failure where a plan stops with a live enemy."""
++    if not observation or observation.get("decision_type") != "combat":
++        return None
++    combat = observation.get("combat", {})
++    enemy = combat.get("enemy", {})
++    hp = enemy.get("max_hp")
++    if hp is None:
++        return None
++    enemy_block = 0
++    cards = observation.get("card_catalog", {})
++    by_turn = {item.get("turn"): item.get("play", []) for item in decision.get("turns", [])}
++    draws = {item.get("turn"): item for item in combat.get("draws", [])}
++    intents = {item.get("turn"): item.get("enemy_intent", {}) for item in combat.get("draws", [])}
++    last = max(by_turn, default=0)
++    # Replaying only to the last emitted turn is enough to detect premature stop.
++    for turn in range(1, last + 1):
++        player_block = 0
++        for card in by_turn.get(turn, []):
++            stats = cards.get(card, {})
++            damage = stats.get("damage", 0)
++            absorbed = min(enemy_block, damage)
++            enemy_block -= absorbed
++            hp -= damage - absorbed
++            player_block += stats.get("block", 0)
++            if hp <= 0:
++                return None
++        intent = intents.get(turn, {})
++        if hp > 0 and intent.get("type") == "guard":
++            enemy_block = intent.get("value", 0)
++        elif hp > 0 and intent.get("type") == "attack":
++            # Player block resets each turn; this is only needed for the audit.
++            pass
++    if hp > 0 and last < max(draws, default=0):
++        return f"the emitted combat plan ends with enemy HP {hp}; append legal turns through the first lethal turn"
++    return None
++
+ def _decision_error(decision, observation):
+     """Return a legality error for common structured action mistakes."""
+     if not observation or observation.get("decision_type") != "combat":
+@@ -40,7 +77,7 @@ def _decision_error(decision, observation):
+             spent += cards.get(card, {}).get("cost", 0)
+         if energy is not None and spent > energy:
+             return f"turn {turn}: selected cards cost {spent}, exceeding energy {energy}"
+-    return None
++    return _combat_incomplete(decision, observation)
+ 
+ class TaskAgent(AgentSystem):
+     def act(self, prompt, image_paths=None, max_tokens=16384):

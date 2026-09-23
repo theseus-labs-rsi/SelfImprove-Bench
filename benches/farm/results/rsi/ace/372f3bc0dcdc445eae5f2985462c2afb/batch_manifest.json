@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "method": "ace",
+  "batch_id": "372f3bc0dcdc445eae5f2985462c2afb",
+  "task_count": 25,
+  "clean_base": true,
+  "adaptor": "ACEAdaptor",
+  "effective_state": {
+    "run_dir": null,
+    "reuse_existing": null,
+    "max_refinement_rounds": null
+  }
+}

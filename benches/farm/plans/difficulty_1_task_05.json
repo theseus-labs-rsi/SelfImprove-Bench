@@ -1,0 +1,39 @@
+{
+  "task_id": "farm-d1-05",
+  "days": [
+    {
+      "day": 1,
+      "buy_seeds": [
+        {
+          "crop": "tulip",
+          "quantity": 8
+        }
+      ],
+      "plant": [
+        {
+          "crop": "tulip",
+          "quantity": 8
+        }
+      ],
+      "harvest": [],
+      "sell": []
+    },
+    {
+      "day": 7,
+      "buy_seeds": [],
+      "plant": [],
+      "harvest": [
+        {
+          "crop": "tulip",
+          "quantity": 8
+        }
+      ],
+      "sell": [
+        {
+          "crop": "tulip",
+          "quantity": 16
+        }
+      ]
+    }
+  ]
+}

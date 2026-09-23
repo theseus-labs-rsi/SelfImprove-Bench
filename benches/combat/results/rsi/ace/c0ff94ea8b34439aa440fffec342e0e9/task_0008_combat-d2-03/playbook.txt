@@ -1,0 +1,27 @@
+## STRATEGIES & INSIGHTS
+
+[sai-00001] helpful=6 harmful=0 :: When a card provides both damage and block, compare its combined battlefield value against pure defense. A hybrid card can dominate a Guard when its block covers the incoming attack while its damage accelerates the kill.
+[sai-00011] helpful=0 harmful=0 :: When an enemy will gain guard before the next player turn, front-load available damage on the current turn whenever survival is already secured. Damage dealt before the guard avoids later enemy-block absorption and can eliminate a future attack.
+[sai-00014] helpful=0 harmful=0 :: When immediate damage cannot kill, consider a setup turn that spends surplus energy on block while preserving the strongest damage cards for the next hand. Prefer this line when the added block absorbs the current attack and the preserved cards produce a verified lethal combination on the following turn.
+## FORMULAS & CALCULATIONS
+
+[calc-00002] helpful=7 harmful=0 :: Resolve each attack turn with explicit state tracking: effective damage to enemy HP = max(0, card damage - enemy block), remaining enemy block = max(0, enemy block - card damage), and incoming damage = max(0, enemy attack - player block).
+[calc-00006] helpful=5 harmful=0 :: At the end of each candidate combat line, compute final HP explicitly as starting HP minus the sum of residual incoming damage on every enemy attack turn; compare candidate lines by final HP after confirming the kill within the turn limit.
+[calc-00008] helpful=4 harmful=0 :: Before accepting a combat line, simulate every selected card in order through the first lethal turn, checking each play against that turn's hand multiplicities and total energy. Recompute enemy block at each turn boundary according to the stated guard timing and verify the enemy reaches 0 HP before any subsequent intent.
+[calc-00010] helpful=1 harmful=0 :: For each turn, value defensive output only up to the enemy's current attack: effective block = min(total player block, incoming attack). Treat excess block as zero additional HP preservation, and use any remaining energy for damage when this does not violate legality.
+[calc-00013] helpful=0 harmful=0 :: Treat per-turn legality as a hard pre-filter: before calculating damage, block, or survival for any candidate line, sum all selected card costs and reject the line immediately if the total exceeds the turn's energy limit. Do not justify an over-budget play by its battlefield value.
+## CODE SNIPPETS & TEMPLATES
+
+## COMMON MISTAKES TO AVOID
+
+[err-00005] helpful=5 harmful=0 :: Avoid using a pure block card merely because it prevents the current attack. Check whether available hybrid cards already provide enough block; replacing one with Guard may lower damage, prolong the fight, and increase total HP loss without improving survival.
+[err-00007] helpful=0 harmful=0 :: Do not describe an attack as fully blocked unless player block is at least the full incoming attack. When block is lower, explicitly calculate the remainder as attack minus block and carry that HP loss into the final objective comparison.
+[err-00009] helpful=0 harmful=0 :: Do not validate only the opening turns or assume a plausible sequence will continue legally. Reject any line with duplicate card plays beyond the hand count, excessive energy cost, incorrect guard/block persistence, or no explicit lethal check by max_turns.
+[err-00012] helpful=0 harmful=0 :: Do not evaluate only the multiset of cards played on a turn. Compare meaningful card orders when enemy block or lethal thresholds matter, because damage applied before block is gained or before a lethal card can prevent the enemy action may produce a different outcome.
+## PROBLEM-SOLVING HEURISTICS
+
+## CONTEXT CLUES & INDICATORS
+
+## OTHERS
+[misc-00003] helpful=7 harmful=0 :: Do not stop after finding a legal line that wins. For the important early turns, compare a small number of legal damage-block combinations and prefer the line that wins while minimizing total incoming damage.
+[misc-00004] helpful=7 harmful=0 :: Treat defeating the enemy sooner as a defensive resource: additional surviving enemy turns create additional opportunities for HP loss. Evaluate damage output together with the attacks eliminated by an earlier kill.

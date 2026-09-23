@@ -1,0 +1,107 @@
+{
+  "task_id": "farm-d5-04",
+  "days": [
+    {
+      "day": 1,
+      "buy_seeds": [
+        {
+          "crop": "potato",
+          "quantity": 4
+        }
+      ],
+      "plant": [
+        {
+          "crop": "potato",
+          "quantity": 4
+        }
+      ],
+      "harvest": [],
+      "sell": []
+    },
+    {
+      "day": 7,
+      "buy_seeds": [],
+      "plant": [],
+      "harvest": [
+        {
+          "crop": "potato",
+          "quantity": 4
+        }
+      ],
+      "sell": [
+        {
+          "crop": "potato",
+          "quantity": 20
+        }
+      ]
+    },
+    {
+      "day": 8,
+      "buy_seeds": [
+        {
+          "crop": "potato",
+          "quantity": 8
+        }
+      ],
+      "plant": [
+        {
+          "crop": "potato",
+          "quantity": 8
+        }
+      ],
+      "harvest": [],
+      "sell": []
+    },
+    {
+      "day": 14,
+      "buy_seeds": [],
+      "plant": [],
+      "harvest": [
+        {
+          "crop": "potato",
+          "quantity": 8
+        }
+      ],
+      "sell": [
+        {
+          "crop": "potato",
+          "quantity": 40
+        }
+      ]
+    },
+    {
+      "day": 15,
+      "buy_seeds": [
+        {
+          "crop": "potato",
+          "quantity": 16
+        }
+      ],
+      "plant": [
+        {
+          "crop": "potato",
+          "quantity": 16
+        }
+      ],
+      "harvest": [],
+      "sell": []
+    },
+    {
+      "day": 21,
+      "buy_seeds": [],
+      "plant": [],
+      "harvest": [
+        {
+          "crop": "potato",
+          "quantity": 16
+        }
+      ],
+      "sell": [
+        {
+          "crop": "potato",
+          "quantity": 80
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,122 @@
+{
+  "task_id": "combat-d2-01",
+  "mode": "sequential_stage_decisions",
+  "stages": [
+    {
+      "task_id": "combat-d2-01",
+      "stage_id": "combat_1",
+      "turns": [
+        {
+          "turn": 1,
+          "play": [
+            "iron_wave",
+            "twin_strike"
+          ]
+        },
+        {
+          "turn": 2,
+          "play": [
+            "strike",
+            "strike",
+            "strike"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "combat-d2-01",
+      "stage_id": "shop_1",
+      "buy_cards": [
+        "pommel"
+      ],
+      "heal": true
+    },
+    {
+      "task_id": "combat-d2-01",
+      "stage_id": "combat_2",
+      "turns": [
+        {
+          "turn": 1,
+          "play": [
+            "twin_strike",
+            "pommel"
+          ]
+        },
+        {
+          "turn": 2,
+          "play": [
+            "strike",
+            "guard",
+            "strike"
+          ]
+        },
+        {
+          "turn": 3,
+          "play": [
+            "pommel",
+            "iron_wave",
+            "strike"
+          ]
+        },
+        {
+          "turn": 4,
+          "play": [
+            "twin_strike",
+            "strike"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "combat-d2-01",
+      "stage_id": "shop_2",
+      "buy_cards": [
+        "twin_strike",
+        "shrug"
+      ],
+      "heal": false
+    },
+    {
+      "task_id": "combat-d2-01",
+      "stage_id": "boss",
+      "turns": [
+        {
+          "turn": 1,
+          "play": [
+            "twin_strike",
+            "iron_wave"
+          ]
+        },
+        {
+          "turn": 2,
+          "play": [
+            "twin_strike",
+            "strike"
+          ]
+        },
+        {
+          "turn": 3,
+          "play": [
+            "strike",
+            "strike",
+            "iron_wave"
+          ]
+        },
+        {
+          "turn": 4,
+          "play": [
+            "twin_strike",
+            "pommel"
+          ]
+        },
+        {
+          "turn": 5,
+          "play": [
+            "twin_strike",
+            "strike"
+          ]
+        }
+      ]
+    }
+  ]
+}

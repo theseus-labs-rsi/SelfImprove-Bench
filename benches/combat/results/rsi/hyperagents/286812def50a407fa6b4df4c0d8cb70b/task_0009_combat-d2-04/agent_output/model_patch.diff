@@ -1,0 +1,21 @@
+diff --git a/task_agent.py b/task_agent.py
+index da9ddd1..408bef1 100644
+--- a/task_agent.py
++++ b/task_agent.py
+@@ -85,6 +85,16 @@ turn's hand with an unused occurrence. If an early plan leaves the enemy
+ alive, do not stop planning or assume the caller will request another
+ decision for that same combat. Do not repeat a prior action without using the
+ new resulting observation.
++
++FINAL COMBAT TERMINAL CHECK (do this immediately before answering): simulate
++the emitted turns in order and write down the enemy HP after each turn. The
++last emitted turn must either kill the enemy or be followed by another
++emitted turn; an answer that ends while enemy HP is positive is incomplete.
++Do not rely on omitted turns to finish the fight: omitted turns play no cards
++and still let the enemy act. If the last planned turn does not kill, append
++legal turns from the supplied hands until the first lethal turn, auditing
++hand counts, energy, enemy block, and incoming damage for every appended turn.
++Once the enemy reaches zero, stop the plan and omit later turns.
+ """
+         max_attempts = 3
+         prediction = None

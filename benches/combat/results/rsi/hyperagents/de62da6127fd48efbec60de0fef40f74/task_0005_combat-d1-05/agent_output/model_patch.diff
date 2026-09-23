@@ -1,0 +1,24 @@
+diff --git a/task_agent.py b/task_agent.py
+index 7bd6b30..cae1f57 100644
+--- a/task_agent.py
++++ b/task_agent.py
+@@ -51,8 +51,17 @@ class TaskAgent(AgentSystem):
+               "many times as it is played, total cost must fit the energy, and "
+               "turn numbers must be unique and in range. Never carry an unused "
+               "card from one hand into another turn, and never repeat a card "
+-              "just because it was available on a previous turn. "
+-              "Use only the current observation, and do not invent future state."
++              "just because it was available on a previous turn. Use only the current "
++              "observation, and do not invent future state. After finding a winning "
++              "schedule, improve its score with a bounded comparison of alternatives: "
++              "prioritize earlier lethal defeat, then minimize expected damage from each "
++              "public attack using block, then preserve gold and HP. Do not spend cards "
++              "or energy after lethal. At shops, compare affordable purchases by their "
++              "immediate contribution to damage/block and buy only when it improves the "
++              "current run; buy healing when it prevents meaningful avoidable HP loss. "
++              "Use the complete current observation for this calculation, but do not "
++              "assume information about later stages beyond what is supplied."
++
+         )
+         max_attempts = 3
+         prediction = None

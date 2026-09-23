@@ -1,0 +1,35 @@
+diff --git a/task_agent.py b/task_agent.py
+index b5e9fd8..89849c7 100644
+--- a/task_agent.py
++++ b/task_agent.py
+@@ -33,11 +33,15 @@ class TaskAgent(AgentSystem):
+         instruction = (
+             instruction
+             + "\n\nTreat this as a finite-horizon optimization problem, not a request for a merely valid plan. "
+-            "First derive a feasible schedule, then optimize it. Simulate each day in the exact stated "
++            "First derive a feasible schedule, then optimize it. Do not draft a large first-day batch "
++            "from farmland capacity: calculate its total seed cost and require total cost <= current cash "
++            "before adding it. Simulate each day in the exact stated "
+             "operation order; in particular, cash available for buying and planting is the cash at the "
+             "start of that day, not proceeds from that day's later harvest or sale. Never schedule a "
+-            "purchase that would make cash negative before harvest/sale, and explicitly reserve enough "
+-            "cash for every purchase needed before the next expected release. "
++            "purchase that would make cash negative before harvest/sale. Treat this as a hard invariant: "
++            "after every buy, cash must be nonnegative, and after every day cash must equal the prior cash "
++            "+ sale proceeds - purchases. Explicitly reserve enough cash for every purchase needed before "
++            "the next expected release; if a desired batch is unaffordable, reduce its quantity or postpone it. "
+             "Build a small table for every available action: net value, input cost, completion/release time, "
+             "resource occupancy, and whether it can be repeated before the horizon. Compare complete schedules "
+             "by total terminal reward, including mixed actions and reinvestment after each release; never choose "
+@@ -54,8 +58,9 @@ class TaskAgent(AgentSystem):
+             "consumes harvested inventory. Reject any schedule whose requested harvest or sale exceeds the "
+             "corresponding ledger balance, and remove redundant or contradictory operations before output. "
+             "\n\n"
+-            "Before output, run a separate day-by-day accounting pass over the final JSON. For each day, "
+-            "apply buys and planting first and verify cash and capacity immediately; only then apply harvest "
++            "Before output, run a separate day-by-day accounting pass over the final JSON, starting with the "
++            "given initial cash (not an assumed per-field budget). For each day, apply buys and planting first "
++            "and verify cash and capacity immediately; only then apply harvest "
+             "and sale proceeds. Check operation order, cash, inventory, "
+             "capacity, completion dates, quantities, and terminal leftovers. At every harvest/release, check for "
+             "another action that can finish in time. Follow the requested output format exactly and output only "

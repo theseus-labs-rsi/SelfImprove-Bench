@@ -1,0 +1,30 @@
+diff --git a/task_agent.py b/task_agent.py
+index d700344..0e3d60c 100644
+--- a/task_agent.py
++++ b/task_agent.py
+@@ -54,6 +54,13 @@ simulated reason to hold inventory, pair every purchase with planting on the
+ same day; a seed bought on day d cannot be planted retroactively on day d-1,
+ and delaying planting changes its harvest date. Every buy must leave cash
+ nonnegative; do not spend all cash if that prevents a better later cycle.
++Also track committed future purchases while evaluating a schedule: cash that is
++needed for a later buy is reserved until that buy is either removed or funded by
++an earlier sale. A purchase is not feasible merely because today's opening cash
++covers it. After every buy, project the opening cash on each subsequent planned
++buy using only sales that occur before that day; reject or resize any schedule
++whose projected balance goes negative. This prevents reinvestment from consuming
++cash needed for a batch already in the plan.
+ Treat each candidate as an investment decision: a bootstrap batch is worthwhile only
+ if simulating its full downstream schedule (and the alternatives it displaces) gives
+ more terminal cash. Do not stop after finding a schedule that is merely valid or
+@@ -75,7 +82,10 @@ walk every day in chronological order and reject any candidate as soon as an ope
+ cash purchase, seed/plant quantity, field count, harvest quantity, or sale quantity
+ is invalid. In particular, calculate each day's total buy cost from cash carried in
+ from the previous day; same-day harvests and sales are not available until after all
+-buys and planting. Second, optimize only among schedules that passed that walk. As a
++buys and planting. When a schedule contains several future buys, calculate their
++cumulative costs and reserve those costs before spending on an earlier optional
++batch; never rely on a sale occurring later the same day or later than the required
++purchase. Second, optimize only among schedules that passed that walk. As a
+ final independent check, recompute the ledger from the emitted JSON itself and do not
+ emit it if any cash balance would be negative; adjust earlier quantities and repeat
+ the check instead of assuming a later sale will repair the deficit.

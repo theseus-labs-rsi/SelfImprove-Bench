@@ -1,0 +1,25 @@
+## STRATEGIES & INSIGHTS
+
+[sai-00001] helpful=7 harmful=0 :: In a finite-horizon farming task, first test whether each crop can be harvested by the final day: with 1-based days and earliest planting on day 1, require 1 + maturity_days <= duration_days. Exclude crops that cannot mature in time because they cannot contribute to realized profit.
+[sai-00006] helpful=6 harmful=0 :: Treat the farm as a finite-horizon dynamic planning problem. Track each day’s cash, free plots, planted batches with their harvest dates, and harvested inventory; after each day’s buy, plant, harvest, and sell actions, use released plots and sale proceeds to evaluate subsequent plantings.
+[sai-00011] helpful=0 harmful=0 :: 每次收获事件后都要重新枚举可购买作物、购买数量和剩余可用地块的组合；不要假设下一轮沿用上一轮的作物或数量。将不同批次允许重叠种植，并比较各完整日程在最终截止日前的可实现出售收入，以避免收获后闲置土地和未利用新增现金。
+## FORMULAS & CALCULATIONS
+
+[calc-00002] helpful=0 harmful=1 :: For each harvestable crop, calculate net profit per planted seed as yield_per_harvest * fruit_price - seed_price. The maximum initial planting quantity is min(floor(initial_money / seed_price), farmland_count); select quantities using both affordability and available plots, and compare total profit across feasible crops.
+[calc-00007] helpful=6 harmful=0 :: For every candidate planting batch, calculate realized profit as yield_per_harvest * fruit_price - seed_price, but compare complete schedules rather than isolated crops. Include repeated short-cycle harvests and mixed schedules, and enforce that each purchase is affordable with that day’s cash and each planting fits that day’s free farmland.
+[calc-00010] helpful=0 harmful=0 :: 在每个再投资种植日重新计算批量，而不是沿用首轮数量：quantity = min(free_plots, floor(cash / seed_price))。现金应取该购买阶段开始时的可用现金，空闲农田应取尚未被在场作物占用的地块；收获和出售发生在当天购买之后，因此当天释放的农田和销售收入只能用于下一天的购买与种植。
+[calc-00012] helpful=0 harmful=0 :: 按事件日期核算完整日程：对每个批次记录 quantity、crop、plant_day 和 harvest_day，计算其成本与出售收入，并在每次收获后更新 cash = cash - purchase_cost + sale_revenue、free_land = free_land + harvested_quantity。只有将所有批次的现金流和最终可出售收入合并后，才能比较方案的 final_cash；不能仅用首轮利润或单轮单位利润判断最优。
+## CODE SNIPPETS & TEMPLATES
+
+[code-00005] helpful=6 harmful=0 :: For each selected crop, emit buy_seeds and plant on its planting day, harvest on plant_day + maturity_days, and sell yield_per_harvest * quantity on that harvest day. Preserve the daily order buy_seeds, plant, harvest, sell; omit empty dates and include each date at most once.
+## COMMON MISTAKES TO AVOID
+
+[err-00004] helpful=6 harmful=0 :: Do not treat maturity_days as an inclusive duration: under the stated rule, harvest_day = plant_day + maturity_days. Also avoid buying or planting more seeds than current cash or free farmland allows, and remember that only harvested and sold fruit affects final cash and profit.
+[err-00009] helpful=0 harmful=0 :: Never use same-day harvest or sale proceeds to fund purchases on that day: validate every buy against the cash balance at the start of the buy phase, then update cash only after the later harvest and sell phases. Recalculate each batch cost as seed_price × quantity and verify it against that pre-purchase balance.
+## PROBLEM-SOLVING HEURISTICS
+
+[ph-00003] helpful=0 harmful=1 :: When all feasible crops have positive per-plant profit and only one harvest is possible within the horizon, prioritize the crop with the best feasible total profit after accounting for seed cost, yield, sale price, cash, and plot limits. Do not spend money on crops whose harvest falls outside the task duration.
+[ph-00008] helpful=1 harmful=0 :: Do not infer global optimality from the highest per-plant margin or from the best initial crop. Enumerate feasible daily transitions, or use dynamic programming over cash, free land, and outstanding batches; explicitly test harvest-day reinvestment because a crop harvested early can fund and enable another round before the deadline.
+## CONTEXT CLUES & INDICATORS
+
+## OTHERS

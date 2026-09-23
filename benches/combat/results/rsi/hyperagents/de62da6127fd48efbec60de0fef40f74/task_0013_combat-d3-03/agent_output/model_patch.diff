@@ -1,0 +1,24 @@
+diff --git a/task_agent.py b/task_agent.py
+index ab287fa..e523342 100644
+--- a/task_agent.py
++++ b/task_agent.py
+@@ -31,12 +31,16 @@ class TaskAgent(AgentSystem):
+         # Models can stop after a plausible first action; require a complete
+         # decision for the state supplied in this invocation.
+         instruction = (
+-            "HARD OUTPUT CHECK (do this immediately before returning): for every combat "
+-            "turn, count the cards in that turn's exact hand as a multiset. Each played "
++            "HARD OUTPUT CHECK (do this immediately before returning): build a separate "
++            "available-card multiset from the exact hand shown for each requested combat "
++            "turn (the deck and draw cycle are not substitutes for that hand). For every "
++            "combat turn, count the cards in that turn's exact hand as a multiset. Each played "
+             "card must have an available copy in that same hand; never use a card twice "
+             "unless the hand visibly contains two copies. Also check total energy, unique "
+             "in-range turn numbers, and valid JSON. If any check fails, revise the plan "
+-            "before replying. Legality is a hard requirement, ahead of damage or score.\n\n"
++            "before replying. In particular, before adding any card to a turn, locate that "
++            "card in that turn's hand and consume one occurrence; if it is absent, choose "
++            "another card or omit it. Legality is a hard requirement, ahead of damage or score.\n\n"
+             + instruction
+             + "\n\nAction policy: finish the complete decision for this current stage "
+               "before replying. For combat, inspect the supplied turn data and "

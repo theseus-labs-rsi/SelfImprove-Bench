@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "evidence_kind": "rsi_evaluation_evidence",
+  "metadata": {
+    "gen_output_dir": "C:\\Users\\DremEternal\\Desktop\\exp\\mianbi\\planning\\combat\\results\\rsi\\hyperagents\\de62da6127fd48efbec60de0fef40f74\\task_0020_combat-d4-05",
+    "current_genid": "refine_0020",
+    "parent_genid": "refine_0019",
+    "run_baseline": null,
+    "prev_patch_files": [],
+    "curr_patch_files": [],
+    "refine_attempted": true,
+    "meta_agent_command_successful": null,
+    "patch_produced": false,
+    "compilation_successful": false,
+    "refine_successful": false,
+    "run_eval": false
+  },
+  "result_schema": {
+    "selection_score": "Normalized scalar in [0, 1]; higher is better.",
+    "cases": "List of per-case results; each case carries its own metrics, feedback, and artifacts.",
+    "case_id": "Stable identifier for one evaluated case."
+  },
+  "analysis_instruction": "Inspect result.json and its cases and artifacts. Infer recurring failure patterns across cases; do not optimize for one case_id or one stochastic trace.",
+  "artifact_resolution": "During MetaAgent execution, artifact paths in result.json are relative to /tmp/evaluation_history.",
+  "canonical_source": null
+}

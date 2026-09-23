@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "method": "hyperagents",
+  "batch_id": "292f7e1a35fe4b45bf786ed8b8c26b12",
+  "task_count": 25,
+  "clean_base": true,
+  "adaptor": "HyperAgentsAdaptor",
+  "effective_state": {
+    "run_dir": "C:\\Users\\DremEternal\\Desktop\\exp\\mianbi\\planning\\farm\\results\\rsi\\hyperagents\\292f7e1a35fe4b45bf786ed8b8c26b12\\state",
+    "reuse_existing": false,
+    "max_refinement_rounds": 25
+  }
+}

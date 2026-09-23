@@ -1,0 +1,107 @@
+{
+  "task_id": "farm-d4-04",
+  "days": [
+    {
+      "day": 1,
+      "buy_seeds": [
+        {
+          "crop": "parsnip",
+          "quantity": 10
+        }
+      ],
+      "plant": [
+        {
+          "crop": "parsnip",
+          "quantity": 10
+        }
+      ],
+      "harvest": [],
+      "sell": []
+    },
+    {
+      "day": 5,
+      "buy_seeds": [],
+      "plant": [],
+      "harvest": [
+        {
+          "crop": "parsnip",
+          "quantity": 10
+        }
+      ],
+      "sell": [
+        {
+          "crop": "parsnip",
+          "quantity": 10
+        }
+      ]
+    },
+    {
+      "day": 6,
+      "buy_seeds": [
+        {
+          "crop": "garlic",
+          "quantity": 8
+        }
+      ],
+      "plant": [
+        {
+          "crop": "garlic",
+          "quantity": 8
+        }
+      ],
+      "harvest": [],
+      "sell": []
+    },
+    {
+      "day": 10,
+      "buy_seeds": [],
+      "plant": [],
+      "harvest": [
+        {
+          "crop": "garlic",
+          "quantity": 8
+        }
+      ],
+      "sell": [
+        {
+          "crop": "garlic",
+          "quantity": 8
+        }
+      ]
+    },
+    {
+      "day": 11,
+      "buy_seeds": [
+        {
+          "crop": "strawberry",
+          "quantity": 1
+        }
+      ],
+      "plant": [
+        {
+          "crop": "strawberry",
+          "quantity": 1
+        }
+      ],
+      "harvest": [],
+      "sell": []
+    },
+    {
+      "day": 19,
+      "buy_seeds": [],
+      "plant": [],
+      "harvest": [
+        {
+          "crop": "strawberry",
+          "quantity": 1
+        }
+      ],
+      "sell": [
+        {
+          "crop": "strawberry",
+          "quantity": 5
+        }
+      ]
+    }
+  ]
+}

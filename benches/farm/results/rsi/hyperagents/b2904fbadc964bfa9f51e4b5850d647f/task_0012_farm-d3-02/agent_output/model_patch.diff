@@ -1,0 +1,13 @@
+diff --git a/task_agent.py b/task_agent.py
+index 2175083..31e0109 100644
+--- a/task_agent.py
++++ b/task_agent.py
+@@ -46,7 +46,7 @@ class TaskAgent(AgentSystem):
+             "before the horizon; do not stop after finding one profitable cycle. Prefer "
+             "full-capacity allocation when it increases objective value, while leaving "
+             "capacity idle when its timing or cost makes it unprofitable.\n"
+-            "\nSimulate the selected schedule chronologically in the task's stated "
++            "\nBefore emitting the answer, simulate the selected schedule chronologically and perform a final independent audit of the exact "
+             "action order, updating cash, capacity, occupancy, prerequisites, "
+             "inventory, completion dates, and terminal reward after each action. "
+             "For each date, first test that all purchases are affordable with the "

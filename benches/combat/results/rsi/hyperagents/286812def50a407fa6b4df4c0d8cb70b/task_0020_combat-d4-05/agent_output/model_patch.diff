@@ -1,0 +1,26 @@
+diff --git a/task_agent.py b/task_agent.py
+index abe6808..3f9447e 100644
+--- a/task_agent.py
++++ b/task_agent.py
+@@ -208,6 +208,21 @@ if buying it prevents a meaningful heal or leaves the next combat unable to
+ survive. Prefer a legal line that reaches victory with more remaining HP,
+ then use gold only when the improvement is justified by that survival
+ calculation.
++
++SURVIVAL BUDGET CHECK: Before committing to a shop or combat plan, make a
++rough HP budget from the current observation. Sum the announced attacks that
++will occur before the planned kill, subtract the block you actually play on
++those turns, and include the current HP and the available heal. If a plan
++cannot survive that budget, reject it even when its damage or card quality is
++better. At a shop, explicitly compare the heal-only option and every
++affordable purchase-plus-heal option; retain enough gold for the heal whenever
++the next combat's public attack sequence makes the current HP insufficient.
++Across a run, treat HP already lost as persistent: do not optimize each
++combat or purchase in isolation when a slower or cheaper legal choice leaves
++more HP for the next stage. For a final encounter, favor the line that is
++actually survivable and lethal over a line that merely has the highest raw
++damage.
++
+ """
+ 
+         # Empty completions are recoverable model events. Keep the first retry

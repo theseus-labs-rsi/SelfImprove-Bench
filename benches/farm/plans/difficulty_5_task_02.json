@@ -1,0 +1,166 @@
+{
+  "task_id": "farm-d5-02",
+  "days": [
+    {
+      "day": 1,
+      "buy_seeds": [
+        {
+          "crop": "carrot",
+          "quantity": 10
+        }
+      ],
+      "plant": [
+        {
+          "crop": "carrot",
+          "quantity": 10
+        }
+      ],
+      "harvest": [],
+      "sell": []
+    },
+    {
+      "day": 4,
+      "buy_seeds": [],
+      "plant": [],
+      "harvest": [
+        {
+          "crop": "carrot",
+          "quantity": 10
+        }
+      ],
+      "sell": [
+        {
+          "crop": "carrot",
+          "quantity": 10
+        }
+      ]
+    },
+    {
+      "day": 5,
+      "buy_seeds": [
+        {
+          "crop": "strawberry",
+          "quantity": 1
+        },
+        {
+          "crop": "carrot",
+          "quantity": 2
+        }
+      ],
+      "plant": [
+        {
+          "crop": "strawberry",
+          "quantity": 1
+        },
+        {
+          "crop": "carrot",
+          "quantity": 2
+        }
+      ],
+      "harvest": [],
+      "sell": []
+    },
+    {
+      "day": 8,
+      "buy_seeds": [],
+      "plant": [],
+      "harvest": [
+        {
+          "crop": "carrot",
+          "quantity": 2
+        }
+      ],
+      "sell": [
+        {
+          "crop": "carrot",
+          "quantity": 2
+        }
+      ]
+    },
+    {
+      "day": 9,
+      "buy_seeds": [
+        {
+          "crop": "carrot",
+          "quantity": 4
+        }
+      ],
+      "plant": [
+        {
+          "crop": "carrot",
+          "quantity": 4
+        }
+      ],
+      "harvest": [],
+      "sell": []
+    },
+    {
+      "day": 12,
+      "buy_seeds": [],
+      "plant": [],
+      "harvest": [
+        {
+          "crop": "carrot",
+          "quantity": 4
+        }
+      ],
+      "sell": [
+        {
+          "crop": "carrot",
+          "quantity": 4
+        }
+      ]
+    },
+    {
+      "day": 13,
+      "buy_seeds": [],
+      "plant": [],
+      "harvest": [
+        {
+          "crop": "strawberry",
+          "quantity": 1
+        }
+      ],
+      "sell": [
+        {
+          "crop": "strawberry",
+          "quantity": 5
+        }
+      ]
+    },
+    {
+      "day": 14,
+      "buy_seeds": [
+        {
+          "crop": "strawberry",
+          "quantity": 2
+        }
+      ],
+      "plant": [
+        {
+          "crop": "strawberry",
+          "quantity": 2
+        }
+      ],
+      "harvest": [],
+      "sell": []
+    },
+    {
+      "day": 22,
+      "buy_seeds": [],
+      "plant": [],
+      "harvest": [
+        {
+          "crop": "strawberry",
+          "quantity": 2
+        }
+      ],
+      "sell": [
+        {
+          "crop": "strawberry",
+          "quantity": 10
+        }
+      ]
+    }
+  ]
+}

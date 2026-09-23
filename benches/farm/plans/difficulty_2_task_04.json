@@ -1,0 +1,73 @@
+{
+  "task_id": "farm-d2-04",
+  "days": [
+    {
+      "day": 1,
+      "buy_seeds": [
+        {
+          "crop": "potato",
+          "quantity": 4
+        }
+      ],
+      "plant": [
+        {
+          "crop": "potato",
+          "quantity": 4
+        }
+      ],
+      "harvest": [],
+      "sell": []
+    },
+    {
+      "day": 7,
+      "buy_seeds": [],
+      "plant": [],
+      "harvest": [
+        {
+          "crop": "potato",
+          "quantity": 4
+        }
+      ],
+      "sell": [
+        {
+          "crop": "potato",
+          "quantity": 20
+        }
+      ]
+    },
+    {
+      "day": 8,
+      "buy_seeds": [
+        {
+          "crop": "garlic",
+          "quantity": 8
+        }
+      ],
+      "plant": [
+        {
+          "crop": "garlic",
+          "quantity": 8
+        }
+      ],
+      "harvest": [],
+      "sell": []
+    },
+    {
+      "day": 12,
+      "buy_seeds": [],
+      "plant": [],
+      "harvest": [
+        {
+          "crop": "garlic",
+          "quantity": 8
+        }
+      ],
+      "sell": [
+        {
+          "crop": "garlic",
+          "quantity": 8
+        }
+      ]
+    }
+  ]
+}

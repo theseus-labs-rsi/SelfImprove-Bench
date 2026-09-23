@@ -1,0 +1,31 @@
+diff --git a/task_agent.py b/task_agent.py
+index 4103a43..5e13583 100644
+--- a/task_agent.py
++++ b/task_agent.py
+@@ -31,16 +31,16 @@ class TaskAgent(AgentSystem):
+         # Models can stop after a plausible first action; require a complete
+         # decision for the state supplied in this invocation.
+         instruction = (
+-            "HARD OUTPUT CHECK (do this immediately before returning): build a separate "
+-            "available-card multiset from the exact hand shown for each requested combat "
+-            "turn (the deck and draw cycle are not substitutes for that hand). For every "
+-            "combat turn, count the cards in that turn's exact hand as a multiset. Each played "
+-            "card must have an available copy in that same hand; never use a card twice "
+-            "unless the hand visibly contains two copies. Also check total energy, unique "
+-            "in-range turn numbers, and valid JSON. If any check fails, revise the plan "
+-            "before replying. In particular, before adding any card to a turn, locate that "
+-            "card in that turn's hand and consume one occurrence; if it is absent, choose "
+-            "another card or omit it. Legality is a hard requirement, ahead of damage or score.\n\n"
++            "MANDATORY COMBAT LEDGER: Before choosing any combat play, make a private row for "
++            "each turn containing exactly that turn's hand, with duplicate card IDs counted. "
++            "Choose plays only by removing one matching occurrence from that row; reset the "
++            "row completely for the next turn. The deck, draw cycle, catalog, and prior turns "
++            "never supply a card to another row. After drafting the whole schedule, replay it "
++            "from turn 1 and verify for every row: each play is present with sufficient count, "
++            "cost is within energy, and the turn number is unique and in range. If a planned "
++            "card is absent during this replay, delete or replace it using only that row's "
++            "hand before output. Treat this as a hard legality gate, even if the replacement "
++            "does less damage. Return the complete current-stage JSON decision only.\n\n"
+             + instruction
+             + "\n\nAction policy: finish the complete decision for this current stage "
+               "before replying. For combat, inspect the supplied turn data and "

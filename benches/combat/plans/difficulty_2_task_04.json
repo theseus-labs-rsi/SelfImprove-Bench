@@ -1,0 +1,71 @@
+{
+  "task_id": "combat-d2-04",
+  "mode": "sequential_stage_decisions",
+  "stages": [
+    {
+      "task_id": "combat-d2-04",
+      "stage_id": "combat_1",
+      "turns": [
+        {
+          "turn": 1,
+          "play": [
+            "iron_wave",
+            "pommel",
+            "strike"
+          ]
+        },
+        {
+          "turn": 2,
+          "play": [
+            "strike",
+            "strike"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "combat-d2-04",
+      "stage_id": "shop_1",
+      "buy_cards": [
+        "shrug"
+      ],
+      "heal": true
+    },
+    {
+      "task_id": "combat-d2-04",
+      "stage_id": "combat_2",
+      "turns": [
+        {
+          "turn": 1,
+          "play": [
+            "guard",
+            "pommel",
+            "strike"
+          ]
+        },
+        {
+          "turn": 2,
+          "play": [
+            "strike",
+            "strike",
+            "strike"
+          ]
+        },
+        {
+          "turn": 3,
+          "play": [
+            "guard",
+            "pommel",
+            "strike"
+          ]
+        },
+        {
+          "turn": 4,
+          "play": [
+            "iron_wave"
+          ]
+        }
+      ]
+    }
+  ]
+}

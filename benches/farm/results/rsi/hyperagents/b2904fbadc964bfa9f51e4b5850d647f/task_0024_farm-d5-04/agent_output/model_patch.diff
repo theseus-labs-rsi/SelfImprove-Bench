@@ -1,0 +1,20 @@
+diff --git a/task_agent.py b/task_agent.py
+index 283d809..d700344 100644
+--- a/task_agent.py
++++ b/task_agent.py
+@@ -82,9 +82,15 @@ the check instead of assuming a later sale will repair the deficit.
+ """
+ 
+ 
++        instruction = instruction.replace(
++            "Use two distinct passes before producing the answer. First, validate feasibility only:",
++            "Before selecting a crop, make a small horizon-aware comparison table for every available crop: net cash per seed, fields occupied, harvest day, and all harvests possible before the horizon. Then evaluate affordable batch sizes and the cash/field state after each harvest as transitions; compare at least the best single-crop schedule against mixed schedules and schedules that reserve capacity for a later, higher-return batch. Prefer the schedule with the greatest simulated terminal cash, even when its first batch has a lower immediate margin.\n\nUse two distinct passes before producing the answer. First, validate feasibility only:"
++        )
++
+         max_attempts = 3
+         prediction = None
+         new_msg_history = None
++
+         for attempt in range(max_attempts):
+             candidate_history = chat_with_agent(
+                 instruction,

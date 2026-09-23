@@ -1,0 +1,19 @@
+diff --git a/task_agent.py b/task_agent.py
+index f7c2d3a..fa03282 100644
+--- a/task_agent.py
++++ b/task_agent.py
+@@ -41,7 +41,13 @@ class TaskAgent(AgentSystem):
+               "HP and block, remember that damage first removes enemy block, and "
+               "continue adding legal turns until the enemy is actually at 0 HP. "
+               "Do not treat an attack that only removes block as lethal, and do "
+-              "not omit a needed follow-up turn. "
++              "not omit a needed follow-up turn. For every listed turn, perform "
++              "a final legality preflight against that turn's exact hand as a "
++              "multiset: each card in play must appear in the hand at least as "
++              "many times as it is played, total cost must fit the energy, and "
++              "turn numbers must be unique and in range. Never carry an unused "
++              "card from one hand into another turn, and never repeat a card "
++              "just because it was available on a previous turn. "
+               "Use only the current observation, and do not invent future state."
+         )
+         max_attempts = 3

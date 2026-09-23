@@ -1,0 +1,23 @@
+diff --git a/task_agent.py b/task_agent.py
+index 99904f2..c7f390b 100644
+--- a/task_agent.py
++++ b/task_agent.py
+@@ -42,6 +42,18 @@ different step or in the overall inventory. Also verify each step's resource
+ total and every other stated constraint. If any planned action fails, remove
+ or revise it to a legal action before emitting the output. Return only the
+ task-defined output format.
++
++Choose among legal plans by simulating their important consequences from the
++current observation. In combat, prioritize defeating the enemy as soon as
++possible; when lethal is not available, maximize useful damage while adding
++only the block needed to materially reduce the incoming attack. Do not spend
++damage or energy on a defensive card when the enemy can already be defeated
++this turn. In shops, check every affordable purchase and heal against the
++stated objective and current survivability; never buy merely because an offer
++exists, and never assume information that is not in the current observation.
++When a multi-turn plan is required, ensure each turn remains legal after
++accounting for the exact hand and state changes, and do not repeat a prior
++action without using the new resulting observation.
+ """
+         max_attempts = 3
+         prediction = None

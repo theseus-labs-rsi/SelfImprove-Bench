@@ -1,0 +1,27 @@
+{
+  "round": 16,
+  "changed": true,
+  "candidate_id": "refine_0016",
+  "patch_path": "C:\\Users\\DremEternal\\Desktop\\exp\\mianbi\\planning\\farm\\results\\rsi\\hyperagents\\b2904fbadc964bfa9f51e4b5850d647f\\task_0016_farm-d4-01\\agent_output\\model_patch.diff",
+  "metadata": {
+    "gen_output_dir": "C:\\Users\\DremEternal\\Desktop\\exp\\mianbi\\planning\\farm\\results\\rsi\\hyperagents\\b2904fbadc964bfa9f51e4b5850d647f\\task_0016_farm-d4-01",
+    "current_genid": "refine_0016",
+    "parent_genid": "refine_0015",
+    "run_baseline": null,
+    "prev_patch_files": [],
+    "curr_patch_files": [
+      "agent_output\\model_patch.diff"
+    ],
+    "refine_attempted": true,
+    "meta_agent_command_successful": true,
+    "patch_produced": true,
+    "compilation_successful": true,
+    "refine_successful": true,
+    "run_eval": true,
+    "change": {
+      "path": "agent_output\\model_patch.diff",
+      "size_bytes": 3143,
+      "sha256": "99cf9d502c1cf728b70b22f357c95c48522b04112095aeab56f0bcf2921e9221"
+    }
+  }
+}

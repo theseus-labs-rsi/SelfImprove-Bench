@@ -1,0 +1,135 @@
+{
+  "task_id": "farm-d3-03",
+  "task": {
+    "task_id": "farm-d3-03",
+    "difficulty": 3,
+    "initial_money": 200,
+    "farmland_count": 16,
+    "duration_days": 16,
+    "available_crops": [
+      "blue_jazz",
+      "coffee_bean",
+      "green_bean",
+      "kale",
+      "rhubarb",
+      "strawberry",
+      "tulip",
+      "unmilled_rice"
+    ],
+    "crop_catalog": {
+      "blue_jazz": {
+        "id": "blue_jazz",
+        "name": "蓝爵",
+        "seed_price": 30,
+        "maturity_days": 7,
+        "yield_per_harvest": 2,
+        "fruit_price": 40
+      },
+      "coffee_bean": {
+        "id": "coffee_bean",
+        "name": "咖啡豆",
+        "seed_price": 450,
+        "maturity_days": 10,
+        "yield_per_harvest": 20,
+        "fruit_price": 30
+      },
+      "green_bean": {
+        "id": "green_bean",
+        "name": "青豆",
+        "seed_price": 200,
+        "maturity_days": 10,
+        "yield_per_harvest": 8,
+        "fruit_price": 40
+      },
+      "kale": {
+        "id": "kale",
+        "name": "甘蓝菜",
+        "seed_price": 70,
+        "maturity_days": 6,
+        "yield_per_harvest": 1,
+        "fruit_price": 110
+      },
+      "rhubarb": {
+        "id": "rhubarb",
+        "name": "大黄",
+        "seed_price": 100,
+        "maturity_days": 13,
+        "yield_per_harvest": 1,
+        "fruit_price": 220
+      },
+      "strawberry": {
+        "id": "strawberry",
+        "name": "草莓",
+        "seed_price": 300,
+        "maturity_days": 8,
+        "yield_per_harvest": 5,
+        "fruit_price": 100
+      },
+      "tulip": {
+        "id": "tulip",
+        "name": "郁金香",
+        "seed_price": 20,
+        "maturity_days": 6,
+        "yield_per_harvest": 2,
+        "fruit_price": 30
+      },
+      "unmilled_rice": {
+        "id": "unmilled_rice",
+        "name": "未碾米",
+        "seed_price": 40,
+        "maturity_days": 8,
+        "yield_per_harvest": 10,
+        "fruit_price": 10
+      }
+    },
+    "rules": {
+      "day_numbering": "1-based",
+      "daily_operation_order": [
+        "buy_seeds",
+        "plant",
+        "harvest",
+        "sell"
+      ],
+      "harvest_day": "plant_day + maturity_days",
+      "unsold_fruit_has_no_value": true
+    },
+    "reference_daily_profits": {
+      "blue_jazz": 7.142857142857143,
+      "coffee_bean": 15.0,
+      "green_bean": 12.0,
+      "kale": 6.666666666666667,
+      "rhubarb": 9.23076923076923,
+      "strawberry": 25.0,
+      "tulip": 6.666666666666667,
+      "unmilled_rice": 7.5
+    },
+    "reference_profit": 1100,
+    "reference_method": "greedy_daily_profit_lookahead"
+  },
+  "trajectory": [
+    {
+      "step_index": 0,
+      "prompt": "",
+      "image_records": [],
+      "action": "",
+      "environment_response": {
+        "error_type": "LLMClientError",
+        "error": "hyperagents RSI agent request failed: TaskAgent failed with exit code 1: Traceback (most recent call last):\n  File \"<string>\", line 16, in <module>\n  File \"<frozen importlib._bootstrap_external>\", line 999, in exec_module\n  File \"<frozen importlib._bootstrap>\", line 488, in _call_with_frames_removed\n  File \"/hyperagents/task_agent.py\", line 2, in <module>\n    from agent.llm_withtools import chat_with_agent\n  File \"/hyperagents/agent/llm_withtools.py\", line 7, in <module>\n    from agent.llm import MAX_TOKENS, generate_response\n  File \"/hyperagents/agent/llm.py\", line 7, in <module>\n    from overall_conrtoll_loop.Backend import (\nModuleNotFoundError: No module named 'overall_conrtoll_loop'\n"
+      },
+      "success": false,
+      "score": 0.0,
+      "feedback": "Farm task failed: hyperagents RSI agent request failed: TaskAgent failed with exit code 1: Traceback (most recent call last):\n  File \"<string>\", line 16, in <module>\n  File \"<frozen importlib._bootstrap_external>\", line 999, in exec_module\n  File \"<frozen importlib._bootstrap>\", line 488, in _call_with_frames_removed\n  File \"/hyperagents/task_agent.py\", line 2, in <module>\n    from agent.llm_withtools import chat_with_agent\n  File \"/hyperagents/agent/llm_withtools.py\", line 7, in <module>\n    from agent.llm import MAX_TOKENS, generate_response\n  File \"/hyperagents/agent/llm.py\", line 7, in <module>\n    from overall_conrtoll_loop.Backend import (\nModuleNotFoundError: No module named 'overall_conrtoll_loop'\n",
+      "agent_call": null
+    }
+  ],
+  "evaluation": {
+    "execution_status": "error",
+    "success": false,
+    "score": 0.0,
+    "feedback": "Farm task failed: hyperagents RSI agent request failed: TaskAgent failed with exit code 1: Traceback (most recent call last):\n  File \"<string>\", line 16, in <module>\n  File \"<frozen importlib._bootstrap_external>\", line 999, in exec_module\n  File \"<frozen importlib._bootstrap>\", line 488, in _call_with_frames_removed\n  File \"/hyperagents/task_agent.py\", line 2, in <module>\n    from agent.llm_withtools import chat_with_agent\n  File \"/hyperagents/agent/llm_withtools.py\", line 7, in <module>\n    from agent.llm import MAX_TOKENS, generate_response\n  File \"/hyperagents/agent/llm.py\", line 7, in <module>\n    from overall_conrtoll_loop.Backend import (\nModuleNotFoundError: No module named 'overall_conrtoll_loop'\n",
+    "metrics": {
+      "error_type": "LLMClientError",
+      "error": "hyperagents RSI agent request failed: TaskAgent failed with exit code 1: Traceback (most recent call last):\n  File \"<string>\", line 16, in <module>\n  File \"<frozen importlib._bootstrap_external>\", line 999, in exec_module\n  File \"<frozen importlib._bootstrap>\", line 488, in _call_with_frames_removed\n  File \"/hyperagents/task_agent.py\", line 2, in <module>\n    from agent.llm_withtools import chat_with_agent\n  File \"/hyperagents/agent/llm_withtools.py\", line 7, in <module>\n    from agent.llm import MAX_TOKENS, generate_response\n  File \"/hyperagents/agent/llm.py\", line 7, in <module>\n    from overall_conrtoll_loop.Backend import (\nModuleNotFoundError: No module named 'overall_conrtoll_loop'\n"
+    }
+  }
+}

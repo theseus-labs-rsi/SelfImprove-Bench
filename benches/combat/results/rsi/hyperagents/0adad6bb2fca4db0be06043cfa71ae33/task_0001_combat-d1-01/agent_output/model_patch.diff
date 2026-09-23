@@ -1,0 +1,26 @@
+diff --git a/task_agent.py b/task_agent.py
+index 09fc42f..34ef436 100644
+--- a/task_agent.py
++++ b/task_agent.py
+@@ -28,6 +28,21 @@ class TaskAgent(AgentSystem):
+                 - new_msg_history (list): A list of messages representing the message history of the interaction.
+         """
+         instruction = inputs["instruction"]
++        # Reinforce a compact planning policy while leaving the task's schema and
++        # current observation intact. This helps the model optimize the stated
++        # objective instead of merely finding the first legal action sequence.
++        strategy_guidance = """
++Before returning the decision, briefly compare a few legal alternatives using
++the supplied current observation. Prefer the plan with the best simulated
++outcome: victory first, then final HP and gold. In combat, account for cards'
++left-to-right effects, enemy block, the announced intent, and block resetting;
++use defense when it prevents damage without delaying a lethal line, and stop
++playing cards once the enemy is dead. In shops, compare each affordable
++purchase and healing against retaining resources for the known current run.
++Do not invent information or future observations, and output only the format
++requested by the task.
++"""
++        instruction = f"{instruction}\n\n## Decision policy\n{strategy_guidance.strip()}"
+         max_attempts = 3
+         prediction = None
+         new_msg_history = None

@@ -1,0 +1,39 @@
+diff --git a/task_agent.py b/task_agent.py
+index 61d606b..feed582 100644
+--- a/task_agent.py
++++ b/task_agent.py
+@@ -19,7 +19,7 @@ def _extract_observation(instruction):
+ 
+ 
+ def _combat_incomplete(decision, observation):
+-    """Catch the common failure where a plan stops with a live enemy."""
++    """Catch plans that stop early or knowingly walk into a lethal attack."""
+     if not observation or observation.get("decision_type") != "combat":
+         return None
+     combat = observation.get("combat", {})
+@@ -29,6 +29,8 @@ def _combat_incomplete(decision, observation):
+         return None
+     enemy_block = 0
+     cards = observation.get("card_catalog", {})
++    player = observation.get("player_state", {})
++    player_hp = player.get("hp", player.get("current_hp"))
+     by_turn = {item.get("turn"): item.get("play", []) for item in decision.get("turns", [])}
+     draws = {item.get("turn"): item for item in combat.get("draws", [])}
+     intents = {item.get("turn"): item.get("enemy_intent", {}) for item in combat.get("draws", [])}
+@@ -49,8 +51,14 @@ def _combat_incomplete(decision, observation):
+         if hp > 0 and intent.get("type") == "guard":
+             enemy_block = intent.get("value", 0)
+         elif hp > 0 and intent.get("type") == "attack":
+-            # Player block resets each turn; this is only needed for the audit.
+-            pass
++            incoming = max(0, intent.get("value", 0) - player_block)
++            if player_hp is not None:
++                player_hp -= incoming
++                if player_hp <= 0:
++                    return (
++                        f"turn {turn}: the announced attack deals {incoming} damage "
++                        "and kills the player; choose a survivable legal line"
++                    )
+     if hp > 0 and last < max(draws, default=0):
+         return f"the emitted combat plan ends with enemy HP {hp}; append legal turns through the first lethal turn"
+     return None

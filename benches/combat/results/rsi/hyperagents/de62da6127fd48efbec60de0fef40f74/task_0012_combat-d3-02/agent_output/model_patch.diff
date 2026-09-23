@@ -1,0 +1,30 @@
+diff --git a/task_agent.py b/task_agent.py
+index b650e64..ab287fa 100644
+--- a/task_agent.py
++++ b/task_agent.py
+@@ -80,12 +80,19 @@ class TaskAgent(AgentSystem):
+               "gold as well as survival. Do not spend cards or energy after lethal. "
+               "For score optimization, simulate at least the winning line and one "
+               "alternative line that uses available block on each incoming attack. "
+-              "Choose the line with the best resulting player HP first, then gold, "
+-              "subject to still killing within max_turns; a lethal line that takes "
+-              "avoidable damage is not optimal. On an attack turn, prefer a block "
+-              "card (or a damage-plus-block card) when its block prevents more HP "
+-              "than the alternative attack gains, unless that alternative kills "
+-              "earlier. Resolve cards left to right and account for block gained "
++              "Do this comparison per turn, not just by comparing total damage: for "
++              "each legal play combination, track enemy HP, enemy block, player "
++              "block, and the next incoming attack. Prefer the combination with the "
++              "best eventual player HP among lines that still win; a lethal line "
++              "that takes avoidable damage is not optimal. On an attack turn, use "
++              "block (or damage-plus-block) whenever it prevents more HP than the "
++              "extra attack damage would save, unless the attack line kills earlier "
++              "or the enemy will die before acting. Do not spend all energy on damage "
++              "when a cheaper block leaves enough damage to preserve the same lethal "
++              "schedule. When an enemy is guarding, account for its block before "
++              "ranking attacks: damage that only removes block is often inferior to "
++              "a defensive or mixed play if both lines kill in the same number of "
++              "turns. Resolve cards left to right and account for block gained "
+               "before the enemy attacks; do not assume a later defensive card "
+               "retroactively prevents damage. "
+               "At shops, compare each purchase's marginal value against its price and "

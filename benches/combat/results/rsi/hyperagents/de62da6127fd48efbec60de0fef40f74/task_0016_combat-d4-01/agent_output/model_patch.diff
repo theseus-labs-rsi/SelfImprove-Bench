@@ -1,0 +1,26 @@
+diff --git a/task_agent.py b/task_agent.py
+index 5e13583..a46c2bd 100644
+--- a/task_agent.py
++++ b/task_agent.py
+@@ -117,6 +117,21 @@ class TaskAgent(AgentSystem):
+               "assume information about later stages beyond what is supplied."
+ 
+         )
++        # Keep the execution contract short enough that the model can spend its
++        # context on simulating the supplied state rather than rereading policy.
++        instruction = (
++            "Return exactly one JSON decision for the current stage. For combat, "
++            "simulate every supplied draw in order before writing JSON and continue "
++            "until enemy HP reaches zero; a one-turn prefix is invalid unless lethal. "
++            "Include all turns through the lethal turn. On each turn use only that "
++            "turn's hand as a multiset, obey energy, resolve left-to-right, and "
++            "account for enemy block and incoming intent. Do not spend cards after "
++            "lethal. First find a legal winning line, then prefer earlier lethal "
++            "and higher remaining HP. For shops, buy only offered cards within gold "
++            "and heal only when worthwhile. Output JSON only, with no explanation or "
++            "future-stage plan.\n\n" + inputs["instruction"]
++        )
++
+         max_attempts = 3
+         prediction = None
+         new_msg_history = None

@@ -1,0 +1,29 @@
+diff --git a/task_agent.py b/task_agent.py
+index 74e1ef9..e650a79 100644
+--- a/task_agent.py
++++ b/task_agent.py
+@@ -236,7 +236,7 @@ calculation.
+                         parsed = json.loads(candidate_text)
+                         error = _decision_error(parsed, observation)
+                     except json.JSONDecodeError:
+-                        error = None
++                        error = "the response is not valid JSON"
+                     if error:
+                         correction = (
+                             "\n\nThe previous JSON was rejected by a local legality check: "
+@@ -248,6 +248,15 @@ calculation.
+                     prediction = candidate_text
+                     new_msg_history = candidate_history
+                     break
++            # Make retries meaningfully different when a backend returns only
++            # reasoning or an empty text field instead of the task output.
++            correction = (
++                "\n\nYour previous response contained no usable task output. "
++                "Respond now with only one concise, valid JSON object in the "
++                "task-defined format. Do not explain your reasoning, use tools, "
++                "or return an empty response. Re-check legality against the "
++                "current observation before emitting it."
++            )
+             self.log(
+                 f"TaskAgent received an empty model response "
+                 f"(attempt {attempt + 1}/{max_attempts}); retrying."

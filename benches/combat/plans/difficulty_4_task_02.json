@@ -1,0 +1,172 @@
+{
+  "task_id": "combat-d4-02",
+  "mode": "sequential_stage_decisions",
+  "stages": [
+    {
+      "task_id": "combat-d4-02",
+      "stage_id": "combat_1",
+      "turns": [
+        {
+          "turn": 1,
+          "play": [
+            "reaper_guard"
+          ]
+        },
+        {
+          "turn": 2,
+          "play": [
+            "twin_strike",
+            "strike"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "combat-d4-02",
+      "stage_id": "shop_1",
+      "buy_cards": [],
+      "heal": false
+    },
+    {
+      "task_id": "combat-d4-02",
+      "stage_id": "combat_2",
+      "turns": [
+        {
+          "turn": 1,
+          "play": [
+            "twin_strike",
+            "guard"
+          ]
+        },
+        {
+          "turn": 2,
+          "play": [
+            "reaper_guard"
+          ]
+        },
+        {
+          "turn": 3,
+          "play": [
+            "twin_strike",
+            "strike"
+          ]
+        },
+        {
+          "turn": 4,
+          "play": [
+            "reaper_guard"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "combat-d4-02",
+      "stage_id": "shop_2",
+      "buy_cards": [
+        "carnage"
+      ],
+      "heal": false
+    },
+    {
+      "task_id": "combat-d4-02",
+      "stage_id": "combat_3",
+      "turns": [
+        {
+          "turn": 1,
+          "play": [
+            "reaper_guard"
+          ]
+        },
+        {
+          "turn": 2,
+          "play": [
+            "iron_wave",
+            "guard"
+          ]
+        },
+        {
+          "turn": 3,
+          "play": [
+            "carnage",
+            "strike"
+          ]
+        },
+        {
+          "turn": 4,
+          "play": [
+            "reaper_guard"
+          ]
+        },
+        {
+          "turn": 5,
+          "play": [
+            "guard",
+            "strike",
+            "strike"
+          ]
+        },
+        {
+          "turn": 6,
+          "play": [
+            "carnage",
+            "strike"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "combat-d4-02",
+      "stage_id": "shop_3",
+      "buy_cards": [],
+      "heal": true
+    },
+    {
+      "task_id": "combat-d4-02",
+      "stage_id": "combat_4",
+      "turns": [
+        {
+          "turn": 1,
+          "play": [
+            "carnage",
+            "strike"
+          ]
+        },
+        {
+          "turn": 2,
+          "play": [
+            "iron_wave",
+            "uppercut"
+          ]
+        },
+        {
+          "turn": 3,
+          "play": [
+            "carnage",
+            "strike"
+          ]
+        },
+        {
+          "turn": 4,
+          "play": [
+            "reaper_guard"
+          ]
+        },
+        {
+          "turn": 5,
+          "play": [
+            "strike",
+            "strike",
+            "strike"
+          ]
+        },
+        {
+          "turn": 6,
+          "play": [
+            "carnage",
+            "strike"
+          ]
+        }
+      ]
+    }
+  ]
+}

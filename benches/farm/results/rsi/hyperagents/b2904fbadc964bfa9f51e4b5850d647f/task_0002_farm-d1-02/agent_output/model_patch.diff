@@ -1,0 +1,23 @@
+diff --git a/task_agent.py b/task_agent.py
+index 5f11ebe..1458860 100644
+--- a/task_agent.py
++++ b/task_agent.py
+@@ -35,9 +35,15 @@ class TaskAgent(AgentSystem):
+             instruction
+             + "\n\nBefore responding, solve from the current task data and mentally "
+             "simulate the proposed actions in order. Check resource limits, "
+-            "state transitions, timing, and the required output schema; remove "
+-            "any invalid or redundant action. Follow the task's requested "
+-            "format exactly and output only the final answer."
++            "state transitions, timing, and the required output schema. "
++            "Optimize the complete horizon, not just the first feasible plan: "
++            "compare the available actions using their stated rewards, costs, "
++            "durations, capacity, cash flow, and terminal constraints, and "
++            "account for opportunities created or lost by each action. Check "
++            "that no later action can improve the result, while reserving "
++            "resources for profitable actions that finish in time. Remove any "
++            "invalid or redundant action. Follow the task's requested format "
++            "exactly and output only the final answer."
+         )
+         max_attempts = 3
+         prediction = None

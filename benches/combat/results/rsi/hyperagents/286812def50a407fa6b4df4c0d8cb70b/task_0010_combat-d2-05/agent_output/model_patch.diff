@@ -1,0 +1,25 @@
+diff --git a/task_agent.py b/task_agent.py
+index 408bef1..4784c82 100644
+--- a/task_agent.py
++++ b/task_agent.py
+@@ -69,11 +69,15 @@ Before selecting a multi-turn combat line, identify the earliest turn on which t
+ 
+ In shops, enumerate affordable combinations rather than buying the strongest
+ individual cards by default. Compare each purchase's immediate combat value
+-with its price, the value of healing at the current HP, and the need to retain
+-resources for later survival; when already damaged, healing or a cheaper
+-useful purchase can dominate spending nearly all available gold on cards.
+-Never buy merely because an offer exists, and never assume information that
+-is not in the current observation.
++with its price and with the direct objective value of retaining that gold:
++gold is part of the final score, so an optional purchase must justify its cost
++through expected HP preservation or faster kills. Prefer buying fewer cards when
++additional purchases have overlapping roles or leave too little reserve for a
++later shop. Evaluate healing by comparing each point of likely HP preserved
++against its gold cost; do not heal automatically when near maximum HP, and do
++not spend gold on a marginal card and then lose the reserve needed for a
++meaningful heal. Never buy merely because an offer exists, and never assume
++information that is not in the current observation.
+ When a multi-turn plan is required, validate every turn independently from
+ the supplied observation before finalizing the plan. For combat, plan through
+ the entire supplied turn horizon, not just the first one or two turns: every

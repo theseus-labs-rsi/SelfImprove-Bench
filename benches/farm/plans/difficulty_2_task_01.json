@@ -1,0 +1,98 @@
+{
+  "task_id": "farm-d2-01",
+  "days": [
+    {
+      "day": 1,
+      "buy_seeds": [
+        {
+          "crop": "parsnip",
+          "quantity": 10
+        }
+      ],
+      "plant": [
+        {
+          "crop": "parsnip",
+          "quantity": 10
+        }
+      ],
+      "harvest": [],
+      "sell": []
+    },
+    {
+      "day": 5,
+      "buy_seeds": [],
+      "plant": [],
+      "harvest": [
+        {
+          "crop": "parsnip",
+          "quantity": 10
+        }
+      ],
+      "sell": [
+        {
+          "crop": "parsnip",
+          "quantity": 10
+        }
+      ]
+    },
+    {
+      "day": 6,
+      "buy_seeds": [
+        {
+          "crop": "kale",
+          "quantity": 2
+        },
+        {
+          "crop": "parsnip",
+          "quantity": 10
+        }
+      ],
+      "plant": [
+        {
+          "crop": "kale",
+          "quantity": 2
+        },
+        {
+          "crop": "parsnip",
+          "quantity": 10
+        }
+      ],
+      "harvest": [],
+      "sell": []
+    },
+    {
+      "day": 10,
+      "buy_seeds": [],
+      "plant": [],
+      "harvest": [
+        {
+          "crop": "parsnip",
+          "quantity": 10
+        }
+      ],
+      "sell": [
+        {
+          "crop": "parsnip",
+          "quantity": 10
+        }
+      ]
+    },
+    {
+      "day": 12,
+      "buy_seeds": [],
+      "plant": [],
+      "harvest": [
+        {
+          "crop": "kale",
+          "quantity": 2
+        }
+      ],
+      "sell": [
+        {
+          "crop": "kale",
+          "quantity": 2
+        }
+      ]
+    }
+  ]
+}

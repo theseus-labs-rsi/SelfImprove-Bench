@@ -1,0 +1,24 @@
+diff --git a/task_agent.py b/task_agent.py
+index ff39280..67f6041 100644
+--- a/task_agent.py
++++ b/task_agent.py
+@@ -68,11 +68,14 @@ class TaskAgent(AgentSystem):
+               "observation, and do not invent future state. Only after finding and "
+               "rechecking a winning schedule, improve its score with a bounded "
+               "comparison of alternatives: "
+-              "prioritize earlier lethal defeat, then minimize expected damage from each "
+-              "public attack using block, then preserve gold and HP. Do not spend cards "
+-              "or energy after lethal. At shops, compare affordable purchases by their "
+-              "immediate contribution to damage/block and buy only when it improves the "
+-              "current run; buy healing when it prevents meaningful avoidable HP loss. "
++              "prioritize earlier lethal defeat, then maximize the run's score: avoid "
++              "avoidable damage, but do not spend attacks on block or defense when a "
++              "lethal line is available. Compare alternatives by the resulting HP and "
++              "gold as well as survival. Do not spend cards or energy after lethal. "
++              "At shops, compare each purchase's marginal value against its price and "
++              "retain gold when it does not materially improve a future combat. Buy "
++              "healing only when its actual recoverable amount is meaningful and worth "
++              "the gold; never pay for healing that is mostly capped by max HP. "
+               "Use the complete current observation for this calculation, but do not "
+               "assume information about later stages beyond what is supplied."
+ 

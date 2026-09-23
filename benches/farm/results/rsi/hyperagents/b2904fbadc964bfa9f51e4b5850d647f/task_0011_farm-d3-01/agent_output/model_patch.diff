@@ -1,0 +1,17 @@
+diff --git a/task_agent.py b/task_agent.py
+index 41ffaeb..2175083 100644
+--- a/task_agent.py
++++ b/task_agent.py
+@@ -49,6 +49,12 @@ class TaskAgent(AgentSystem):
+             "\nSimulate the selected schedule chronologically in the task's stated "
+             "action order, updating cash, capacity, occupancy, prerequisites, "
+             "inventory, completion dates, and terminal reward after each action. "
++            "For each date, first test that all purchases are affordable with the "
++            "cash carried into that date: purchases cannot use harvest or sale "
++            "proceeds from later actions on the same date. Reserve enough cash for "
++            "every required buy before committing earlier purchases, and size the "
++            "initial batch so the next planting can be funded at its buy phase; "
++            "only then apply that date's harvest and sale proceeds to later dates. "
+             "Do not spend proceeds or resources before they are available, exceed "
+             "capacity, or acquire inputs that cannot be consumed and earn value "
+             "within the horizon. Include only actions needed by the plan; omitted "

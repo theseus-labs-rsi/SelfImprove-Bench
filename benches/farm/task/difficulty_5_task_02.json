@@ -1,0 +1,146 @@
+{
+  "task_id": "farm-d5-02",
+  "difficulty": 5,
+  "initial_money": 200,
+  "farmland_count": 24,
+  "duration_days": 24,
+  "available_crops": [
+    "carrot",
+    "cauliflower",
+    "coffee_bean",
+    "garlic",
+    "green_bean",
+    "kale",
+    "parsnip",
+    "potato",
+    "rhubarb",
+    "strawberry",
+    "tulip",
+    "unmilled_rice"
+  ],
+  "crop_catalog": {
+    "carrot": {
+      "id": "carrot",
+      "name": "胡萝卜",
+      "seed_price": 20,
+      "maturity_days": 3,
+      "yield_per_harvest": 1,
+      "fruit_price": 35
+    },
+    "cauliflower": {
+      "id": "cauliflower",
+      "name": "花椰菜",
+      "seed_price": 80,
+      "maturity_days": 12,
+      "yield_per_harvest": 1,
+      "fruit_price": 175
+    },
+    "coffee_bean": {
+      "id": "coffee_bean",
+      "name": "咖啡豆",
+      "seed_price": 450,
+      "maturity_days": 10,
+      "yield_per_harvest": 20,
+      "fruit_price": 30
+    },
+    "garlic": {
+      "id": "garlic",
+      "name": "蒜",
+      "seed_price": 40,
+      "maturity_days": 4,
+      "yield_per_harvest": 1,
+      "fruit_price": 60
+    },
+    "green_bean": {
+      "id": "green_bean",
+      "name": "青豆",
+      "seed_price": 200,
+      "maturity_days": 10,
+      "yield_per_harvest": 8,
+      "fruit_price": 40
+    },
+    "kale": {
+      "id": "kale",
+      "name": "甘蓝菜",
+      "seed_price": 70,
+      "maturity_days": 6,
+      "yield_per_harvest": 1,
+      "fruit_price": 110
+    },
+    "parsnip": {
+      "id": "parsnip",
+      "name": "防风草",
+      "seed_price": 20,
+      "maturity_days": 4,
+      "yield_per_harvest": 1,
+      "fruit_price": 35
+    },
+    "potato": {
+      "id": "potato",
+      "name": "土豆",
+      "seed_price": 50,
+      "maturity_days": 6,
+      "yield_per_harvest": 5,
+      "fruit_price": 20
+    },
+    "rhubarb": {
+      "id": "rhubarb",
+      "name": "大黄",
+      "seed_price": 100,
+      "maturity_days": 13,
+      "yield_per_harvest": 1,
+      "fruit_price": 220
+    },
+    "strawberry": {
+      "id": "strawberry",
+      "name": "草莓",
+      "seed_price": 300,
+      "maturity_days": 8,
+      "yield_per_harvest": 5,
+      "fruit_price": 100
+    },
+    "tulip": {
+      "id": "tulip",
+      "name": "郁金香",
+      "seed_price": 20,
+      "maturity_days": 6,
+      "yield_per_harvest": 2,
+      "fruit_price": 30
+    },
+    "unmilled_rice": {
+      "id": "unmilled_rice",
+      "name": "未碾米",
+      "seed_price": 40,
+      "maturity_days": 8,
+      "yield_per_harvest": 10,
+      "fruit_price": 10
+    }
+  },
+  "rules": {
+    "day_numbering": "1-based",
+    "daily_operation_order": [
+      "buy_seeds",
+      "plant",
+      "harvest",
+      "sell"
+    ],
+    "harvest_day": "plant_day + maturity_days",
+    "unsold_fruit_has_no_value": true
+  },
+  "reference_daily_profits": {
+    "carrot": 5.0,
+    "cauliflower": 7.916666666666667,
+    "coffee_bean": 15.0,
+    "garlic": 5.0,
+    "green_bean": 12.0,
+    "kale": 6.666666666666667,
+    "parsnip": 3.75,
+    "potato": 8.333333333333334,
+    "rhubarb": 9.23076923076923,
+    "strawberry": 25.0,
+    "tulip": 6.666666666666667,
+    "unmilled_rice": 7.5
+  },
+  "reference_profit": 3160,
+  "reference_method": "greedy_daily_profit_lookahead"
+}

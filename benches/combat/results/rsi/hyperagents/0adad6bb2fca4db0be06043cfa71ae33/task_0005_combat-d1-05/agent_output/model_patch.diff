@@ -1,0 +1,42 @@
+diff --git a/task_agent.py b/task_agent.py
+index 90248a4..354ca79 100644
+--- a/task_agent.py
++++ b/task_agent.py
+@@ -32,8 +32,16 @@ class TaskAgent(AgentSystem):
+         # current observation intact. The evaluator rewards the final run score,
+         # so legality or victory alone is not a sufficient stopping criterion.
+         strategy_guidance = """
+-Before returning the decision, simulate the supplied schedule far enough to
+-compare legal alternatives, rather than choosing the first plausible line.
++Legality is a hard constraint: simulate the proposed JSON exactly before
++optimizing its score. For combat, first make a private table keyed by the
++supplied turn numbers. Each table row starts with only that turn's `hand`, and
++playing a card removes one matching occurrence from that row; cards never move
++between rows. Reject and repair any line that uses an ID absent from its row,
++uses it too many times, exceeds that row's energy, or schedules a turn after
++the enemy is already dead.
++
++After that legality pass, simulate the supplied schedule far enough to compare
++legal alternatives, rather than choosing the first plausible line.
+ Prefer the highest resulting run score: secure victory first, then preserve
+ HP and gold. In combat, spend each energy point that gives useful damage or
+ block, resolve cards left to right, subtract enemy block before HP damage,
+@@ -46,13 +54,11 @@ combat enough to outweigh its price; do not buy redundant cards merely because
+ they are affordable. Treat unused gold as part of the final score, and buy
+ healing only when missing HP is likely to prevent victory or the heal has clear
+ value.
+-Before submitting combat JSON, perform a final legality replay of the exact
+-output: for every listed turn, count occurrences in that turn's supplied hand
+-(the hand is a multiset, not a source of unlimited card IDs), ensure each
+-played ID is available that many times, ensure total card cost is within that
+-turn's energy, and do not carry cards from one turn's hand into another. Also
+-verify turn numbers are unique and in range. If any check fails, repair the
+-output before returning it.
++Before submitting combat JSON, repeat the legality replay against the exact
++output. Treat `combat.draw_cycle` and owned deck counts as context only: the
++authoritative availability check is the explicitly supplied hand for each
++turn. Verify unique in-range turn numbers, and omit unnecessary later turns.
++If any check fails, repair the output before returning it.
+ Do not invent information or future observations, and output only the format
+ requested by the task.
+ """

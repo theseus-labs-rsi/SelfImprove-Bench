@@ -1,0 +1,107 @@
+{
+  "task_id": "farm-d3-01",
+  "days": [
+    {
+      "day": 1,
+      "buy_seeds": [
+        {
+          "crop": "carrot",
+          "quantity": 10
+        }
+      ],
+      "plant": [
+        {
+          "crop": "carrot",
+          "quantity": 10
+        }
+      ],
+      "harvest": [],
+      "sell": []
+    },
+    {
+      "day": 4,
+      "buy_seeds": [],
+      "plant": [],
+      "harvest": [
+        {
+          "crop": "carrot",
+          "quantity": 10
+        }
+      ],
+      "sell": [
+        {
+          "crop": "carrot",
+          "quantity": 10
+        }
+      ]
+    },
+    {
+      "day": 5,
+      "buy_seeds": [
+        {
+          "crop": "carrot",
+          "quantity": 16
+        }
+      ],
+      "plant": [
+        {
+          "crop": "carrot",
+          "quantity": 16
+        }
+      ],
+      "harvest": [],
+      "sell": []
+    },
+    {
+      "day": 8,
+      "buy_seeds": [],
+      "plant": [],
+      "harvest": [
+        {
+          "crop": "carrot",
+          "quantity": 16
+        }
+      ],
+      "sell": [
+        {
+          "crop": "carrot",
+          "quantity": 16
+        }
+      ]
+    },
+    {
+      "day": 9,
+      "buy_seeds": [
+        {
+          "crop": "blue_jazz",
+          "quantity": 16
+        }
+      ],
+      "plant": [
+        {
+          "crop": "blue_jazz",
+          "quantity": 16
+        }
+      ],
+      "harvest": [],
+      "sell": []
+    },
+    {
+      "day": 16,
+      "buy_seeds": [],
+      "plant": [],
+      "harvest": [
+        {
+          "crop": "blue_jazz",
+          "quantity": 16
+        }
+      ],
+      "sell": [
+        {
+          "crop": "blue_jazz",
+          "quantity": 32
+        }
+      ]
+    }
+  ]
+}

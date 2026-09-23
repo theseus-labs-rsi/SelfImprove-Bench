@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "method": "hyperagents",
+  "batch_id": "0adad6bb2fca4db0be06043cfa71ae33",
+  "task_count": 25,
+  "clean_base": true,
+  "adaptor": "HyperAgentsAdaptor",
+  "effective_state": {
+    "run_dir": "C:\\Users\\DremEternal\\Desktop\\exp\\mianbi\\planning\\combat\\results\\rsi\\hyperagents\\0adad6bb2fca4db0be06043cfa71ae33\\state",
+    "reuse_existing": false,
+    "max_refinement_rounds": 25
+  }
+}

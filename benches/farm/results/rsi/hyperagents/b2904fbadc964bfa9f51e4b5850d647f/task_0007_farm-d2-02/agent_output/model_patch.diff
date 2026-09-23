@@ -1,0 +1,18 @@
+diff --git a/task_agent.py b/task_agent.py
+index cc78fb0..152ee7b 100644
+--- a/task_agent.py
++++ b/task_agent.py
+@@ -44,8 +44,11 @@ class TaskAgent(AgentSystem):
+             "the first valid plan or maximize unit margin while ignoring how "
+             "many units can be funded and completed. Prefer the highest-value "
+             "complete plan. Treat every omitted date as having no actions, and "
+-            "ensure every purchased input is either consumed by a valid action "
+-            "or excluded when it cannot contribute to terminal reward. Treat the "
++            "for each purchase, explicitly match its quantity to a later "
++            "consuming action; do not buy surplus inputs or leave terminal "
++            "leftovers when they cannot earn reward. Treat every purchased input "
++            "as either consumed by a valid action or excluded when it cannot "
++            "contribute to terminal reward. Treat the "
+             "listed action order as strict: resources gained later in a date "
+             "cannot pay for actions earlier that same date. In particular, "
+             "verify cash immediately before every purchase, then apply harvests "

@@ -1,0 +1,19 @@
+diff --git a/task_agent.py b/task_agent.py
+index 3392c1c..fcafa30 100644
+--- a/task_agent.py
++++ b/task_agent.py
+@@ -40,8 +40,12 @@ block, resolve cards left to right, subtract enemy block before HP damage,
+ and match block to the announced attack; do not spend defense that is not
+ needed or delay a lethal line. Check every scheduled turn needed to finish,
+ including the effect of enemy guard on the next turn, and stop once the enemy
+-is dead. In shops, compare affordable purchases and healing by their effect
+-on the current run while retaining gold when it has no useful purchase.
++is dead. In shops, calculate the resulting gold explicitly. Buy a card only
++when its immediate, observable contribution is likely to improve the current
++combat enough to outweigh its price; do not buy redundant cards merely because
++they are affordable. Treat unused gold as part of the final score, and buy
++healing only when missing HP is likely to prevent victory or the heal has clear
++value.
+ Do not invent information or future observations, and output only the format
+ requested by the task.
+ """

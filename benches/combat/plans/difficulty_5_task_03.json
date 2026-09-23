@@ -1,0 +1,295 @@
+{
+  "task_id": "combat-d5-03",
+  "mode": "sequential_stage_decisions",
+  "stages": [
+    {
+      "task_id": "combat-d5-03",
+      "stage_id": "combat_1",
+      "turns": [
+        {
+          "turn": 1,
+          "play": [
+            "uppercut",
+            "strike"
+          ]
+        },
+        {
+          "turn": 2,
+          "play": [
+            "bludgeon"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "combat-d5-03",
+      "stage_id": "shop_1",
+      "buy_cards": [
+        "pommel"
+      ],
+      "heal": false
+    },
+    {
+      "task_id": "combat-d5-03",
+      "stage_id": "combat_2",
+      "turns": [
+        {
+          "turn": 1,
+          "play": [
+            "uppercut",
+            "guard"
+          ]
+        },
+        {
+          "turn": 2,
+          "play": [
+            "bludgeon"
+          ]
+        },
+        {
+          "turn": 3,
+          "play": [
+            "guard",
+            "guard",
+            "strike"
+          ]
+        },
+        {
+          "turn": 4,
+          "play": [
+            "pommel"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "combat-d5-03",
+      "stage_id": "shop_2",
+      "buy_cards": [
+        "impervious",
+        "twin_strike"
+      ],
+      "heal": false
+    },
+    {
+      "task_id": "combat-d5-03",
+      "stage_id": "combat_3",
+      "turns": [
+        {
+          "turn": 1,
+          "play": [
+            "uppercut",
+            "guard"
+          ]
+        },
+        {
+          "turn": 2,
+          "play": [
+            "bludgeon"
+          ]
+        },
+        {
+          "turn": 3,
+          "play": [
+            "guard",
+            "guard",
+            "strike"
+          ]
+        },
+        {
+          "turn": 4,
+          "play": [
+            "uppercut",
+            "guard"
+          ]
+        },
+        {
+          "turn": 5,
+          "play": [
+            "bludgeon"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "combat-d5-03",
+      "stage_id": "shop_3",
+      "buy_cards": [
+        "bludgeon"
+      ],
+      "heal": false
+    },
+    {
+      "task_id": "combat-d5-03",
+      "stage_id": "combat_4",
+      "turns": [
+        {
+          "turn": 1,
+          "play": [
+            "divine_shield",
+            "strike"
+          ]
+        },
+        {
+          "turn": 2,
+          "play": [
+            "uppercut",
+            "iron_wave"
+          ]
+        },
+        {
+          "turn": 3,
+          "play": [
+            "bludgeon"
+          ]
+        },
+        {
+          "turn": 4,
+          "play": [
+            "twin_strike",
+            "strike"
+          ]
+        },
+        {
+          "turn": 5,
+          "play": [
+            "bludgeon"
+          ]
+        },
+        {
+          "turn": 6,
+          "play": [
+            "guard",
+            "strike",
+            "guard"
+          ]
+        },
+        {
+          "turn": 7,
+          "play": [
+            "twin_strike",
+            "guard"
+          ]
+        },
+        {
+          "turn": 8,
+          "play": [
+            "bludgeon"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "combat-d5-03",
+      "stage_id": "shop_4",
+      "buy_cards": [],
+      "heal": true
+    },
+    {
+      "task_id": "combat-d5-03",
+      "stage_id": "combat_5",
+      "turns": [
+        {
+          "turn": 1,
+          "play": [
+            "uppercut",
+            "shrug"
+          ]
+        },
+        {
+          "turn": 2,
+          "play": [
+            "divine_shield"
+          ]
+        },
+        {
+          "turn": 3,
+          "play": [
+            "guard",
+            "strike",
+            "strike"
+          ]
+        },
+        {
+          "turn": 4,
+          "play": [
+            "guard",
+            "uppercut"
+          ]
+        },
+        {
+          "turn": 5,
+          "play": [
+            "impervious",
+            "iron_wave"
+          ]
+        },
+        {
+          "turn": 6,
+          "play": [
+            "twin_strike"
+          ]
+        },
+        {
+          "turn": 7,
+          "play": [
+            "guard",
+            "strike",
+            "strike"
+          ]
+        },
+        {
+          "turn": 8,
+          "play": [
+            "bludgeon"
+          ]
+        },
+        {
+          "turn": 9,
+          "play": [
+            "divine_shield"
+          ]
+        },
+        {
+          "turn": 10,
+          "play": [
+            "guard",
+            "strike",
+            "guard"
+          ]
+        },
+        {
+          "turn": 11,
+          "play": [
+            "uppercut"
+          ]
+        },
+        {
+          "turn": 12,
+          "play": [
+            "impervious",
+            "strike"
+          ]
+        },
+        {
+          "turn": 13,
+          "play": [
+            "bludgeon"
+          ]
+        },
+        {
+          "turn": 14,
+          "play": [
+            "uppercut"
+          ]
+        },
+        {
+          "turn": 15,
+          "play": [
+            "impervious"
+          ]
+        }
+      ]
+    }
+  ]
+}
