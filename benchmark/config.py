@@ -12,7 +12,7 @@ from benches.heros_journey.task_factory import load_difficulty_manifest as load_
 from benches.sweepmine.task_factory import load_difficulty_manifest
 
 
-SUPPORTED_GAMES = ("farm", "combat", "sweepmine", "sweepmine_reorganized", "heros_journey")
+SUPPORTED_GAMES = ("farm", "combat", "sweepmine", "sweepmine_reorganized", "heros_journey", "gameworld")
 SUPPORTED_PROVIDERS = (
     "codex",
     "claude",
@@ -168,14 +168,58 @@ def config_from_mapping(value: dict[str, Any]) -> BenchmarkConfig:
         raise ValueError(f"agent.backend must be one of: {', '.join(BACKEND_CHOICES)}")
     window = _positive(value.get("evolution_window", EVOLUTION_WINDOW), "evolution_window")
     game_options_raw = value.get("game_options", {})
-    if game_options_raw:
-        raise ValueError(
-            "game_options is no longer configurable; edit the bench difficulty manifest"
-        )
+    if not isinstance(game_options_raw, dict):
+        raise ValueError("game_options must be an object")
+    gameworld_options = game_options_raw.get("gameworld", {})
+    if gameworld_options and not isinstance(gameworld_options, dict):
+        raise ValueError("game_options.gameworld must be an object")
+    gameworld_options = dict(gameworld_options)
     sweepmine = load_difficulty_manifest()
     hero = load_hero_difficulties()
     requested_games = {item.game for item in (*schedule, *holdout)}
     interactive_providers = {"ace", "baseline", "hyperagents", "self_harness", "ahe"}
+    if "gameworld" in requested_games:
+        gameworld_provider = str(
+            gameworld_options.get("framework", provider)
+        ).strip().lower()
+        gameworld_options.setdefault("framework", provider)
+        if agent_raw.get("model"):
+            gameworld_options.setdefault("model_spec", str(agent_raw["model"]))
+        if provider not in {"ace", "hyperagents", "ahe"}:
+            raise ValueError(
+                "GameWorld requires agent.provider to be ace, hyperagents, or ahe"
+            )
+        if gameworld_provider != provider:
+            raise ValueError(
+                "game_options.gameworld.framework must match agent.provider "
+                f"({provider!r}) so the CSD method and GameWorld client cannot diverge"
+            )
+        for phase in ("train", "holdout"):
+            pool = gameworld_options.get(phase)
+            if not isinstance(pool, list) or not pool:
+                raise ValueError(f"game_options.gameworld.{phase} must be a non-empty array")
+            for index, item in enumerate(pool):
+                if not isinstance(item, dict):
+                    raise ValueError(f"game_options.gameworld.{phase}[{index}] must be an object")
+                if not str(item.get("game") or "").strip() or not str(item.get("task") or "").strip():
+                    raise ValueError(
+                        f"game_options.gameworld.{phase}[{index}] requires game and task"
+                    )
+        train_count = sum(item.count for item in schedule if item.game == "gameworld")
+        if train_count > len(gameworld_options["train"]):
+            raise ValueError(
+                "GameWorld training schedule requests "
+                f"{train_count} tasks but only {len(gameworld_options['train'])} are configured"
+            )
+        if pool_size > len(gameworld_options["holdout"]):
+            raise ValueError(
+                "holdout_tasks_per_difficulty exceeds game_options.gameworld.holdout size"
+            )
+        train_keys = {(str(item["game"]).strip(), str(item["task"]).strip()) for item in gameworld_options["train"]}
+        holdout_keys = {(str(item["game"]).strip(), str(item["task"]).strip()) for item in gameworld_options["holdout"]}
+        overlap = train_keys & holdout_keys
+        if overlap:
+            raise ValueError(f"GameWorld train/holdout task overlap: {sorted(overlap)}")
     if "sweepmine" in requested_games and provider not in interactive_providers:
         raise ValueError(
             "Sweepmine requires an RSI agent provider: ace, baseline, hyperagents, self_harness, or ahe"
@@ -200,6 +244,14 @@ def config_from_mapping(value: dict[str, Any]) -> BenchmarkConfig:
                 f"unknown Hero's Journey difficulty {item.difficulty}; available: {available}"
             )
 
+    resolved_game_options = {
+        "sweepmine": {"difficulties": sweepmine},
+        "sweepmine_reorganized": {"difficulties": (1, 2, 3, 4, 5)},
+        "heros_journey": {"difficulties": hero},
+    }
+    if gameworld_options:
+        resolved_game_options["gameworld"] = dict(gameworld_options)
+
     return BenchmarkConfig(
         seed=seed,
         schedule=schedule,
@@ -218,11 +270,7 @@ def config_from_mapping(value: dict[str, Any]) -> BenchmarkConfig:
         continue_on_error=bool(value.get("continue_on_error", True)),
         holdout_seed=int(value.get("holdout_seed", 100)),
         holdout_tasks_per_difficulty=pool_size,
-        game_options={
-            "sweepmine": {"difficulties": sweepmine},
-            "sweepmine_reorganized": {"difficulties": (1, 2, 3, 4, 5)},
-            "heros_journey": {"difficulties": hero},
-        },
+        game_options=resolved_game_options,
     )
 
 

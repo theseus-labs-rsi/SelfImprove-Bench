@@ -11,8 +11,13 @@ from typing import Any
 from benches.combat import game as combat_game
 from benches.farm import game as farm_game
 from benches.heros_journey import game as hero_game
+from benches.gameworld import game as gameworld_game
 from benches.sweepmine import game as sweepmine_game
-from benches.sweepmine_reorganized import game as sweepmine_reorganized_game
+try:
+    from benches.sweepmine_reorganized import game as sweepmine_reorganized_game
+except ModuleNotFoundError:
+    # The CSD checkout can be used without the optional reorganized bench.
+    sweepmine_reorganized_game = None
 
 from .config import BenchmarkConfig
 
@@ -23,7 +28,10 @@ GAMES = {
     "sweepmine": sweepmine_game,
     "sweepmine_reorganized": sweepmine_reorganized_game,
     "heros_journey": hero_game,
+    "gameworld": gameworld_game,
 }
+if sweepmine_reorganized_game is not None:
+    GAMES["sweepmine_reorganized"] = sweepmine_reorganized_game
 
 
 @dataclass(frozen=True)
@@ -88,12 +96,23 @@ def _make_task(
     group_index: int,
     used: set[str],
     seed_root: int,
+    options: dict[str, Any] | None = None,
 ) -> PlannedTask:
     attempt = 0
     while True:
         task_seed = _seed(seed_root, phase, game, difficulty, index, attempt)
         task_id = f"{phase}-{game}-d{difficulty}-{index + 1:04d}"
-        task = GAMES[game].generate(difficulty, seed=task_seed, task_id=task_id)
+        if game == "gameworld":
+            task = GAMES[game].generate(
+                difficulty,
+                seed=task_seed,
+                task_id=task_id,
+                phase=phase,
+                index=index,
+                options=options,
+            )
+        else:
+            task = GAMES[game].generate(difficulty, seed=task_seed, task_id=task_id)
         fingerprint = task_fingerprint(task)
         if fingerprint not in used:
             used.add(fingerprint)
@@ -163,10 +182,11 @@ def build_manifest(config: BenchmarkConfig) -> TaskManifest:
                     phase="holdout",
                     game=game,
                     difficulty=difficulty,
-                    index=pool_index,
+                    index=local_index if game == "gameworld" else pool_index,
                     group_index=difficulty - 1,
                     used=used,
                     seed_root=config.holdout_seed,
+                    options=config.game_options,
                 )
                 pool.append(item)
                 pool_lookup[key].append(item)
@@ -175,6 +195,7 @@ def build_manifest(config: BenchmarkConfig) -> TaskManifest:
     normal: list[PlannedTask] = []
     orchestrated: list[PlannedTask] = []
     generated_index = 0
+    gameworld_train_index = 0
     replay_index = 0
     for group_index, spec in enumerate(config.schedule):
         for _ in range(spec.count):
@@ -182,12 +203,15 @@ def build_manifest(config: BenchmarkConfig) -> TaskManifest:
                 phase="train",
                 game=spec.game,
                 difficulty=spec.difficulty,
-                index=generated_index,
+                index=gameworld_train_index if spec.game == "gameworld" else generated_index,
                 group_index=group_index,
                 used=used,
                 seed_root=config.seed,
+                options=config.game_options,
             )
             generated_index += 1
+            if spec.game == "gameworld":
+                gameworld_train_index += 1
             normal.append(item)
             orchestrated.append(item)
             if (

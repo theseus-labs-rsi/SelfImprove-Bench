@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import statistics
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from typing import Any, Callable, Mapping
 
 from benchmark.contracts import (
     ExecutionStatus,
+    EvaluationOutcome,
     FeedbackResult,
     TaskEvaluation,
     to_jsonable,
@@ -15,17 +16,18 @@ from benchmark.contracts import (
 
 from benches.combat import game as combat_game
 from benches.farm import game as farm_game
-from benches.heros_journey.benchmark import HeroJourneyBenchmark
-from benches.heros_journey.task_factory import HeroJourneyDifficulty
+try:
+    from benches.heros_journey.benchmark import HeroJourneyBenchmark
+    from benches.heros_journey.task_factory import HeroJourneyDifficulty
+except ModuleNotFoundError:
+    HeroJourneyBenchmark = None
+    HeroJourneyDifficulty = None
 from benches.sweepmine.core import SweepmineCore
 from benches.sweepmine.play import play_feedback
-from benches.sweepmine_reorganized.play import play_feedback as play_sweepmine_reorganized
-
-
-@dataclass(frozen=True)
-class EvaluationOutcome:
-    record: dict[str, Any]
-    feedback: FeedbackResult | None = None
+try:
+    from benches.sweepmine_reorganized.play import play_feedback as play_sweepmine_reorganized
+except ModuleNotFoundError:
+    play_sweepmine_reorganized = None
 
 
 GAME_MODULES = {"farm": farm_game, "combat": combat_game}
@@ -58,6 +60,8 @@ def evaluate_sweepmine(task: Mapping[str, Any], agent: Any) -> EvaluationOutcome
 
 
 def evaluate_sweepmine_reorganized(task: Mapping[str, Any], agent: Any) -> EvaluationOutcome:
+    if play_sweepmine_reorganized is None:
+        raise RuntimeError("The optional sweepmine_reorganized bench is not present in this checkout")
     feedback = play_sweepmine_reorganized(task, agent)
     return _native_feedback_outcome("sweepmine_reorganized", task, feedback)
 
@@ -123,6 +127,8 @@ def _aggregate_hero_feedback(
 
 
 def evaluate_hero_journey(task: Mapping[str, Any], agent: Any) -> EvaluationOutcome:
+    if HeroJourneyBenchmark is None or HeroJourneyDifficulty is None:
+        raise RuntimeError("Hero's Journey dependencies are not present in this checkout")
     settings = HeroJourneyDifficulty.from_mapping({
         **task,
         "episode_indices": (task["episode_idx"],),
@@ -148,6 +154,12 @@ def evaluate_task(
     game: str, task: Mapping[str, Any], *, request: Callable[..., dict[str, Any]] | None = None,
     agent: Any | None = None,
 ) -> EvaluationOutcome:
+    if game == "gameworld":
+        if agent is None:
+            raise TypeError("gameworld evaluation requires an explicit RSI agent")
+        from benches.gameworld.benchmark import GameWorldBenchmark
+
+        return GameWorldBenchmark().evaluate(task, agent)
     if game in {"sweepmine", "sweepmine_reorganized", "heros_journey"}:
         if agent is None:
             raise TypeError(f"{game} evaluation requires an explicit agent")

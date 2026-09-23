@@ -122,6 +122,15 @@ class FeedbackResult:
 
 FeedbackResults = list[FeedbackResult]
 
+
+@dataclass(frozen=True, slots=True)
+class EvaluationOutcome:
+    """Canonical result returned by every benchmark adapter."""
+
+    record: dict[str, Any]
+    feedback: FeedbackResult | None = None
+
+
 @dataclass(frozen=True, slots=True)
 class SelectionEvaluation:
     """Compact benchmark result used only to compare parent and candidates."""
@@ -154,6 +163,7 @@ __all__ = [
     "BackendRequest",
     "BackendResponse",
     "ExecutionStatus",
+    "EvaluationOutcome",
     "FeedbackResult",
     "FeedbackResults",
     "ImageRecord",
