@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "method": "ahe",
+  "framework_checkout": "RSI-Bench-CSD",
+  "seed": 42,
+  "max_steps": 100,
+  "smoke": {"evolutions": 1, "repeats": 1, "window": 1, "tasks_per_game": 1},
+  "pilot": {"evolutions": 1, "repeats": 1, "window": 1, "tasks_per_game": 1},
+  "formal": {"evolutions": 10, "repeats": 1, "window": 3},
+  "groups": ["base", "ahe_rsi"],
+  "orchestration": {
+    "18_minecraft-clone-glm": ["18_02", "18_03"],
+    "06_captaincallisto": ["06_01", "06_03"]
+  },
+  "held_out": {
+    "18_minecraft-clone-glm": ["18_01", "18_05"],
+    "06_captaincallisto": ["06_02", "06_04"]
+  }
+}
