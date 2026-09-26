@@ -1,0 +1,12 @@
+{
+  "name": "proc_over_deep",
+  "rules": "../rules/proc_over_deep.json",
+  "process": "property_flat",
+  "split": {"fn": "c4_override", "seed": 0},
+  "max_tries": 6,
+  "validate_fn": null,
+  "eval": {
+    "correct_rule": "Class determines the default action and ordering of one hidden extra step. Role value 4 overrides both dimensions to perform-after; every other role preserves the class-dependent default.",
+    "description": "5-class base process with a held-out fixed override role"
+  }
+}

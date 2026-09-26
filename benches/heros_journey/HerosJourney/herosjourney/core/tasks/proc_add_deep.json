@@ -1,0 +1,12 @@
+{
+  "name": "proc_add_deep",
+  "rules": "../rules/proc_add_deep.json",
+  "process": "property_flat",
+  "split": {"fn": "explicit", "source": [[0,0,0],[0,1,1],[0,2,2],[1,0,1],[1,1,2],[1,2,0],[2,0,2],[2,1,0],[2,2,1]], "gen": [[0,0,1],[0,1,2],[0,2,0],[1,0,2],[1,1,0],[1,2,1],[2,0,1],[2,1,2],[2,2,0]]},
+  "max_tries": 9,
+  "validate_fn": null,
+  "eval": {
+    "correct_rule": "The hidden number of ritual performances is the sum of three independent contributions: class contributes 1, 2, or 3; role contributes 0, 1, or 2; rank contributes 0, 1, or 2.",
+    "description": "three-factor additive count"
+  }
+}

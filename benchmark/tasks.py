@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -38,6 +38,7 @@ class PlannedTask:
     replay: bool = False
     replay_of: str | None = None
     replay_gap: int | None = None
+    generation_index: int | None = None
 
     def manifest_record(self) -> dict[str, Any]:
         value = asdict(self)
@@ -60,6 +61,27 @@ class TaskManifest:
             "training": [item.manifest_record() for item in self.training],
             "holdout": [item.manifest_record() for item in self.holdout],
         }
+
+    @classmethod
+    def from_mapping(cls, value: dict[str, Any]) -> "TaskManifest":
+        """Restore the original task identities when resuming a saved run."""
+        if value.get("schema_version") != 1:
+            raise ValueError("Unsupported task manifest schema")
+
+        def restore(raw: dict[str, Any]) -> PlannedTask:
+            record = dict(raw)
+            fingerprint = record.pop("task_fingerprint", None)
+            task = PlannedTask(**record)
+            if fingerprint != task_fingerprint(task.task):
+                raise ValueError(f"Task fingerprint changed: {task.run_id}")
+            return task
+
+        return cls(
+            config_hash=str(value["config_hash"]),
+            holdout_pool=tuple(restore(item) for item in value["holdout_pool"]),
+            training=tuple(restore(item) for item in value["training"]),
+            holdout=tuple(restore(item) for item in value["holdout"]),
+        )
 
 
 def _canonical(value: Any) -> str:
@@ -88,6 +110,7 @@ def _make_task(
     group_index: int,
     used: set[str],
     seed_root: int,
+    generation_index: int | None = None,
 ) -> PlannedTask:
     attempt = 0
     while True:
@@ -105,6 +128,7 @@ def _make_task(
                 task=task,
                 task_seed=task_seed,
                 group_index=group_index,
+                generation_index=generation_index,
             )
         attempt += 1
         if attempt > 10_000:
@@ -148,6 +172,18 @@ def _stored_holdout(
 def build_manifest(config: BenchmarkConfig) -> TaskManifest:
     """Build the full benchmark deterministically, creating holdouts first."""
     config_hash = _hash(config.as_dict())
+    if config.holdout_manifest is not None:
+        source_path = Path(config.holdout_manifest)
+        source = TaskManifest.from_mapping(json.loads(source_path.read_text(encoding="utf-8")))
+        selected: list[PlannedTask] = []
+        for group_index, spec in enumerate(config.holdout):
+            matching = [task for task in source.holdout
+                        if (task.game, task.difficulty) == (spec.game, spec.difficulty)]
+            if len(matching) < spec.count:
+                raise ValueError(f"Holdout manifest has too few {spec.game} d{spec.difficulty} tasks")
+            selected.extend(replace(task, group_index=group_index)
+                            for task in matching[:spec.count])
+        return TaskManifest(config_hash, tuple(selected), (), tuple(selected))
     used: set[str] = set()
     pool: list[PlannedTask] = []
     pool_lookup: dict[tuple[str, int], list[PlannedTask]] = {}
@@ -177,7 +213,9 @@ def build_manifest(config: BenchmarkConfig) -> TaskManifest:
     generated_index = 0
     replay_index = 0
     for group_index, spec in enumerate(config.schedule):
-        for _ in range(spec.count):
+        group_normal: list[PlannedTask] = []
+        task_count = spec.count + 1 if config.online_evolution else spec.count
+        for local_index in range(task_count):
             item = _make_task(
                 phase="train",
                 game=spec.game,
@@ -186,17 +224,31 @@ def build_manifest(config: BenchmarkConfig) -> TaskManifest:
                 group_index=group_index,
                 used=used,
                 seed_root=config.seed,
+                generation_index=(local_index if config.online_evolution else None),
             )
             generated_index += 1
+            group_normal.append(item)
             normal.append(item)
             orchestrated.append(item)
             if (
                 spec.replay
                 and config.replay.enabled
-                and len(normal) % config.replay.every == 0
-                and len(normal) > config.replay.lag
+                and (
+                    local_index % config.replay.every == 0
+                    if config.online_evolution
+                    else len(normal) % config.replay.every == 0
+                )
+                and (
+                    local_index > config.replay.lag
+                    if config.online_evolution
+                    else len(normal) > config.replay.lag
+                )
             ):
-                original = normal[-config.replay.lag - 1]
+                original = (
+                    group_normal[-config.replay.lag - 1]
+                    if config.online_evolution
+                    else normal[-config.replay.lag - 1]
+                )
                 replay_index += 1
                 orchestrated.append(
                     PlannedTask(
@@ -210,6 +262,7 @@ def build_manifest(config: BenchmarkConfig) -> TaskManifest:
                         replay=True,
                         replay_of=original.run_id,
                         replay_gap=config.replay.lag,
+                        generation_index=local_index,
                     )
                 )
 

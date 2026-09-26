@@ -1,0 +1,40 @@
+{
+  "_schema": "process_v2",
+  "_note": "Ordered v1 property process: the four actions have an explicit linear execution order.",
+  "type": "sequence",
+  "root": "defeat_0",
+  "ordering_constraints": [
+    {"before": "go_item", "after": "buy_0"},
+    {"before": "buy_0", "after": "go_entity"},
+    {"before": "go_entity", "after": "defeat_0"}
+  ],
+  "steps": [
+    {
+      "id": "go_item",
+      "action": "go",
+      "execution_order": 0,
+      "parent": "buy_0",
+      "argument": {"from": "buy_0.location"}
+    },
+    {
+      "id": "buy_0",
+      "action": "buy",
+      "execution_order": 1,
+      "parent": "defeat_0",
+      "argument": {"pool": "object.weapon"},
+      "properties": [{"key": "cost", "value": 30}]
+    },
+    {
+      "id": "go_entity",
+      "action": "go",
+      "execution_order": 2,
+      "parent": "defeat_0",
+      "argument": {"from": "defeat_0.location"}
+    },
+    {
+      "id": "defeat_0",
+      "action": "defeat",
+      "argument": {"pool": "entity.npc"}
+    }
+  ]
+}

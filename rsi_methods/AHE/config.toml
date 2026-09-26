@@ -1,0 +1,21 @@
+[backend.openai]
+# Set these directly to avoid environment variables. Empty values fall back
+# to the environment variable names below.
+api_key_env = "OPENAI_API_KEY"
+base_url_env = "OPENAI_BASE_URL"
+
+[agent]
+# An explicit model passed by the benchmark takes precedence over this value.
+# Leave empty to fall back to LLM_MODEL in the process environment.
+model = "azure/gpt-5.6-sol"
+reasoning_effort = "high"
+
+[limits]
+# Refine after every non-replay training task.
+refinement_every = 1
+agent_max_context_tokens = 100000
+agent_max_iterations = 16
+agent_max_output_tokens = 4096
+evolve_max_context_tokens = 120000
+evolve_max_iterations = 64
+evolve_max_output_tokens = 8192

@@ -1,13 +1,13 @@
 {
   "seed": 1,
   "schedule": [
-    {"game": "farm", "difficulty": 1, "count": 1}
+    {"game": "heros_journey", "difficulty": 3, "count": 1}
   ],
   "holdout": [
-    {"game": "sweepmine", "difficulty": 1, "count": 1}
+    {"game": "heros_journey", "difficulty": 1, "count": 1}
   ],
   "holdout_tasks_per_difficulty": 1,
-  "agent": {"provider": "ahe", "timeout": 120, "max_attempts": 1},
+  "agent": {"provider": "ahe", "max_attempts": 1},
   "output_dir": "../outputs/smoke/sweepmine_ahe_d1_round1_r02",
   "continue_on_error": false
 }

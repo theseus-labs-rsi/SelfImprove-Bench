@@ -84,7 +84,17 @@ def timed_llm_call(
 
             # Check if response is valid
             if not response or not response.text:
-                raise Exception("Empty response from API")
+                usage = response.usage if response else None
+                details = {
+                    "status": response.status if response else None,
+                    "finish_reason": response.finish_reason if response else None,
+                    "response_id": response.response_id if response else None,
+                    "input_tokens": usage.input_tokens if usage else None,
+                    "output_tokens": usage.output_tokens if usage else None,
+                    "reasoning_tokens": usage.reasoning_tokens if usage else None,
+                    "metadata": response.metadata if response else None,
+                }
+                raise Exception(f"Empty response from API: {details}")
 
             response_time = time.time()
             total_time = response_time - start_time
@@ -166,10 +176,6 @@ def timed_llm_call(
                         print(f"📝 Raw response content: {e.response.content}")
                 print("-" * 60)
                 
-                # Log problematic requests for SambaNova support
-                log_problematic_request(call_id, prompt, model, api_params, e, log_dir, False,
-                                       None)
-            
             # For empty responses, we handle differently based on context
             if is_empty_response:
                 # Log the problematic request for SambaNova support
