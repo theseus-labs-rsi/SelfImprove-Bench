@@ -31,6 +31,7 @@ METRICS = (
     "holdout_same_domain_same_difficulty", "holdout_same_domain_higher_difficulty",
     "holdout_cross_domain", "tokens_per_absolute_gain", "time_per_absolute_gain",
     "score_variance", "declining_round_fraction",
+    "drop_20pct_round_count",
 )
 CHINESE_COLUMNS = {
     "first_absolute_score": "首轮绝对分数", "last_absolute_score": "末轮绝对分数",
@@ -41,6 +42,7 @@ CHINESE_COLUMNS = {
     "holdout_cross_domain": "跨域任务评测", "tokens_per_absolute_gain": "Token/绝对增益",
     "time_per_absolute_gain": "Time/绝对增益", "score_variance": "得分方差",
     "declining_round_fraction": "得分下降轮次占比",
+    "drop_20pct_round_count": "回退至少20%的轮次数",
 }
 TEXT_FIELDS = (
     "source_path", "schema_kind", "run_id", "repeat_id", "method", "provider",
@@ -84,7 +86,11 @@ def _base(source: Path, kind: str, run_id: str, repeat_id: str) -> dict[str, Any
 
 
 def _scores(records: list[dict[str, Any]]) -> list[float]:
-    return [score for record in records if (score := _num(record.get("relative_score"))) is not None]
+    return [
+        score for record in records
+        if record.get("status") in {"ok", "skipped"}
+        and (score := _num(record.get("relative_score"))) is not None
+    ]
 
 
 def _costs(records: list[dict[str, Any]], field: str) -> float | None:
@@ -127,6 +133,10 @@ def _evolution(row: dict[str, Any], scores: list[float]) -> None:
     row["score_variance"] = statistics.pvariance(scores) if scores else None
     declines = sum(current < previous for previous, current in zip(scores, scores[1:]))
     row["declining_round_fraction"] = declines / (len(scores) - 1) if len(scores) > 1 else 0.0
+    row["drop_20pct_round_count"] = sum(
+        previous > 0 and current <= 0.8 * previous
+        for previous, current in zip(scores, scores[1:])
+    )
 
 
 def _holdout_new(row: dict[str, Any], config: dict[str, Any], records: list[dict[str, Any]]) -> None:
@@ -139,6 +149,8 @@ def _holdout_new(row: dict[str, Any], config: dict[str, Any], records: list[dict
             max_difficulty[game] = max(max_difficulty.get(game, 0), difficulty)
     buckets: dict[str, list[float]] = {"same": [], "higher": [], "cross": []}
     for record in records:
+        if record.get("status") != "ok":
+            continue
         game, difficulty = record.get("game"), record.get("difficulty")
         score = _num(record.get("relative_score"))
         if score is None:
@@ -256,6 +268,7 @@ def _legacy_repeat(repeat_dir: Path, run_root: Path) -> dict[str, Any]:
     final = _num(held_in.get("final", {}).get("score_mean"))
     scores = [value for value in (initial, final) if value is not None]
     _evolution(row, scores)
+    row["drop_20pct_round_count"] = None  # Legacy summaries do not contain consecutive round scores.
     round_scores: list[float] = []
     holdout_scores: list[float] = []
     round_dirs = sorted(path for path in repeat_dir.glob("round_*") if path.is_dir())
@@ -274,6 +287,11 @@ def _legacy_repeat(repeat_dir: Path, run_root: Path) -> dict[str, Any]:
         row["score_variance"] = statistics.pvariance(round_scores)
         row["declining_round_fraction"] = sum(b < a for a, b in zip(round_scores, round_scores[1:])) / (len(round_scores) - 1)
         row["observed_training_count"] = len(round_scores)
+    if round_scores:
+        row["drop_20pct_round_count"] = sum(
+            previous > 0 and current <= 0.8 * previous
+            for previous, current in zip(round_scores, round_scores[1:])
+        )
     held_out_final = _num(summary.get("held_out", {}).get("final", {}).get("score_mean"))
     if metadata_complete and row["benchmark"] and row["difficulty"] is not None:
         row["holdout_same_domain_same_difficulty"] = held_out_final if held_out_final is not None else _mean(holdout_scores)

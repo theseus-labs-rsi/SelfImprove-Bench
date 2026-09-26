@@ -16,10 +16,10 @@ from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime
 from multiprocessing.connection import Connection
 from pathlib import Path
-from typing import Sequence
+from typing import Mapping, Sequence
 from uuid import uuid4
 
-from benchmark.contracts import BackendResponse
+from benchmark.contracts import BackendResponse, TokenUsage
 
 
 class AHEAgent:
@@ -38,6 +38,7 @@ class AHEAgent:
         *,
         model: str | None = None,
         timeout_seconds: float = 300,
+        llm_environment: Mapping[str, str] | None = None,
     ) -> None:
         self.workspace = workspace.resolve()
         self.config_path = self.workspace / "code_agent.yaml"
@@ -46,6 +47,7 @@ class AHEAgent:
         self.upstream_root = Path(__file__).resolve().parent / "agentic-harness-engineering"
         self.model = model or os.environ.get("LLM_MODEL")
         self.timeout_seconds = timeout_seconds
+        self._llm_environment = dict(llm_environment or {})
         self.trace_paths: list[Path] = []
         self.artifact_dir.mkdir(parents=True, exist_ok=False)
         self.sandbox_dir.mkdir()
@@ -54,7 +56,8 @@ class AHEAgent:
         self._process = multiprocessing.Process(
             target=AHEAgent._worker,
             args=(child, self.workspace, self.config_path, self.sandbox_dir,
-                  self.upstream_root, self.artifact_dir / "agent.log", self.model),
+                  self.upstream_root, self.artifact_dir / "agent.log", self.model,
+                  self._llm_environment),
             daemon=True,
         )
         try:
@@ -96,7 +99,9 @@ class AHEAgent:
         self.trace_paths.append(trace_path)
         return BackendResponse(
             text=result["text"], provider="ahe", model=self.model,
-            status="completed", metadata={"ahe_trace_path": str(trace_path)},
+            status="completed",
+            usage=TokenUsage(total_tokens=result.get("total_tokens")),
+            metadata={"ahe_trace_path": str(trace_path)},
         )
 
     def _receive(self, timeout: float) -> dict:
@@ -129,7 +134,7 @@ class AHEAgent:
             connection.close()
 
     @staticmethod
-    def _save_trace(agent: object, call_dir: Path) -> Path:
+    def _save_trace(agent: object, call_dir: Path) -> tuple[Path, int | None]:
         """Write AHE's cleaned InMemoryTracer format after each action."""
 
         from nexau.archs.tracer.adapters.in_memory import InMemoryTracer
@@ -143,7 +148,10 @@ class AHEAgent:
                 )
                 path = call_dir / "nexau_in_memory_tracer.cleaned.json"
                 path.write_text(json.dumps(cleaned, ensure_ascii=False, indent=2), encoding="utf-8")
-                return path
+                total_tokens = cleaned.get("total_tokens")
+                if not isinstance(total_tokens, int) or isinstance(total_tokens, bool):
+                    total_tokens = None
+                return path, total_tokens
         raise RuntimeError("AHE coding agent has no InMemoryTracer")
 
     @staticmethod
@@ -155,6 +163,7 @@ class AHEAgent:
         upstream_root: Path,
         log_path: Path,
         model: str | None,
+        llm_environment: Mapping[str, str],
     ) -> None:
         """Initialize NexAU once, then serve turns from this candidate only."""
 
@@ -169,6 +178,7 @@ class AHEAgent:
                     from nexau import Agent, AgentConfig
                     from nexau.archs.sandbox import LocalSandboxConfig
 
+                    os.environ.update(llm_environment)
                     load_dotenv(upstream_root / ".env", override=False)
                     if model:
                         os.environ["LLM_MODEL"] = model
@@ -199,6 +209,7 @@ class AHEAgent:
     def _serve_actions(connection: Connection, agent: object, sandbox_dir: Path, log: object) -> None:
         """Keep call-specific prompt and trace handling outside initialization."""
 
+        previous_total_tokens = 0
         while True:
             request = connection.recv()
             if request.get("op") == "close":
@@ -212,8 +223,19 @@ class AHEAgent:
                              "env_content": {"date": now, "working_directory": str(sandbox_dir)}},
                 )
                 answer = raw[0] if isinstance(raw, tuple) else raw
-                trace_path = AHEAgent._save_trace(agent, Path(request["call_dir"]))
-                connection.send({"ok": True, "text": str(answer or ""), "trace_path": str(trace_path)})
+                trace_path, cumulative_tokens = AHEAgent._save_trace(
+                    agent, Path(request["call_dir"]),
+                )
+                call_tokens = None
+                if cumulative_tokens is not None:
+                    call_tokens = max(0, cumulative_tokens - previous_total_tokens)
+                    previous_total_tokens = cumulative_tokens
+                connection.send({
+                    "ok": True,
+                    "text": str(answer or ""),
+                    "trace_path": str(trace_path),
+                    "total_tokens": call_tokens,
+                })
             except BaseException as exc:
                 traceback.print_exc(file=log)
                 connection.send({"ok": False, "error": str(exc)})

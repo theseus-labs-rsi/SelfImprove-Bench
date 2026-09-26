@@ -10,6 +10,7 @@ from __future__ import annotations
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Mapping
 
 
 UPSTREAM_ROOT = Path(__file__).resolve().parent / "agentic-harness-engineering"
@@ -26,6 +27,33 @@ class AHEState:
     run_dir: Path
     current_workspace: Path
     evolve_agent_dir: Path
+
+
+def apply_agent_limits(
+    config_path: Path, limits: Mapping[str, int], *, reasoning_effort: str | None = None,
+) -> None:
+    """Apply run-local safety limits without changing the vendored templates."""
+
+    import yaml
+
+    config = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+    for name in ("max_context_tokens", "max_iterations"):
+        if name in limits:
+            config[name] = limits[name]
+    llm_config = config.setdefault("llm_config", {})
+    if "max_tokens" in limits:
+        llm_config["max_tokens"] = limits["max_tokens"]
+    if reasoning_effort is not None:
+        api_type = llm_config.get("api_type")
+        if api_type == "openai_responses":
+            llm_config["reasoning"] = {"effort": reasoning_effort}
+        elif api_type == "openai_chat_completion":
+            llm_config["reasoning_effort"] = reasoning_effort
+        else:
+            raise ValueError(f"Unsupported AHE API type for reasoning effort: {api_type}")
+    config_path.write_text(
+        yaml.safe_dump(config, sort_keys=False, allow_unicode=True), encoding="utf-8",
+    )
 
 
 def initialize(run_dir: str | Path, *, source_root: str | Path = UPSTREAM_ROOT) -> AHEState:

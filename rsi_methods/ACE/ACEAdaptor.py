@@ -302,6 +302,46 @@ class ACEAdaptor:
         self._pending_batch = None
         self._initialized = True
 
+    def resume(
+        self, batch_dir: str | Path, *, source_batch: Path,
+        before_task_index: int, target_dir: str | Path,
+    ) -> None:
+        """Rebuild committed state from selection decisions in the copied batch."""
+        root = Path(batch_dir).resolve()
+        if not (root / "batch_manifest.json").is_file():
+            raise FileNotFoundError(f"ACE batch manifest is missing: {root}")
+        if source_batch.resolve() == root:
+            raise ValueError("ACE resume source and target batch must differ")
+        self._config_snapshot = (root / "method_config.toml").read_bytes()
+        self._configure(tomllib.loads(self._config_snapshot.decode("utf-8")))
+        self._validate_config()
+        self._playbook = self._load_initial_playbook()
+        self._version = 0
+        self._refinement_round = 0
+        for task in sorted(root.glob("task_[0-9][0-9][0-9][0-9]_*")):
+            if int(task.name[5:9]) >= before_task_index:
+                continue
+            stages = sorted(task.glob("selection_stage_*/selection.json"))
+            if not stages:
+                raise ValueError(f"ACE task has no completed selection: {task}")
+            for stage in stages:
+                decision = json.loads(stage.read_text(encoding="utf-8"))
+                chosen = decision.get("selected_candidate_id")
+                if chosen:
+                    playbook = task / "candidates" / chosen / "playbook.txt"
+                    self._playbook = playbook.read_text(encoding="utf-8")
+                self._version = int(decision["committed_version"])
+            self._refinement_round += 1
+        self.workspace_dir = Path(target_dir).resolve()
+        self.workspace_dir.mkdir(parents=True, exist_ok=False)
+        (self.workspace_dir / "playbook.txt").write_text(self._playbook, encoding="utf-8")
+        self._next_global_id = get_next_global_id(self._playbook)
+        self._processed_feedback_count = self._refinement_round
+        self._reflector = Reflector(self.dispatcher, self.reflector_backend_name, self.reflector_model, self.refine_max_output_tokens)
+        self._curator = Curator(self.dispatcher, self.curator_backend_name, self.curator_model, self.refine_max_output_tokens)
+        self._pending_batch = None
+        self._initialized = True
+
     def build(self) -> ACEAgent:
         """Build an immutable agent snapshot from the committed playbook."""
         self._require_initialized()
@@ -415,6 +455,7 @@ class ACEAdaptor:
         parent_evaluation: Any,
         candidate_evaluations: Mapping[str, Any],
         output_dir: str | Path,
+        selection_mode: str = "paired",
     ) -> ACESelectionOutput:
         """Commit the selected candidate, or retain the committed parent."""
         self._require_initialized()
@@ -425,6 +466,8 @@ class ACEAdaptor:
             raise RuntimeError("ACEAdaptor.select() received a stale candidate batch")
         if not isinstance(candidate_evaluations, Mapping):
             raise TypeError("candidate_evaluations must be a mapping")
+        if selection_mode not in {"paired", "online"}:
+            raise ValueError("selection_mode must be 'paired' or 'online'")
 
         candidate = batch.candidates[0]
         expected_ids = {candidate.candidate_id}
@@ -444,6 +487,8 @@ class ACEAdaptor:
         )
         if candidate_status != "ok":
             accepted, reason = False, "candidate_status_not_ok"
+        elif selection_mode == "online":
+            accepted, reason = True, "candidate_execution_valid"
         elif parent_score is None or candidate_score is None:
             accepted, reason = False, "selection_score_missing"
         elif candidate_score < parent_score:

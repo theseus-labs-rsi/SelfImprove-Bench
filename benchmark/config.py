@@ -12,7 +12,7 @@ from benches.heros_journey.task_factory import load_difficulty_manifest as load_
 from benches.sweepmine.task_factory import load_difficulty_manifest
 
 
-SUPPORTED_GAMES = ("farm", "combat", "sweepmine", "sweepmine_reorganized", "heros_journey")
+SUPPORTED_GAMES = ("farm", "combat", "sweepmine", "heros_journey")
 SUPPORTED_PROVIDERS = (
     "codex",
     "claude",
@@ -78,6 +78,8 @@ class BenchmarkConfig:
     holdout_seed: int = 100
     holdout_tasks_per_difficulty: int = HOLDOUT_TASKS_PER_DIFFICULTY
     game_options: dict[str, Any] = field(default_factory=dict)
+    online_evolution: bool = False
+    holdout_manifest: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -130,8 +132,8 @@ def config_from_mapping(value: dict[str, Any]) -> BenchmarkConfig:
         "holdout_tasks_per_difficulty",
     )
     schedule_raw = value.get("schedule")
-    if not isinstance(schedule_raw, list) or not schedule_raw:
-        raise ValueError("schedule must be a non-empty array")
+    if not isinstance(schedule_raw, list):
+        raise ValueError("schedule must be an array")
     holdout_raw = value.get("holdout")
     if not isinstance(holdout_raw, list) or not holdout_raw:
         raise ValueError("holdout must be a non-empty array")
@@ -153,12 +155,22 @@ def config_from_mapping(value: dict[str, Any]) -> BenchmarkConfig:
             "schedule enables replay, so replay.every and replay.lag must be positive"
         )
 
+    online_evolution = bool(value.get("online_evolution", False))
+
     agent_raw = value.get("agent", {})
     if not isinstance(agent_raw, dict):
         raise ValueError("agent must be an object")
     provider = str(agent_raw.get("provider", "codex")).strip().lower()
     if provider not in SUPPORTED_PROVIDERS:
         raise ValueError(f"agent.provider must be one of: {', '.join(SUPPORTED_PROVIDERS)}")
+    if not schedule_raw and provider != "baseline":
+        raise ValueError("schedule must be non-empty unless agent.provider is baseline")
+    holdout_manifest = value.get("holdout_manifest")
+    if holdout_manifest is not None:
+        if not isinstance(holdout_manifest, str) or not holdout_manifest.strip():
+            raise ValueError("holdout_manifest must be a non-empty path")
+        if provider != "baseline" or schedule_raw:
+            raise ValueError("holdout_manifest requires baseline with an empty schedule")
     timeout = agent_raw.get("timeout", 300)
     if not isinstance(timeout, (int, float)) or isinstance(timeout, bool) or timeout <= 0:
         raise ValueError("agent.timeout must be positive")
@@ -180,14 +192,17 @@ def config_from_mapping(value: dict[str, Any]) -> BenchmarkConfig:
         raise ValueError(
             "Sweepmine requires an RSI agent provider: ace, baseline, hyperagents, self_harness, or ahe"
         )
-    if "sweepmine_reorganized" in requested_games and provider not in interactive_providers:
-        raise ValueError(
-            "Sweepmine induction requires an RSI agent provider: ace, baseline, hyperagents, self_harness, or ahe"
-        )
     if "heros_journey" in requested_games and provider not in interactive_providers:
         raise ValueError(
             "Hero's Journey requires an RSI agent provider: ace, baseline, hyperagents, self_harness, or ahe"
         )
+    if online_evolution:
+        if provider not in {"ace", "ahe", "hyperagents"}:
+            raise ValueError(
+                "online_evolution currently supports ace, ahe, or hyperagents"
+            )
+        if len(schedule) != 1:
+            raise ValueError("online_evolution requires exactly one schedule item")
     for item in (*schedule, *holdout):
         if item.game == "sweepmine" and item.difficulty not in sweepmine:
             available = ", ".join(str(level) for level in sorted(sweepmine))
@@ -220,9 +235,10 @@ def config_from_mapping(value: dict[str, Any]) -> BenchmarkConfig:
         holdout_tasks_per_difficulty=pool_size,
         game_options={
             "sweepmine": {"difficulties": sweepmine},
-            "sweepmine_reorganized": {"difficulties": (1, 2, 3, 4, 5)},
             "heros_journey": {"difficulties": hero},
         },
+        online_evolution=online_evolution,
+        holdout_manifest=holdout_manifest,
     )
 
 

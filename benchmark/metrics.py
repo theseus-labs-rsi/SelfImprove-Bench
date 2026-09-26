@@ -73,6 +73,10 @@ def calculate_metrics(
     total_tokens = sum(_total(record, "total_tokens") for record in training)
     total_seconds = sum(_total(record, "total_seconds") for record in training)
     declines = sum(current < previous for previous, current in zip(scores, scores[1:]))
+    large_declines = sum(
+        previous > 0 and current <= 0.8 * previous
+        for previous, current in zip(scores, scores[1:])
+    )
     return {
         "evolution_gain": {
             "window": evolution_window,
@@ -107,6 +111,7 @@ def calculate_metrics(
             "score_variance": pvariance(scores) if scores else None,
             "declining_round_fraction": declines / (len(scores) - 1) if len(scores) > 1 else 0.0,
             "declining_rounds": declines,
+            "drop_20pct_round_count": large_declines,
             "transition_count": max(0, len(scores) - 1),
         },
     }
@@ -128,7 +133,7 @@ def format_metrics(metrics: dict[str, Any]) -> str:
         f"  capability retention: mean_delta={display(retention['average_score_change'])}, delta/round={display(retention['average_change_per_round'])}",
         f"  generalization: mean={display(generalization['overall_average_relative_score'])}",
         f"  evolution cost: tokens/gain={display(cost['tokens_per_absolute_gain'])}, seconds/gain={display(cost['seconds_per_absolute_gain'])}",
-        f"  stability: variance={display(stability['score_variance'])}, decline_fraction={display(stability['declining_round_fraction'])}",
+        f"  stability: variance={display(stability['score_variance'])}, decline_fraction={display(stability['declining_round_fraction'])}, drop_20pct_round_count={display(stability['drop_20pct_round_count'])}",
     ]
     for group in generalization["groups"]:
         lines.append(

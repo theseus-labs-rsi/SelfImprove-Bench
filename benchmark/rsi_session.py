@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import time
 from dataclasses import dataclass, is_dataclass
 from pathlib import Path
@@ -23,6 +24,50 @@ from .contracts import (
 
 
 RSI_PROVIDERS = frozenset({"ace", "baseline", "hyperagents", "self_harness", "ahe"})
+
+
+def _copy_resume_workspace(source: Path, target: Path, method: str) -> tuple[Path, Path, int, str]:
+    """Copy one complete benchmark output and locate its single RSI lineage."""
+    if not source.is_dir() or not (source / "task_manifest.json").is_file():
+        raise ValueError(f"Not a benchmark workspace: {source}")
+    if target.exists() or source == target or source in target.parents or target in source.parents:
+        raise ValueError(f"Resume target must be a new, separate directory: {target}")
+    batches = [path for path in (source / "rsi" / method).iterdir()
+               if path.is_dir() and (path / "batch_manifest.json").is_file()]
+    if len(batches) != 1:
+        raise ValueError(f"Expected one {method} batch under {source}, found {len(batches)}")
+    source_batch = batches[0]
+    task_numbers = {int(path.name[5:9]) for path in source_batch.glob("task_[0-9][0-9][0-9][0-9]_*")
+                    if path.is_dir()}
+    records = [json.loads(path.read_text(encoding="utf-8")) for path in
+               sorted((source / "runs" / "train").glob("[0-9][0-9][0-9][0-9]_*.json"))]
+    config = json.loads((source / "config.resolved.json").read_text(encoding="utf-8"))
+    manifest = json.loads((source / "task_manifest.json").read_text(encoding="utf-8"))
+    online = config.get("online_evolution", False)
+    indices = [int(record["generation_index"]) for record in records
+               if online and record.get("generation_index") is not None]
+    if not online:
+        indices = list(range(1, len(records) + 1))
+    before = max([*task_numbers, *indices], default=1)
+    has_holdout = any((source / "runs" / "holdout").glob("*.json"))
+    training_complete = len(records) == len(manifest["training"])
+    if has_holdout and not training_complete:
+        raise ValueError(f"Holdout records exist before training is complete: {source}")
+    can_enter_holdout = config.get("continue_on_error", True) or all(
+        record.get("status") in {"ok", "skipped"} for record in records
+    )
+    phase = "holdout" if has_holdout or (training_complete and can_enter_holdout) else "train"
+    if phase == "holdout":
+        before += 1
+    if online:
+        for record in records:
+            index = record.get("generation_index")
+            selection = record.get("selection")
+            if index is not None and index < before and isinstance(selection, dict):
+                if selection.get("status") in {"committed", "unchanged", "completed"} and index not in task_numbers:
+                    raise ValueError(f"Missing RSI artifact for committed generation {index}: {source_batch}")
+    shutil.copytree(source, target)
+    return source_batch, target / "rsi" / method / source_batch.name, before, phase
 
 
 @dataclass(frozen=True, slots=True)
@@ -99,6 +144,7 @@ def backend_response_record(
         "model": response.model,
         "status": response.status,
         "finish_reason": response.finish_reason,
+        "metadata": to_jsonable(response.metadata),
     }
 
 
@@ -206,13 +252,31 @@ class RSIBatchSession:
         batch_id: str | None = None,
         adaptor: Any | None = None,
         agent: Any | None = None,
+        resume_from: str | Path | None = None,
+        target_dir: str | Path | None = None,
     ) -> None:
         normalized = method.strip().lower()
         if normalized not in RSI_PROVIDERS:
             raise ValueError(f"Unsupported RSI method: {method}")
         if task_count < 1:
             raise ValueError("task_count must be positive")
+        if (resume_from is None) != (target_dir is None):
+            raise ValueError("resume_from and target_dir must be provided together")
+        if resume_from is not None and normalized not in {"ace", "ahe", "hyperagents"}:
+            raise ValueError(f"RSI method {normalized!r} does not support resume")
         self.method = normalized
+        source_batch = None
+        previous_batch = None
+        before_task = None
+        resume_phase = None
+        if resume_from is not None:
+            source_batch, previous_batch, before_task, resume_phase = _copy_resume_workspace(
+                Path(resume_from).resolve(), Path(target_dir).resolve(), normalized
+            )
+            artifact_root = Path(target_dir).resolve() / "rsi"
+        self.resume_before_task_index = before_task
+        self.resume_phase = resume_phase
+        self.resumed_batch_dir = previous_batch
         self.batch_id = batch_id or uuid4().hex
         self.artifact_dir = Path(artifact_root).resolve() / normalized / self.batch_id
         self.artifact_dir.mkdir(parents=True, exist_ok=False)
@@ -225,9 +289,22 @@ class RSIBatchSession:
         self._selection_stage = 0
         self._last_refinement_telemetry: dict[str, Any] | None = None
         self._closed = False
-        self.adaptor.init()
+        if resume_from is None:
+            self.adaptor.init()
+        else:
+            resume = getattr(self.adaptor, "resume", None)
+            if not callable(resume):
+                raise RuntimeError(
+                    f"RSI method {self.method!r} does not support resume"
+                )
+            resume(previous_batch, source_batch=source_batch,
+                   before_task_index=before_task, target_dir=self.artifact_dir / "state")
         config_path = getattr(self.adaptor, "config_path", None)
-        if config_path is not None:
+        if previous_batch is not None:
+            snapshot = previous_batch / "method_config.toml"
+            if snapshot.is_file():
+                (self.artifact_dir / "method_config.toml").write_bytes(snapshot.read_bytes())
+        elif config_path is not None:
             resolved_config = Path(config_path).resolve()
             if resolved_config.is_file():
                 (self.artifact_dir / "method_config.toml").write_bytes(
@@ -238,7 +315,7 @@ class RSIBatchSession:
             "method": self.method,
             "batch_id": self.batch_id,
             "task_count": task_count,
-            "clean_base": True,
+            "clean_base": resume_from is None,
             "adaptor": type(self.adaptor).__name__,
             "effective_state": {
                 "run_dir": getattr(self.adaptor, "run_dir", None),
@@ -248,6 +325,9 @@ class RSIBatchSession:
                 ),
             },
         }
+        if source_batch is not None:
+            manifest["resumed_from_batch_id"] = source_batch.name
+            manifest["resume_before_task_index"] = before_task
         (self.artifact_dir / "batch_manifest.json").write_text(
             json.dumps(to_jsonable(manifest), ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
@@ -271,8 +351,7 @@ class RSIBatchSession:
 
             return AHEAdaptor(
                 run_dir=self.artifact_dir / "state",
-                model=getattr(self.agent_config, "model", None),
-                timeout_seconds=getattr(self.agent_config, "timeout", 300),
+                timeout_seconds=float(getattr(self.agent_config, "timeout", 300.0)),
             )
         try:
             from rsi_methods.HyperAgents.HyperAgentsAdaptor import HyperAgentsAdaptor
@@ -306,6 +385,14 @@ class RSIBatchSession:
         self._agent = agent
         return agent
 
+    def skip_task(self) -> None:
+        """Release a failed evaluation without treating it as refinement."""
+        if self._pending_batch is not None:
+            raise RuntimeError("Cannot skip a task with pending RSI candidates")
+        self.adaptor.close()
+        self._agent = None
+        self._task_id = None
+
     def act(self, prompt: str) -> BackendResponse:
         if self._agent is None:
             raise RuntimeError("begin_task() must be called before act()")
@@ -334,21 +421,49 @@ class RSIBatchSession:
         try:
             batch = self.adaptor.refine([feedback], output_dir=output_dir)
             if batch is not None:
+                _validate_candidate_batch(batch)
                 self._pending_batch = batch
                 self._pending_output_dir = output_dir
-                _validate_candidate_batch(batch)
+        except Exception as exc:
+            self._last_refinement_telemetry = {
+                "status": "error",
+                "method": self.method,
+                "task_index": task_index,
+                "duration_seconds": round(time.perf_counter() - started, 6),
+                "artifact_dir": str(output_dir),
+                "error_type": type(exc).__name__,
+                "error": str(exc),
+                "tokens": refinement_token_metrics(
+                    getattr(self.adaptor, "last_refinement_report", None)
+                ),
+            }
+            (output_dir / "refinement_telemetry.json").write_text(
+                json.dumps(self._last_refinement_telemetry, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
+            raise
         finally:
             self._agent = None
             self._task_id = None
         report = getattr(self.adaptor, "last_refinement_report", None)
+        skipped = isinstance(report, Mapping) and report.get("status") == "skipped"
+        tokens = refinement_token_metrics(report)
+        if skipped and tokens["total_tokens"] is None and report.get("reason") == "refinement_interval":
+            tokens = {
+                "prompt_tokens": 0, "reasoning_tokens": 0, "answer_tokens": 0,
+                "total_tokens": 0, "method": "skipped",
+            }
         self._last_refinement_telemetry = {
-            "status": "ok",
+            "status": "skipped" if skipped else "ok",
             "method": self.method,
             "task_index": task_index,
             "duration_seconds": round(time.perf_counter() - started, 6),
             "artifact_dir": str(output_dir),
-            "tokens": refinement_token_metrics(report),
+            "tokens": tokens,
         }
+        if skipped:
+            self._last_refinement_telemetry["reason"] = report.get("reason")
+            self._last_refinement_telemetry["refinement_every"] = report.get("refinement_every")
         (output_dir / "refinement_telemetry.json").write_text(
             json.dumps(self._last_refinement_telemetry, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
@@ -359,12 +474,16 @@ class RSIBatchSession:
         self,
         parent_evaluation: Any,
         candidate_evaluations: Mapping[str, Any],
+        *,
+        selection_mode: str = "paired",
     ) -> Any:
         batch = self._pending_batch
         if batch is None:
             raise RuntimeError("RSIBatchSession.select() has no pending candidate batch")
         if not isinstance(candidate_evaluations, Mapping):
             raise TypeError("candidate_evaluations must be a mapping")
+        if selection_mode not in {"paired", "online"}:
+            raise ValueError("selection_mode must be 'paired' or 'online'")
         expected_ids = _candidate_ids(batch)
         normalized_results = {str(key): value for key, value in candidate_evaluations.items()}
         if set(normalized_results) != expected_ids:
@@ -376,6 +495,7 @@ class RSIBatchSession:
         self._selection_stage += 1
         stage_dir.mkdir(parents=True, exist_ok=False)
         selection_input = {
+            "selection_mode": selection_mode,
             "parent": parent_evaluation,
             "candidates": normalized_results,
         }
@@ -388,6 +508,7 @@ class RSIBatchSession:
             parent_evaluation=parent_evaluation,
             candidate_evaluations=normalized_results,
             output_dir=stage_dir,
+            selection_mode=selection_mode,
         )
         status = str(getattr(selection, "status", "")).strip().lower()
         replacement = getattr(selection, "batch", None)
@@ -430,6 +551,8 @@ def create_rsi_batch(
     task_count: int,
     batch_id: str | None = None,
     agent: Any | None = None,
+    resume_from: str | Path | None = None,
+    target_dir: str | Path | None = None,
 ) -> RSIBatchSession:
     return RSIBatchSession(
         method,
@@ -437,6 +560,8 @@ def create_rsi_batch(
         task_count=task_count,
         batch_id=batch_id,
         agent=agent,
+        resume_from=resume_from,
+        target_dir=target_dir,
     )
 
 
@@ -476,6 +601,7 @@ def agent_call_from_metrics(metrics: Mapping[str, Any]) -> AgentCallRecord | Non
                 model=raw.get("model"),
                 status=raw.get("status"),
                 finish_reason=raw.get("finish_reason"),
+                metadata=raw.get("metadata"),
             )
     return None
 

@@ -11,9 +11,10 @@ from .runner import run_benchmark
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run a deterministic multi-game RSI benchmark")
     parser.add_argument("config", help="JSON or TOML benchmark configuration")
+    parser.add_argument("--target-dir", help="New workspace for resuming from config.output_dir")
     args = parser.parse_args()
     try:
-        run_benchmark(load_config(args.config))
+        run_benchmark(load_config(args.config), target_dir=args.target_dir)
     except (OSError, ValueError, RuntimeError) as exc:
         parser.error(str(exc))
 

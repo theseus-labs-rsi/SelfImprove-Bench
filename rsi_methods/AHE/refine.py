@@ -17,14 +17,14 @@ import subprocess
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
 from uuid import uuid4
 
 from benchmark.contracts import to_jsonable
 
 from .agent import AHEAgent
 from .build import build
-from .init import AHEState
+from .init import AHEState, apply_agent_limits
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,6 +49,7 @@ class CandidateBatch:
     parent_workspace: Path
     parent_score: float
     candidates: tuple[CandidateSpec, ...]
+    refinement_usage: Mapping[str, Any] = field(default_factory=dict)
 
 
 def select_parent(state: AHEState, agent: AHEAgent) -> tuple[Path, dict[str, Any] | None]:
@@ -83,6 +84,25 @@ def _read_feedback(feedback_results: Sequence[Any]) -> tuple[dict[str, Any], flo
     if not str(payload.get("task_id") or "").strip():
         raise ValueError("AHE refine requires a task_id")
     return payload, float(score)
+
+
+def _trace_from_feedback(feedback: dict[str, Any], parent_agent: AHEAgent) -> Path:
+    """Use the evaluated task's trace, including after its Agent was closed."""
+    for step in reversed(feedback.get("trajectory") or []):
+        call = step.get("agent_call") if isinstance(step, dict) else None
+        metadata = call.get("metadata") if isinstance(call, dict) else None
+        trace = metadata.get("ahe_trace_path") if isinstance(metadata, dict) else None
+        if isinstance(trace, str) and trace:
+            path = Path(trace)
+            if not path.is_file():
+                raise FileNotFoundError(f"AHE feedback trace is missing: {path}")
+            return path
+    if parent_agent.trace_paths:
+        path = parent_agent.trace_paths[-1]
+        if path.is_file():
+            return path
+        raise FileNotFoundError(f"AHE parent Agent trace is missing: {path}")
+    raise RuntimeError("AHE refine needs a trace from the evaluated Agent")
 
 
 def _safe_task_name(task_id: str) -> str:
@@ -231,7 +251,8 @@ def _run_evolver(
     query: str,
     model: str | None,
     timeout_seconds: float,
-) -> None:
+    llm_environment: Mapping[str, str] | None,
+) -> Mapping[str, Any]:
     """Run the original Evolve Agent in a separate import namespace."""
 
     request_path = candidate_root / "evolve_request.json"
@@ -242,6 +263,7 @@ def _run_evolver(
         "iteration": int(iteration_dir.name.split("_")[-1]), "query": query,
     }, ensure_ascii=False, indent=2), encoding="utf-8")
     env = os.environ.copy()
+    env.update(llm_environment or {})
     code_root = Path(__file__).resolve().parents[2]
     env["PYTHONPATH"] = os.pathsep.join(filter(None, (str(code_root), env.get("PYTHONPATH"))))
     if model:
@@ -253,6 +275,9 @@ def _run_evolver(
     (candidate_root / "evolve.log").write_text(completed.stdout + "\n" + completed.stderr, encoding="utf-8")
     if completed.returncode != 0 or not result_path.is_file():
         raise RuntimeError(f"AHE candidate generation failed; inspect {candidate_root / 'evolve.log'}")
+    payload = json.loads(result_path.read_text(encoding="utf-8"))
+    usage = payload.get("usage", {})
+    return usage if isinstance(usage, Mapping) else {}
 
 
 def _strategy_hints() -> list[str]:
@@ -275,6 +300,9 @@ def refine(
     model: str | None = None,
     candidate_count: int = 1,
     timeout_seconds: float = 1800,
+    llm_environment: Mapping[str, str] | None = None,
+    agent_limits: Mapping[str, int] | None = None,
+    reasoning_effort: str | None = None,
 ) -> CandidateBatch:
     """Generate independent candidates and return them without selecting one."""
 
@@ -282,17 +310,17 @@ def refine(
         raise ValueError("candidate_count must be positive")
     parent, best_ever = select_parent(state, parent_agent)
     feedback, score = _read_feedback(feedback_results)
-    if not parent_agent.trace_paths:
-        raise RuntimeError("AHE refine needs a trace from the parent Agent")
+    trace_path = _trace_from_feedback(feedback, parent_agent)
     iteration_dir = state.run_dir / "runs" / f"iteration_{iteration:03d}"
     iteration_dir.mkdir(parents=True, exist_ok=False)
     trial_dir, task_name = _prepare_evidence(
-        parent, feedback, score, parent_agent.trace_paths[-1], iteration_dir,
+        parent, feedback, score, trace_path, iteration_dir,
     )
     _write_analysis(iteration_dir, trial_dir, task_name, feedback, score)
     work_dir = state.run_dir / "candidates" / f"iteration_{iteration:03d}"
     hints = _strategy_hints() if candidate_count > 1 else []
     candidates: list[CandidateSpec] = []
+    refinement_tokens: list[int] = []
     try:
         for index in range(candidate_count):
             candidate_id = f"variant_{index}"
@@ -304,14 +332,33 @@ def refine(
                 hints[index] if index < len(hints) else None,
             )
             (root / "evolution_query.md").write_text(query, encoding="utf-8")
-            _run_evolver(state, root, iteration_dir, workspace, query, model, timeout_seconds)
-            candidate_agent = build(state, workspace=workspace, model=model)
+            usage = _run_evolver(
+                state, root, iteration_dir, workspace, query, model,
+                timeout_seconds, llm_environment,
+            )
+            total_tokens = usage.get("total_num_tokens")
+            if isinstance(total_tokens, int) and not isinstance(total_tokens, bool):
+                refinement_tokens.append(total_tokens)
+            if agent_limits:
+                apply_agent_limits(
+                    workspace / "code_agent.yaml", agent_limits,
+                    reasoning_effort=reasoning_effort,
+                )
+            candidate_agent = build(
+                state, workspace=workspace, model=model,
+                llm_environment=llm_environment,
+            )
             candidates.append(CandidateSpec(candidate_id, workspace, candidate_agent))
     except BaseException:
         for candidate in candidates:
             candidate.agent.close()
         raise
-    batch = CandidateBatch(f"iteration_{iteration:03d}", work_dir, parent, score, tuple(candidates))
+    usage_report = {
+        "total_num_tokens": sum(refinement_tokens) if len(refinement_tokens) == candidate_count else None,
+    }
+    batch = CandidateBatch(
+        f"iteration_{iteration:03d}", work_dir, parent, score, tuple(candidates), usage_report,
+    )
     output = Path(output_dir).expanduser().resolve()
     output.mkdir(parents=True, exist_ok=True)
     (output / "ahe_refine.json").write_text(json.dumps({
@@ -425,7 +472,27 @@ def _worker(request_path: Path, result_path: Path) -> None:
     (evolve_dir_out / "evolve_trace.json").write_text(
         json.dumps(messages, ensure_ascii=False, indent=2, default=str), encoding="utf-8",
     )
-    result_path.write_text(json.dumps({"result": str(result or "")}, ensure_ascii=False), encoding="utf-8")
+    total_tokens = None
+    try:
+        from nexau.archs.tracer.adapters.in_memory import InMemoryTracer
+        from trace_converter import extract_trace_data_from_inmemory_dump
+
+        for tracer in agent.config.tracers:
+            if isinstance(tracer, InMemoryTracer):
+                cleaned = extract_trace_data_from_inmemory_dump(
+                    tracer.dump_traces(), include_system_prompt_message=True,
+                    include_user_message=True, capture_errors=True, jsonable_output=True,
+                )
+                value = cleaned.get("total_tokens")
+                if isinstance(value, int) and not isinstance(value, bool):
+                    total_tokens = value
+                break
+    except (AttributeError, TypeError, ValueError):
+        pass
+    result_path.write_text(json.dumps({
+        "result": str(result or ""),
+        "usage": {"total_num_tokens": total_tokens},
+    }, ensure_ascii=False), encoding="utf-8")
 
 
 if __name__ == "__main__":

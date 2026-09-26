@@ -49,6 +49,8 @@ print("__RUNTIME_AGENT_RESULT__" + base64.b64encode(payload).decode("ascii"))
 class RuntimeAgent:
     """Runtime proxy for a TaskAgent whose code lives inside a container."""
 
+    supports_parallel_calls = True
+
     def __init__(
         self,
         container,

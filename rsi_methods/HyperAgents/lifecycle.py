@@ -259,6 +259,16 @@ def refine(
         environment=agent.runtime.llm_environment,
     )
     metadata["meta_agent_command_successful"] = execution.exit_code == 0
+    usage = _read_refinement_usage(agent, agent_output)
+    if usage is not None:
+        metadata["refinement_usage"] = usage
+    if usage and usage.get("tool_budget_exhausted"):
+        metadata["tool_budget_exhausted"] = True
+        metadata["refine_successful"] = False
+        return RefineOutput(
+            agent=agent, changed=False, patch_path=None, result=None,
+            metadata=metadata,
+        )
     if execution.exit_code != 0:
         output = execution.output.decode("utf-8", errors="replace")
         raise RuntimeError(f"MetaAgent command failed: {output}")
@@ -377,6 +387,36 @@ def _stage_direct_evidence(
     return container_history
 
 
+_USAGE_RECORDING_BOOTSTRAP = """
+import json
+import runpy
+import sys
+from pathlib import Path
+import meta_agent
+
+usage_path = Path(sys.argv[1])
+sys.argv = ["run_meta_agent.py", *sys.argv[2:]]
+original_chat = meta_agent.chat_with_agent
+
+def tracked_chat(*args, **kwargs):
+    history = original_chat(*args, **kwargs)
+    last = history[-1] if history else {}
+    usage = dict(last.get("usage") or {})
+    if last.get("tool_budget_exhausted"):
+        usage["tool_budget_exhausted"] = True
+        usage["tool_calls_executed"] = last["tool_calls_executed"]
+        usage["tool_call_limit"] = last["tool_call_limit"]
+    if usage.get("total_tokens", 0) > 0 or usage.get("tool_budget_exhausted"):
+        usage_path.write_text(json.dumps(usage), encoding="utf-8")
+    if last.get("tool_budget_exhausted"):
+        raise SystemExit(0)
+    return history
+
+meta_agent.chat_with_agent = tracked_chat
+runpy.run_path("run_meta_agent.py", run_name="__main__")
+"""
+
+
 def _meta_agent_command(
     agent: InstantiatedAgent,
     *,
@@ -387,7 +427,8 @@ def _meta_agent_command(
 ) -> list[str]:
     model = agent.runtime.meta_model
     command = [
-        "timeout", "21600", "python", "run_meta_agent.py",
+        "timeout", "21600", "python", "-c", _USAGE_RECORDING_BOOTSTRAP,
+        posixpath.join(output_path, "meta_agent_usage.json"),
         "--model", model["name"],
     ]
     if model.get("reasoning_effort"):
@@ -414,6 +455,9 @@ def _collect_refinement(
     container_output: str,
     metadata: dict[str, Any],
 ) -> RefineOutput:
+    usage = _read_refinement_usage(agent, container_output)
+    if usage is not None:
+        metadata["refinement_usage"] = usage
     local_output = output_dir / "agent_output"
     copy_from_container(
         agent.container,
@@ -451,6 +495,40 @@ def _collect_refinement(
         result=None,
         metadata=metadata,
     )
+
+
+def _read_refinement_usage(
+    agent: InstantiatedAgent, container_output: str,
+) -> dict[str, Any] | None:
+    path = posixpath.join(container_output, "meta_agent_usage.json")
+    result = agent.container.exec_run(["cat", path], workdir="/")
+    if result.exit_code != 0:
+        return None
+    try:
+        raw = json.loads(result.output.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    fields = {
+        "prompt_num_tokens": "input_tokens",
+        "response_num_tokens": "output_tokens",
+        "reasoning_num_tokens": "reasoning_tokens",
+        "total_num_tokens": "total_tokens",
+        "cached_prompt_num_tokens": "cached_input_tokens",
+    }
+    if not isinstance(raw, dict):
+        return None
+    valid_usage = all(
+        type(raw.get(key)) is int and raw[key] >= 0 for key in fields.values()
+    ) and raw.get("total_tokens", 0) > 0
+    exhausted = raw.get("tool_budget_exhausted") is True
+    if not valid_usage and not exhausted:
+        return None
+    usage = {name: raw[key] for name, key in fields.items()} if valid_usage else {}
+    if exhausted:
+        usage["tool_budget_exhausted"] = True
+        usage["tool_calls_executed"] = raw.get("tool_calls_executed")
+        usage["tool_call_limit"] = raw.get("tool_call_limit")
+    return usage
 
 
 def _validate_patch_scope(patch_path: Path) -> None:

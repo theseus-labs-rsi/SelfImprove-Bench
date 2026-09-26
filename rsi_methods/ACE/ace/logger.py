@@ -216,7 +216,7 @@ def log_problematic_request(call_id, prompt, model, api_params, exception, log_d
         "api_params": api_params,
         "prompt": prompt,
         "prompt_length": len(prompt),
-        "using_json_mode": api_params.get("response_format", {}).get("type") == "json_object",
+        "using_json_mode": api_params.get("output_format") == "json_object",
         "api_key_used": current_api_key,
         "exception_info": {
             "type": type(exception).__name__,
