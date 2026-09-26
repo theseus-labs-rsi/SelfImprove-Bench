@@ -1,0 +1,32 @@
+{
+  "_note": "P-Additive-Deep: three attributes independently contribute to the hidden number of ritual performances.",
+  "input_category": "entity.npc",
+  "input_meta": {
+    "name": ["name_pools.first", "name_pools.last"],
+    "repeat_name": ["name_pools.repeat_first", "name_pools.repeat_last"],
+    "properties": {"location": "locations"}
+  },
+  "inputs": [
+    {"name": "class", "n_values": 3, "pool": "attributes.class", "nonce_pool": "attribute_slots.0", "nonce_label": "attribute_labels.0"},
+    {"name": "role", "n_values": 3, "pool": "attributes.role", "nonce_pool": "attribute_slots.1", "nonce_label": "attribute_labels.1"},
+    {"name": "rank", "n_values": 3, "pool": "attributes.class", "nonce_pool": "attribute_slots.2", "nonce_label": "attribute_labels.2"}
+  ],
+  "output": {
+    "type": "process",
+    "outputs": [{"name": "count", "n_values": 7}],
+    "functions": [
+      {"name": "f_class", "input": "class", "output": "count", "map": [1, 2, 3]},
+      {"name": "f_role", "input": "role", "output": "count", "map": [0, 1, 2]},
+      {"name": "f_rank", "input": "rank", "output": "count", "map": [0, 1, 2]}
+    ],
+    "composition": "additive",
+    "extra_pools": {"activity.ritual": {"name_keys": ["rituals"]}},
+    "extension": {
+      "count": {"from_dim": "count"},
+      "action": "perform",
+      "pool": "activity.ritual",
+      "position": {"before": "buy_0"},
+      "is_hidden": true
+    }
+  }
+}

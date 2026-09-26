@@ -17,10 +17,12 @@ MANIFEST_PATH = Path(__file__).with_name("difficulty_manifest.json")
 @dataclass(frozen=True, slots=True)
 class HeroJourneyDifficulty:
     task_type: str
+    logic_version: str | None = None
     seeds_per_task: int = 1
     episode_indices: tuple[int, ...] = (0,)
-    num_tries: int = 2
+    action_budget_multiplier: int = 2
     max_runs: int | None = None
+    interaction_protocol: str = "action_sequence_v1"
     truncate_window: int | None = None
     episode_mode: str = "standard"
     no_reasoning: bool = False
@@ -29,10 +31,14 @@ class HeroJourneyDifficulty:
     def __post_init__(self) -> None:
         if not self.task_type or not self.episode_indices:
             raise ValueError("task_type and episode_indices must not be empty")
-        if self.seeds_per_task <= 0 or self.num_tries <= 0 or self.initial_currency <= 0:
-            raise ValueError("seeds_per_task, num_tries, and initial_currency must be positive")
+        if self.seeds_per_task <= 0 or self.action_budget_multiplier <= 0 or self.initial_currency <= 0:
+            raise ValueError("seeds_per_task, action_budget_multiplier, and initial_currency must be positive")
         if self.max_runs is not None and self.max_runs <= 0:
             raise ValueError("max_runs must be positive when provided")
+        if self.interaction_protocol not in {"stepwise_v1", "action_sequence_v1"}:
+            raise ValueError("unknown Hero's Journey interaction protocol")
+        if self.interaction_protocol == "action_sequence_v1" and self.episode_mode != "standard":
+            raise ValueError("action_sequence_v1 requires standard episode_mode")
         if self.truncate_window is not None and self.truncate_window <= 0:
             raise ValueError("truncate_window must be positive when provided")
 
@@ -40,10 +46,14 @@ class HeroJourneyDifficulty:
     def from_mapping(cls, value: Mapping[str, Any]) -> "HeroJourneyDifficulty":
         return cls(
             task_type=str(value["task_type"]),
+            logic_version=(
+                str(value["logic_version"]) if value.get("logic_version") is not None else None
+            ),
             seeds_per_task=int(value.get("seeds_per_task", 1)),
             episode_indices=tuple(int(index) for index in value.get("episode_indices", (0,))),
-            num_tries=int(value.get("num_tries", 2)),
+            action_budget_multiplier=int(value.get("action_budget_multiplier", value.get("num_tries", 2))),
             max_runs=cls._optional_int(value.get("max_runs")),
+            interaction_protocol=str(value.get("interaction_protocol", "action_sequence_v1")),
             truncate_window=cls._optional_int(value.get("truncate_window")),
             episode_mode=str(value.get("episode_mode", "standard")),
             no_reasoning=bool(value.get("no_reasoning", False)),
@@ -94,10 +104,10 @@ def derive_task_seeds(base_seed: int, count: int) -> tuple[int, ...]:
 
 def build_task_descriptor(difficulty: int, *, seed: int, task_id: str) -> dict[str, Any]:
     settings = get_difficulty(difficulty)
-    if len(settings.episode_indices) != 1:
-        raise ValueError("Each Hero's Journey runner task must select one episode")
+    payload = f"heros_journey\x1f{seed}\x1fepisode".encode("utf-8")
+    selection = int.from_bytes(hashlib.sha256(payload).digest()[:8], "big")
     descriptor = asdict(settings)
-    descriptor["episode_idx"] = settings.episode_indices[0]
+    descriptor["episode_idx"] = settings.episode_indices[selection % len(settings.episode_indices)]
     descriptor["seeds"] = list(derive_task_seeds(seed, settings.seeds_per_task))
     descriptor.pop("episode_indices")
     return {"task_id": task_id, "difficulty": difficulty, "seed": seed, **descriptor}
