@@ -1,0 +1,20 @@
+{
+  "seed": 20260923,
+  "schedule": [],
+  "holdout": [
+    {"game": "heros_journey", "difficulty": 3, "count": 20},
+    {"game": "heros_journey", "difficulty": 4, "count": 20}
+  ],
+  "holdout_manifest": "../outputs/formal/r4/ace_hero/task_manifest.json",
+  "holdout_seed": 20261023,
+  "holdout_tasks_per_difficulty": 20,
+  "agent": {
+    "provider": "baseline",
+    "backend": "codex",
+    "timeout": 900,
+    "max_attempts": 1,
+    "show_output": false
+  },
+  "output_dir": "../outputs/formal/r4/baseline_ace_hero",
+  "continue_on_error": false
+}

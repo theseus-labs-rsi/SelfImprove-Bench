@@ -3,27 +3,22 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from pathlib import Path
 from typing import Any
 
 from agents.mm_agents.base.base_client import BaseClient
 
-
-TRANSPORT_NOTE = """
-# AHE Action Transport
-Return exactly one JSON object for every step:
-{"tool_name":"<registered action id>","arguments":{"reasoning":"<short rationale>"}}
-Do not use markdown fences or output additional text.
-""".strip()
+from benches.gameworld.actor_input import TRANSPORT_NOTE, USER_PROMPT, build_actor_input
+from benches.gameworld.network_retry import call_with_connection_retry
 
 
 class AHEGameClient(BaseClient):
     """Preserve the GameWorld prompt/action contract around ``AHEAgent.act``.
 
-    The CSD AHE implementation currently rejects image input.  We still pass
-    the screenshot explicitly so the incompatibility is surfaced as a clear
-    runtime error rather than silently evaluating a text-only variant.
+    Supply the shared per-step actor input (prompt plus current screenshot) to
+    the AHE NexAU Responses adapter.
     """
 
     def __init__(self, config: Any, ahe_agent: Any, **shared_tools: Any) -> None:
@@ -62,36 +57,38 @@ class AHEGameClient(BaseClient):
         return None
 
     def get_action(self, screenshot_path: Path) -> dict[str, object] | None:
-        system_prompt = self.config.system_prompt or ""
-        text_parts = [system_prompt, TRANSPORT_NOTE]
-        memory_entries = self._collect_memory_context()
-        if memory_entries:
-            text_parts.append("# Recent Action History")
-        for entry in memory_entries:
-            if entry.type == "text":
-                value = self._format_memory_text_entry(entry, as_action_history=True)
-                if value:
-                    text_parts.append(value)
-        text_parts.extend(("# Current Observation", "Game screen:"))
-        prompt = "\n\n".join(part for part in text_parts if part)
-
-        # Keep image handling at the framework boundary. CSD AHE raises a
-        # deliberate NotImplementedError here until its NexAU image mapping is
-        # verified; swallowing it would invalidate the experiment.
-        response = self._ahe_agent.act(prompt, image_paths=[screenshot_path])
+        # Identical per-step environment input for every method (see actor_input).
+        system_prompt, memory_entries, prompt, image_paths = build_actor_input(
+            self, screenshot_path
+        )
+        response = call_with_connection_retry(
+            lambda: self._ahe_agent.act(prompt, image_paths=image_paths),
+            max_attempts=int(os.environ.get("GAMEWORLD_CONNECTION_MAX_ATTEMPTS", "4")),
+            audit_path=Path(os.environ["GAMEWORLD_ACTION_AUDIT_PATH"])
+                if os.environ.get("GAMEWORLD_ACTION_AUDIT_PATH")
+                else screenshot_path.parent.parent / "token_attempts.jsonl",
+            invalidate_usage_on_retry=True,
+        )
         action = self._parse_action(response.text)
         error = None if action is not None else "AHE returned no valid action JSON"
+        usage = None
+        if response.usage is not None:
+            usage = {
+                field: getattr(response.usage, field)
+                for field in ("input_tokens", "output_tokens", "total_tokens",
+                              "cached_input_tokens", "reasoning_tokens")
+            }
         return self._complete_action(
             screenshot_path=screenshot_path,
             raw_message_sent=prompt,
             raw_response=response.text,
             system_prompt=system_prompt,
-            user_prompt="Game screen:",
+            user_prompt=USER_PROMPT,
             memory_entries=memory_entries,
             tool_call=action,
             reasoning=response.reasoning,
             error=error,
-            usage=None,
+            usage=usage,
         )
 
 

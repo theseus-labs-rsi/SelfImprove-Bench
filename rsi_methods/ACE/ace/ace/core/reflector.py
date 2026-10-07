@@ -43,6 +43,7 @@ class Reflector:
         call_id: str = "reflect",
         log_dir: Optional[str] = None,
         reasoning_effort: Optional[str] = None,
+        image_paths=None,
     ) -> Tuple[str, List[Dict[str, str]], Dict[str, Any]]:
         """
         Analyze the generator's output and tag bullets.
@@ -92,6 +93,7 @@ class Reflector:
             log_dir=log_dir,
             use_json_mode=use_json_mode,
             reasoning_effort=reasoning_effort,
+            **({"image_paths": image_paths} if image_paths else {}),
         )
         
         # Extract bullet tags

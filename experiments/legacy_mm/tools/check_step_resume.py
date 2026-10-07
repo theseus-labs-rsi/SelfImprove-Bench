@@ -38,6 +38,7 @@ def main():
     parser.add_argument('--game-task', required=True)
     parser.add_argument('--root', required=True, type=Path)
     parser.add_argument('--gameworld', required=True, type=Path)
+    parser.add_argument('--task-assets-root', type=Path)
     parser.add_argument('--max-steps', type=int, default=6)
     parser.add_argument('--fault-after', type=int, default=0)
     parser.add_argument('--fault-after-receipt', type=int, default=0)
@@ -92,6 +93,9 @@ def main():
             'game_task_id': args.game_task, 'framework': args.framework,
             'gameworld_root': str(args.gameworld.resolve()), 'max_steps': args.max_steps,
             'model_spec': 'azure-gpt-5.6-sol', 'reasoning_effort': 'low'}
+    if args.task_assets_root is not None:
+        task['task_assets_root'] = str(args.task_assets_root.resolve())
+    task_options = {'task_assets_root': task['task_assets_root']} if task.get('task_assets_root') else {}
     trans = AstrayTransaction(run_root=args.root, task=task, gameworld_root=args.gameworld.resolve(),
                               framework=args.framework)
     if args.fault_after_receipt:
@@ -124,7 +128,8 @@ def main():
             try:
                 asyncio.run(gameworld_main(config_preset=f'{args.game}+{args.game_task}+azure-gpt-5.6-sol',
                     headless=True, port=args.port, log_root=str(args.root), rerun_policy='never',
-                    max_steps_override=args.max_steps, client_factory=factory))
+                    max_steps_override=args.max_steps, client_factory=factory,
+                    **task_options))
             except Exception as exc:
                 text = str(exc.__cause__ or exc)
                 if args.fault_after and 'OFFLINE_INJECTED_AFTER_DURABLE_COMMIT' in text:

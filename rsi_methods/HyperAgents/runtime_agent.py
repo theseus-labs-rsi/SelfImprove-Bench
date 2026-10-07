@@ -1,7 +1,9 @@
 import base64
 import binascii
+import io
 import json
 import os
+import tarfile
 import uuid
 from collections.abc import Sequence
 
@@ -18,6 +20,20 @@ import sys
 
 agent_path, encoded_model_config, history_path, encoded_inputs = sys.argv[1:]
 inputs = json.loads(base64.b64decode(encoded_inputs).decode("utf-8"))
+
+# Launcher transport bounds (execution option): default the SDK client's
+# timeout/retries without touching the candidate repository's backend copy.
+import os
+if os.environ.get("RSI_OPENAI_REQUEST_TIMEOUT") or os.environ.get("RSI_OPENAI_MAX_RETRIES"):
+    import openai
+    _original_init = openai.OpenAI.__init__
+    def _bounded_init(self, *args, **kwargs):
+        if os.environ.get("RSI_OPENAI_REQUEST_TIMEOUT"):
+            kwargs.setdefault("timeout", float(os.environ["RSI_OPENAI_REQUEST_TIMEOUT"]))
+        if os.environ.get("RSI_OPENAI_MAX_RETRIES"):
+            kwargs.setdefault("max_retries", int(os.environ["RSI_OPENAI_MAX_RETRIES"]))
+        _original_init(self, *args, **kwargs)
+    openai.OpenAI.__init__ = _bounded_init
 model_config = json.loads(base64.b64decode(encoded_model_config).decode("utf-8"))
 
 spec = importlib.util.spec_from_file_location("runtime_task_agent", agent_path)
@@ -48,6 +64,8 @@ print("__RUNTIME_AGENT_RESULT__" + base64.b64encode(payload).decode("ascii"))
 
 class RuntimeAgent:
     """Runtime proxy for a TaskAgent whose code lives inside a container."""
+
+    supports_parallel_calls = True
 
     def __init__(
         self,
@@ -107,10 +125,14 @@ class RuntimeAgent:
             history_path,
             encoded_inputs,
         ]
+        environment = dict(self.llm_environment)
+        for name in ("RSI_OPENAI_REQUEST_TIMEOUT", "RSI_OPENAI_MAX_RETRIES"):
+            if os.environ.get(name):
+                environment[name] = os.environ[name]
         exec_result = self.container.exec_run(
             cmd=command,
             workdir=self.repo_path,
-            environment=self.llm_environment,
+            environment=environment,
         )
         output = exec_result.output.decode("utf-8", errors="replace")
         if exec_result.exit_code != 0:
@@ -153,19 +175,42 @@ class RuntimeAgent:
                 "TaskAgent returned a malformed structured result frame."
             ) from exc
 
+    def _stage_images(
+        self, image_paths: Sequence[str | os.PathLike[str]],
+    ) -> list[str]:
+        """Copy screenshots into the candidate container via Docker archives."""
+        staged: list[str] = []
+        destination = "/tmp/gameworld_images"
+        self.container.exec_run(["mkdir", "-p", destination])
+        for source in image_paths:
+            path = os.path.abspath(os.fspath(source))
+            if not os.path.isfile(path):
+                raise FileNotFoundError(f"GameWorld screenshot not found: {path}")
+            name = f"{uuid.uuid4().hex}_{os.path.basename(path)}"
+            archive = io.BytesIO()
+            with tarfile.open(fileobj=archive, mode="w") as tar:
+                info = tar.gettarinfo(path, arcname=name)
+                info.uid = 0
+                info.gid = 0
+                with open(path, "rb") as source_file:
+                    tar.addfile(info, source_file)
+            archive.seek(0)
+            if not self.container.put_archive(destination, archive):
+                raise RuntimeError(f"Failed to stage screenshot into container: {path}")
+            staged.append(f"{destination}/{name}")
+        return staged
+
     def act(
         self,
         prompt: str,
         image_paths: Sequence[str | os.PathLike[str]] | None = None,
     ) -> BackendResponse:
         """Run one stateless benchmark turn through the candidate TaskAgent."""
-        if image_paths:
-            raise NotImplementedError(
-                "HyperAgents RuntimeAgent does not yet stage images into its container."
-            )
+        staged_images = self._stage_images(image_paths) if image_paths else []
         result = self.run(
             {
                 "instruction": prompt,
+                "image_paths": staged_images,
                 "max_tokens": self.max_output_tokens,
             }
         )

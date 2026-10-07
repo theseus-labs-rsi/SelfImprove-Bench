@@ -122,10 +122,9 @@ class FeedbackResult:
 
 FeedbackResults = list[FeedbackResult]
 
-
 @dataclass(frozen=True, slots=True)
 class EvaluationOutcome:
-    """Canonical result returned by every benchmark adapter."""
+    """Common benchmark result, including native multimodal feedback."""
 
     record: dict[str, Any]
     feedback: FeedbackResult | None = None

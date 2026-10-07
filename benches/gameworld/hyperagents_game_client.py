@@ -3,20 +3,15 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from pathlib import Path
 from typing import Any
 
 from agents.mm_agents.base.base_client import BaseClient, BaseClientConfig
 
-
-TRANSPORT_NOTE = """
-# HyperAgents Action Transport
-The registered actions above are available through a JSON transport rather than
-native function calls. Return exactly one JSON object in this form:
-{"tool_name":"<registered action id>","arguments":{"reasoning":"<short rationale>"}}
-Do not use markdown fences or output any additional text.
-"""
+from benches.gameworld.actor_input import TRANSPORT_NOTE, USER_PROMPT, build_actor_input
+from benches.gameworld.network_retry import call_with_connection_retry
 
 
 class HyperAgentsGameClient(BaseClient):
@@ -60,26 +55,16 @@ class HyperAgentsGameClient(BaseClient):
         return None
 
     def get_action(self, screenshot_path: Path) -> dict[str, object] | None:
-        system_prompt = self.config.system_prompt or ""
-        user_prompt = "Game screen:"
-        memory_entries = self._collect_memory_context()
-        text_parts = [system_prompt, TRANSPORT_NOTE.strip()]
-        image_paths: list[Path] = []
-        if memory_entries:
-            text_parts.append("# Recent Action History")
-        for entry in memory_entries:
-            if entry.type == "text":
-                value = self._format_memory_text_entry(entry, as_action_history=True)
-                if value:
-                    text_parts.append(value)
-            elif entry.type == "image":
-                image_file = entry.image_file()
-                if image_file is not None and image_file.exists():
-                    image_paths.append(image_file)
-        text_parts.extend(("# Current Observation", user_prompt))
-        image_paths.append(screenshot_path)
-        prompt = "\n\n".join(part for part in text_parts if part)
-        response = self._runtime_agent.act(prompt, image_paths=image_paths)
+        # Identical per-step environment input for every method (see actor_input).
+        system_prompt, memory_entries, prompt, image_paths = build_actor_input(
+            self, screenshot_path
+        )
+        response = call_with_connection_retry(
+            lambda: self._runtime_agent.act(prompt, image_paths=image_paths),
+            max_attempts=int(os.environ.get('GAMEWORLD_CONNECTION_MAX_ATTEMPTS', '4')),
+            audit_path=Path(os.environ["GAMEWORLD_ACTION_AUDIT_PATH"]) if os.environ.get("GAMEWORLD_ACTION_AUDIT_PATH") else screenshot_path.parent.parent / "token_attempts.jsonl",
+            invalidate_usage_on_retry=True,
+        )
         action = self._parse_action(response.text)
         error = None if action is not None else "HyperAgents returned no valid action JSON"
         usage = None
@@ -99,7 +84,7 @@ class HyperAgentsGameClient(BaseClient):
             raw_message_sent=prompt,
             raw_response=response.text,
             system_prompt=system_prompt,
-            user_prompt=user_prompt,
+            user_prompt=USER_PROMPT,
             memory_entries=memory_entries,
             tool_call=action,
             reasoning=response.reasoning,

@@ -12,7 +12,7 @@ from benches.heros_journey.task_factory import load_difficulty_manifest as load_
 from benches.sweepmine.task_factory import load_difficulty_manifest
 
 
-SUPPORTED_GAMES = ("farm", "combat", "sweepmine", "sweepmine_reorganized", "heros_journey", "gameworld")
+SUPPORTED_GAMES = ("farm", "combat", "sweepmine", "heros_journey", "gameworld")
 SUPPORTED_PROVIDERS = (
     "codex",
     "claude",
@@ -21,6 +21,7 @@ SUPPORTED_PROVIDERS = (
     "ace",
     "baseline",
     "hyperagents",
+    "hyperdsh",
     "self_harness",
     "ahe",
 )
@@ -60,10 +61,10 @@ class AgentConfig:
     provider: str = "codex"
     backend: str = "codex"
     model: str | None = None
-    reasoning_effort: str | None = None
     timeout: float = 300.0
     max_attempts: int = 3
     show_output: bool = False
+    reasoning_effort: str | None = None
 
 
 @dataclass(frozen=True)
@@ -79,9 +80,15 @@ class BenchmarkConfig:
     holdout_seed: int = 100
     holdout_tasks_per_difficulty: int = HOLDOUT_TASKS_PER_DIFFICULTY
     game_options: dict[str, Any] = field(default_factory=dict)
+    random: bool = False
+    repeat: bool = False
+    holdout_manifest: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        value = asdict(self)
+        if self.agent.reasoning_effort is None:
+            value["agent"].pop("reasoning_effort")
+        return value
 
 
 def _positive(value: Any, label: str, *, maximum: int | None = None) -> int:
@@ -89,6 +96,12 @@ def _positive(value: Any, label: str, *, maximum: int | None = None) -> int:
         raise ValueError(f"{label} must be a positive integer")
     if maximum is not None and value > maximum:
         raise ValueError(f"{label} must not exceed {maximum}")
+    return value
+
+
+def _boolean(value: Any, label: str) -> bool:
+    if not isinstance(value, bool):
+        raise ValueError(f"{label} must be a boolean")
     return value
 
 
@@ -131,8 +144,8 @@ def config_from_mapping(value: dict[str, Any]) -> BenchmarkConfig:
         "holdout_tasks_per_difficulty",
     )
     schedule_raw = value.get("schedule")
-    if not isinstance(schedule_raw, list) or not schedule_raw:
-        raise ValueError("schedule must be a non-empty array")
+    if not isinstance(schedule_raw, list):
+        raise ValueError("schedule must be an array")
     holdout_raw = value.get("holdout")
     if not isinstance(holdout_raw, list) or not holdout_raw:
         raise ValueError("holdout must be a non-empty array")
@@ -154,12 +167,24 @@ def config_from_mapping(value: dict[str, Any]) -> BenchmarkConfig:
             "schedule enables replay, so replay.every and replay.lag must be positive"
         )
 
+    # Reject legacy protocol settings rather than silently changing their meaning.
+    if "online_evolution" in value:
+        raise ValueError("online_evolution is no longer supported; remove it from the configuration")
+
     agent_raw = value.get("agent", {})
     if not isinstance(agent_raw, dict):
         raise ValueError("agent must be an object")
     provider = str(agent_raw.get("provider", "codex")).strip().lower()
     if provider not in SUPPORTED_PROVIDERS:
         raise ValueError(f"agent.provider must be one of: {', '.join(SUPPORTED_PROVIDERS)}")
+    if not schedule_raw and provider != "baseline":
+        raise ValueError("schedule must be non-empty unless agent.provider is baseline")
+    holdout_manifest = value.get("holdout_manifest")
+    if holdout_manifest is not None:
+        if not isinstance(holdout_manifest, str) or not holdout_manifest.strip():
+            raise ValueError("holdout_manifest must be a non-empty path")
+        if provider != "baseline" or schedule_raw:
+            raise ValueError("holdout_manifest requires baseline with an empty schedule")
     timeout = agent_raw.get("timeout", 300)
     if not isinstance(timeout, (int, float)) or isinstance(timeout, bool) or timeout <= 0:
         raise ValueError("agent.timeout must be positive")
@@ -171,14 +196,18 @@ def config_from_mapping(value: dict[str, Any]) -> BenchmarkConfig:
     game_options_raw = value.get("game_options", {})
     if not isinstance(game_options_raw, dict):
         raise ValueError("game_options must be an object")
+    if set(game_options_raw) - {"gameworld"}:
+        raise ValueError("Only GameWorld options are configurable; other games use their manifests")
     gameworld_options = game_options_raw.get("gameworld", {})
-    if gameworld_options and not isinstance(gameworld_options, dict):
+    if not isinstance(gameworld_options, dict):
         raise ValueError("game_options.gameworld must be an object")
     gameworld_options = dict(gameworld_options)
     sweepmine = load_difficulty_manifest()
     hero = load_hero_difficulties()
     requested_games = {item.game for item in (*schedule, *holdout)}
-    interactive_providers = {"ace", "baseline", "hyperagents", "self_harness", "ahe"}
+    interactive_providers = {
+        "ace", "baseline", "hyperagents", "hyperdsh", "self_harness", "ahe"
+    }
     if "gameworld" in requested_games:
         gameworld_provider = str(
             gameworld_options.get("framework", provider)
@@ -223,15 +252,11 @@ def config_from_mapping(value: dict[str, Any]) -> BenchmarkConfig:
             raise ValueError(f"GameWorld train/holdout task overlap: {sorted(overlap)}")
     if "sweepmine" in requested_games and provider not in interactive_providers:
         raise ValueError(
-            "Sweepmine requires an RSI agent provider: ace, baseline, hyperagents, self_harness, or ahe"
-        )
-    if "sweepmine_reorganized" in requested_games and provider not in interactive_providers:
-        raise ValueError(
-            "Sweepmine induction requires an RSI agent provider: ace, baseline, hyperagents, self_harness, or ahe"
+            "Sweepmine requires an RSI agent provider: ace, baseline, hyperagents, hyperdsh, self_harness, or ahe"
         )
     if "heros_journey" in requested_games and provider not in interactive_providers:
         raise ValueError(
-            "Hero's Journey requires an RSI agent provider: ace, baseline, hyperagents, self_harness, or ahe"
+            "Hero's Journey requires an RSI agent provider: ace, baseline, hyperagents, hyperdsh, self_harness, or ahe"
         )
     for item in (*schedule, *holdout):
         if item.game == "sweepmine" and item.difficulty not in sweepmine:
@@ -245,14 +270,6 @@ def config_from_mapping(value: dict[str, Any]) -> BenchmarkConfig:
                 f"unknown Hero's Journey difficulty {item.difficulty}; available: {available}"
             )
 
-    resolved_game_options = {
-        "sweepmine": {"difficulties": sweepmine},
-        "sweepmine_reorganized": {"difficulties": (1, 2, 3, 4, 5)},
-        "heros_journey": {"difficulties": hero},
-    }
-    if gameworld_options:
-        resolved_game_options["gameworld"] = dict(gameworld_options)
-
     return BenchmarkConfig(
         seed=seed,
         schedule=schedule,
@@ -262,11 +279,7 @@ def config_from_mapping(value: dict[str, Any]) -> BenchmarkConfig:
             provider=provider,
             backend=backend,
             model=agent_raw.get("model"),
-            reasoning_effort=(
-                str(agent_raw["reasoning_effort"]).strip()
-                if agent_raw.get("reasoning_effort") is not None
-                else None
-            ),
+            reasoning_effort=agent_raw.get("reasoning_effort"),
             timeout=float(timeout),
             max_attempts=max_attempts,
             show_output=bool(agent_raw.get("show_output", False)),
@@ -276,7 +289,14 @@ def config_from_mapping(value: dict[str, Any]) -> BenchmarkConfig:
         continue_on_error=bool(value.get("continue_on_error", True)),
         holdout_seed=int(value.get("holdout_seed", 100)),
         holdout_tasks_per_difficulty=pool_size,
-        game_options=resolved_game_options,
+        game_options={
+            "sweepmine": {"difficulties": sweepmine},
+            "heros_journey": {"difficulties": hero},
+            **({"gameworld": gameworld_options} if gameworld_options else {}),
+        },
+        random=_boolean(value.get("random", False), "random"),
+        repeat=_boolean(value.get("repeat", False), "repeat"),
+        holdout_manifest=holdout_manifest,
     )
 
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
+from .asset_paths import ASSETS_ROOT
 
 GAME_NAME = "gameworld"
 
@@ -26,6 +27,9 @@ def generate(
 
     raw_options = dict(options or {})
     settings = dict(raw_options.get("gameworld", raw_options))
+    task_roots = settings.get("task_assets_roots", {})
+    if not isinstance(task_roots, Mapping):
+        raise ValueError("gameworld.task_assets_roots must be an object")
     pool = settings.get(phase)
     if not isinstance(pool, list) or not pool:
         raise ValueError(f"gameworld.{phase} must be a non-empty task list")
@@ -40,7 +44,7 @@ def generate(
     game_task_id = str(selected.get("task") or "").strip()
     if not game_id or not game_task_id:
         raise ValueError(f"gameworld.{phase}[{index}] requires game and task")
-    return {
+    result = {
         "task_id": task_id,
         "difficulty": int(difficulty),
         "seed": int(seed),
@@ -49,8 +53,20 @@ def generate(
         "framework": str(settings.get("framework") or "").strip().lower() or None,
         "model_spec": str(settings.get("model_spec") or "").strip() or None,
         "max_steps": int(settings.get("max_steps", 100)),
-        "gameworld_root": str(settings.get("gameworld_root") or "").strip() or None,
+        # Shared game code and phase-specific YAML assets are selected separately.
+        "gameworld_root": str(selected.get("gameworld_root") or settings.get("gameworld_root") or "").strip() or None,
+        "task_assets_root": str(
+            selected.get("task_assets_root") or task_roots.get(phase) or settings.get("task_assets_root")
+            or (ASSETS_ROOT / "tasks" / phase
+                if not (selected.get("gameworld_root") or settings.get("gameworld_root")) else "")
+        ).strip() or None,
+        "reasoning_effort": str(settings.get("reasoning_effort") or "").strip() or None,
+        "resumable_steps": settings.get("resumable_steps", False) is True,
     }
+    # Preserve the opt-in integrity audit interval in the task/source fingerprint.
+    if "step_integrity_audit_interval" in settings:
+        result["step_integrity_audit_interval"] = int(settings["step_integrity_audit_interval"])
+    return result
 
 
 __all__ = ["GAME_NAME", "generate"]

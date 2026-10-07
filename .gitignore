@@ -1,0 +1,41 @@
+# --- runtime / experiment outputs ---
+# 忽略所有层级的运行产物目录（hyperagents run 输出、batch 产物等）
+outputs/
+outputs_*/
+**/outputs/
+**/outputs_*/
+
+# --- python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# --- env / secrets ---
+.env
+.env.*
+*.pem
+*.key
+
+# --- editors / OS ---
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# --- logs / temp ---
+*.log
+*.tmp
+*.bak
+
+# --- generated Hero's Journey task drafts ---
+benches/heros_journey/HerosJourney/herosjourney/core/rules/override_*.json
+benches/heros_journey/HerosJourney/herosjourney/core/rules/generated_override.json
+benches/heros_journey/HerosJourney/herosjourney/core/tasks/override_*_task.json
+benches/heros_journey/HerosJourney/herosjourney/core/tasks/generated_override.py
+benches/heros_journey/HerosJourney/herosjourney/core/tasks/generated_override_task.json

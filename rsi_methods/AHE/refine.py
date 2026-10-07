@@ -17,14 +17,15 @@ import subprocess
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
 from uuid import uuid4
 
 from benchmark.contracts import to_jsonable
+from benchmark.token_ledger import nexau_usage_snapshot
 
 from .agent import AHEAgent, configure_reasoning_effort
 from .build import build
-from .init import AHEState
+from .init import AHEState, apply_agent_limits
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,6 +50,7 @@ class CandidateBatch:
     parent_workspace: Path
     parent_score: float
     candidates: tuple[CandidateSpec, ...]
+    refinement_usage: Mapping[str, Any] = field(default_factory=dict)
 
 
 def select_parent(state: AHEState, agent: AHEAgent) -> tuple[Path, dict[str, Any] | None]:
@@ -85,6 +87,25 @@ def _read_feedback(feedback_results: Sequence[Any]) -> tuple[dict[str, Any], flo
     return payload, float(score)
 
 
+def _trace_from_feedback(feedback: dict[str, Any], parent_agent: AHEAgent) -> Path:
+    """Use the evaluated task's trace, including after its Agent was closed."""
+    for step in reversed(feedback.get("trajectory") or []):
+        call = step.get("agent_call") if isinstance(step, dict) else None
+        metadata = call.get("metadata") if isinstance(call, dict) else None
+        trace = metadata.get("ahe_trace_path") if isinstance(metadata, dict) else None
+        if isinstance(trace, str) and trace:
+            path = Path(trace)
+            if not path.is_file():
+                raise FileNotFoundError(f"AHE feedback trace is missing: {path}")
+            return path
+    if parent_agent.trace_paths:
+        path = parent_agent.trace_paths[-1]
+        if path.is_file():
+            return path
+        raise FileNotFoundError(f"AHE parent Agent trace is missing: {path}")
+    raise RuntimeError("AHE refine needs a trace from the evaluated Agent")
+
+
 def _safe_task_name(task_id: str) -> str:
     return re.sub(r"[^A-Za-z0-9_.-]+", "_", task_id).strip("._")[:80] or "task"
 
@@ -95,6 +116,7 @@ def _prepare_evidence(
     score: float,
     trace_path: Path,
     iteration_dir: Path,
+    trace_paths: Sequence[Path] = (),
 ) -> tuple[Path, str]:
     """Materialize the parent snapshot and trace where AHE's prompt expects them.
 
@@ -110,13 +132,84 @@ def _prepare_evidence(
     (trial_dir / "agent").mkdir(parents=True)
     (trial_dir / "verifier").mkdir()
     shutil.copy2(trace_path, trial_dir / "agent" / "nexau_in_memory_tracer.cleaned.json")
+    # Relocatable evidence, independent of the tracer's image serialization.
+    from benchmark.visual_evidence import bundle_feedback
+    bundle_feedback(feedback, trial_dir)
+    _write_task_trace(trial_dir, trace_path)
+    bundled_traces = []
+    for index, original in enumerate(trace_paths or (trace_path,)):
+        target = trial_dir / "agent" / "steps" / f"{index:04d}"
+        target.mkdir(parents=True)
+        shutil.copy2(original, target / original.name)
+        request_path = original.parent / "request.json"
+        if request_path.is_file():
+            request = json.loads(request_path.read_text())
+            copied_images = []
+            from benchmark.visual_evidence import image_file
+            for image_index, value in enumerate(request.get("image_paths") or ()):
+                source = image_file(value)
+                image_target = target / f"input_{image_index}{source.suffix.lower()}"
+                shutil.copy2(source, image_target)
+                copied_images.append(image_target.relative_to(trial_dir).as_posix())
+            request["image_paths"] = copied_images
+            request["image_path_base"] = "trial_dir (directory containing visual_manifest.json)"
+            (target / "request.json").write_text(json.dumps(request, ensure_ascii=False, indent=2))
+        bundled_traces.append((target / original.name).relative_to(trial_dir).as_posix())
+    (trial_dir / "agent" / "all_step_traces.json").write_text(
+        json.dumps({"path_base": "trial_dir", "paths": bundled_traces}, indent=2), encoding="utf-8",
+    )
     (trial_dir / "verifier" / "reward.txt").write_text(str(score), encoding="utf-8")
-    (trial_dir / "feedback.json").write_text(json.dumps(feedback, ensure_ascii=False, indent=2), encoding="utf-8")
     (trial_dir / "result.json").write_text(
         json.dumps({"task_id": feedback["task_id"], "score": score}, ensure_ascii=False),
         encoding="utf-8",
     )
     return trial_dir, name
+
+
+def _write_task_trace(trial_dir: Path, trace_path: Path) -> None:
+    """Rebuild the whole-task conversation, as the text version's trace shows it.
+
+    The game calls ``agent.run`` once per step, and the NexAU converter keeps
+    only the first run's input with blank assistant text.  The benchmark
+    trajectory has every step's prompt, pre-action screenshot and raw reply,
+    so the cleaned trace is rewritten from it in the same schema.
+    """
+
+    trajectory = json.loads((trial_dir / "feedback.json").read_text()).get("trajectory") or []
+    if not trajectory:
+        return
+    target = trial_dir / "agent" / "nexau_in_memory_tracer.cleaned.json"
+    try:
+        trace = json.loads(target.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        trace = {}
+    if not isinstance(trace, dict):
+        trace = {}
+    system = [m for m in trace.get("messages") or () if isinstance(m, dict) and m.get("role") == "system"][:1]
+    messages = list(system)
+    for index, step in enumerate(trajectory):
+        step_index = step.get("step_index", index)
+        screenshots = "".join(
+            f"\n[screenshot: {image['path']} (relative to trial_dir) - observation before step {step_index}'s action]"
+            for image in step.get("image_records") or ()
+        )
+        reply = (step.get("agent_call") or {}).get("response_text") or step.get("action") or ""
+        messages.append({"role": "user", "step_index": step_index,
+                         "content": f"{step.get('prompt') or ''}{screenshots}"})
+        messages.append({"role": "assistant", "step_index": step_index, "content": reply})
+    trace.update(
+        input={"message": messages[len(system)]["content"]},
+        output={"response": messages[-1]["content"]},
+        user_message=messages[len(system)]["content"],
+        messages=messages,
+        messages_count=len(messages),
+        reconstruction=(
+            "Whole-task trajectory rebuilt from feedback.json: one user prompt with its "
+            "screenshot reference and one agent reply per game step. During play the "
+            "agent's own context kept only the most recent turns."
+        ),
+    )
+    target.write_text(json.dumps(trace, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def _write_analysis(
@@ -143,7 +236,12 @@ def _write_analysis(
         f"# Benchmark evidence for {task_name}\n\n"
         f"- Relative score: {score}\n"
         f"- Execution status: {feedback['evaluation'].get('execution_status')}\n"
-        f"- Trace: `{relative_trace}`\n"
+        f"- Trace (complete task trajectory: one prompt with screenshot reference and one agent "
+        f"reply per game step; during play the agent's context kept the 8 most recent turns): `{relative_trace}`\n"
+        f"- Per-step actions, game state and progress: `{trial_dir.relative_to(iteration_dir.parent.parent).as_posix()}/feedback.json`\n"
+        f"- Every screenshot (pre-action observations) with step index and sha256: "
+        f"`{trial_dir.relative_to(iteration_dir.parent.parent).as_posix()}/visual_manifest.json`\n"
+        f"- All original per-step NexAU traces and requests: `{relative_trace.rsplit('/', 1)[0]}/all_step_traces.json`\n"
         f"- Detailed analysis: `runs/{iteration_dir.name}/input/analysis/detail/{task_name}.md`\n\n"
         "The score is continuous; no binary pass/fail label is inferred from execution status.\n"
     )
@@ -232,18 +330,37 @@ def _run_evolver(
     model: str | None,
     reasoning_effort: str | None,
     timeout_seconds: float,
-) -> None:
+    llm_environment: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
     """Run the original Evolve Agent in a separate import namespace."""
 
     request_path = candidate_root / "evolve_request.json"
     result_path = candidate_root / "evolve_result.json"
+    from benchmark.visual_evidence import visual_note
+    visual_manifests = list((iteration_dir / "input" / "benchmark").rglob("visual_manifest.json"))
+    if len(visual_manifests) != 1:
+        raise RuntimeError("Expected exactly one current-task visual evidence manifest")
+    manifest_path = visual_manifests[0]
+    manifest = json.loads(manifest_path.read_text())
+    selected = manifest["model_sample"]
+    image_paths = [str(manifest_path.parent / entry["path"]) for entry in selected]
+    if selected:
+        query += visual_note(selected)
+        query += (
+            f"\nAll frames and their step mapping: {manifest_path.relative_to(state.run_dir)}. "
+            "Use read_visual_file on individual evidence images when more context is needed. "
+            "Shell output and image file names are not image observations."
+        )
     request_path.write_text(json.dumps({
         "run_dir": str(state.run_dir), "evolve_agent_dir": str(state.evolve_agent_dir),
         "workspace_rel": workspace.relative_to(state.run_dir).as_posix(),
         "iteration": int(iteration_dir.name.split("_")[-1]), "query": query,
         "reasoning_effort": reasoning_effort,
+        "image_paths": image_paths,
+        "visual_manifest": str(manifest_path),
     }, ensure_ascii=False, indent=2), encoding="utf-8")
     env = os.environ.copy()
+    env.update(llm_environment or {})
     code_root = Path(__file__).resolve().parents[2]
     env["PYTHONPATH"] = os.pathsep.join(filter(None, (str(code_root), env.get("PYTHONPATH"))))
     if model:
@@ -255,6 +372,7 @@ def _run_evolver(
     (candidate_root / "evolve.log").write_text(completed.stdout + "\n" + completed.stderr, encoding="utf-8")
     if completed.returncode != 0 or not result_path.is_file():
         raise RuntimeError(f"AHE candidate generation failed; inspect {candidate_root / 'evolve.log'}")
+    return json.loads(result_path.read_text(encoding="utf-8"))
 
 
 def _strategy_hints() -> list[str]:
@@ -265,6 +383,37 @@ def _strategy_hints() -> list[str]:
     config_path = Path(__file__).resolve().parent / "agentic-harness-engineering" / "configs" / "base.yaml"
     config = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
     return list(config.get("best_of_n", {}).get("strategy_hints", []))
+
+
+def _evolve_token_report(
+    candidates: list[dict[str, Any]], *, debugger_invoked: bool, source_path: Path,
+) -> dict[str, Any]:
+    """Sum provider-reported NexAU spans; do not invent missing subfield usage."""
+
+    complete = not debugger_invoked and bool(candidates) and all(
+        isinstance(item.get("usage"), dict)
+        and isinstance(item["usage"].get("total_tokens"), int)
+        and not isinstance(item["usage"]["total_tokens"], bool)
+        for item in candidates
+    )
+
+    def total(field: str) -> int | None:
+        if not complete:
+            return None
+        values = [item["usage"].get(field) for item in candidates]
+        if not all(isinstance(value, int) and not isinstance(value, bool) for value in values):
+            return None
+        return sum(values)
+
+    return {
+        "method": "ahe_evolve_tracer", "debugger_invoked": debugger_invoked,
+        "complete": complete, "source_path": str(source_path),
+        "total_tokens": total("total_tokens"),
+        "prompt_num_tokens": total("input_tokens"),
+        "response_num_tokens": total("output_tokens"),
+        "reasoning_num_tokens": total("reasoning_tokens"),
+        "candidates": candidates,
+    }
 
 
 def refine(
@@ -278,6 +427,8 @@ def refine(
     reasoning_effort: str | None = None,
     candidate_count: int = 1,
     timeout_seconds: float = 1800,
+    agent_limits: dict[str, int] | None = None,
+    llm_environment: Mapping[str, str] | None = None,
 ) -> CandidateBatch:
     """Generate independent candidates and return them without selecting one."""
 
@@ -285,17 +436,19 @@ def refine(
         raise ValueError("candidate_count must be positive")
     parent, best_ever = select_parent(state, parent_agent)
     feedback, score = _read_feedback(feedback_results)
-    if not parent_agent.trace_paths:
-        raise RuntimeError("AHE refine needs a trace from the parent Agent")
+    trace_path = _trace_from_feedback(feedback, parent_agent)
     iteration_dir = state.run_dir / "runs" / f"iteration_{iteration:03d}"
     iteration_dir.mkdir(parents=True, exist_ok=False)
     trial_dir, task_name = _prepare_evidence(
-        parent, feedback, score, parent_agent.trace_paths[-1], iteration_dir,
+        parent, feedback, score, trace_path, iteration_dir,
+        parent_agent.trace_paths,
     )
+    debugger_invoked = shutil.which("adb") is not None
     _write_analysis(iteration_dir, trial_dir, task_name, feedback, score)
     work_dir = state.run_dir / "candidates" / f"iteration_{iteration:03d}"
     hints = _strategy_hints() if candidate_count > 1 else []
     candidates: list[CandidateSpec] = []
+    evolve_usage: list[dict[str, Any]] = []
     try:
         for index in range(candidate_count):
             candidate_id = f"variant_{index}"
@@ -307,26 +460,38 @@ def refine(
                 hints[index] if index < len(hints) else None,
             )
             (root / "evolution_query.md").write_text(query, encoding="utf-8")
-            _run_evolver(
+            evolve_result = _run_evolver(
                 state, root, iteration_dir, workspace, query, model,
-                reasoning_effort, timeout_seconds,
+                reasoning_effort, timeout_seconds, llm_environment,
             )
+            if agent_limits:
+                # Reapply bounds after the evolver edits the candidate workspace.
+                apply_agent_limits(workspace / "code_agent.yaml", agent_limits)
+            evolve_usage.append({"candidate_id": candidate_id, "source_path": str(root / "evolve_usage_snapshot.json"),
+                                 "usage": evolve_result.get("usage_snapshot")})
             candidate_agent = build(
                 state, workspace=workspace, model=model,
                 reasoning_effort=reasoning_effort,
+                agent_limits=agent_limits,
+                llm_environment=llm_environment,
             )
             candidates.append(CandidateSpec(candidate_id, workspace, candidate_agent))
     except BaseException:
         for candidate in candidates:
             candidate.agent.close()
         raise
-    batch = CandidateBatch(f"iteration_{iteration:03d}", work_dir, parent, score, tuple(candidates))
+    usage_report = _evolve_token_report(evolve_usage, debugger_invoked=debugger_invoked, source_path=Path(output_dir) / "ahe_refine.json")
+    batch = CandidateBatch(f"iteration_{iteration:03d}", work_dir, parent, score, tuple(candidates), {"total_num_tokens": usage_report["total_tokens"]})
     output = Path(output_dir).expanduser().resolve()
     output.mkdir(parents=True, exist_ok=True)
     (output / "ahe_refine.json").write_text(json.dumps({
         "refinement_id": batch.refinement_id, "parent_workspace": str(parent),
         "parent_score": score, "candidate_ids": [c.candidate_id for c in candidates],
         "work_dir": str(work_dir),
+        "token_usage_report": _evolve_token_report(
+            evolve_usage, debugger_invoked=debugger_invoked,
+            source_path=output / "ahe_refine.json",
+        ),
     }, ensure_ascii=False, indent=2), encoding="utf-8")
     return batch
 
@@ -393,6 +558,18 @@ def _prepare_evolve_runtime(source_dir: Path, runtime_dir: Path) -> Path:
     if len(retained) == len(middlewares):
         raise RuntimeError("AHE Evolve config has no expected context-compaction middleware")
     config["middlewares"] = retained
+    # Enable the already-vendored visual reader; keep binary output untruncated.
+    if not any(t.get("name") == "read_visual_file" for t in config.get("tools", [])):
+        config.setdefault("tools", []).append({
+            "name": "read_visual_file",
+            "yaml_path": "./tool_descriptions/read_visual_file.tool.yaml",
+            "binding": "tools.file_tools:read_visual_file",
+        })
+    for middleware in retained:
+        if middleware.get("import") == "middleware.long_tool_output:LongToolOutputMiddleware":
+            bypass = middleware.setdefault("params", {}).setdefault("bypass_tool_names", [])
+            if "read_visual_file" not in bypass:
+                bypass.append("read_visual_file")
     config_path.write_text(
         yaml.safe_dump(config, sort_keys=False, allow_unicode=True), encoding="utf-8",
     )
@@ -421,8 +598,9 @@ def _worker(request_path: Path, result_path: Path) -> None:
     # the coding Agent; changing its run-local YAML is unnecessary.
     config.llm_config.temperature = None
     agent = Agent(config=config)
+    from benchmark.visual_evidence import chat_message
     raw = agent.run(
-        message=request["query"],
+        message=chat_message(request["query"], request.get("image_paths") or []),
         context={"date": __import__("datetime").datetime.now().strftime("%Y-%m-%d"),
                  "username": "agentic-harness-engineering", "working_directory": str(run_dir),
                  "workspace_path": request["workspace_rel"], "iteration": request["iteration"],
@@ -435,7 +613,14 @@ def _worker(request_path: Path, result_path: Path) -> None:
     (evolve_dir_out / "evolve_trace.json").write_text(
         json.dumps(messages, ensure_ascii=False, indent=2, default=str), encoding="utf-8",
     )
-    result_path.write_text(json.dumps({"result": str(result or "")}, ensure_ascii=False), encoding="utf-8")
+    from nexau.archs.tracer.adapters.in_memory import InMemoryTracer
+    snapshots = [nexau_usage_snapshot(tracer.dump_traces()) for tracer in agent.config.tracers
+                 if isinstance(tracer, InMemoryTracer)]
+    snapshot = snapshots[0] if len(snapshots) == 1 else None
+    (evolve_dir_out / "evolve_usage_snapshot.json").write_text(
+        json.dumps(snapshot, ensure_ascii=False, indent=2), encoding="utf-8")
+    result_path.write_text(json.dumps({"result": str(result or ""), "usage_snapshot": snapshot},
+                                      ensure_ascii=False), encoding="utf-8")
 
 
 if __name__ == "__main__":

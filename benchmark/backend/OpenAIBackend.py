@@ -45,6 +45,11 @@ class OpenAIBackend:
                 client_kwargs["api_key"] = resolved_api_key
             if resolved_base_url:
                 client_kwargs["base_url"] = resolved_base_url
+            # Optional transport bounds; unset values retain SDK behavior.
+            if os.getenv("RSI_OPENAI_REQUEST_TIMEOUT"):
+                client_kwargs["timeout"] = float(os.environ["RSI_OPENAI_REQUEST_TIMEOUT"])
+            if os.getenv("RSI_OPENAI_MAX_RETRIES"):
+                client_kwargs["max_retries"] = int(os.environ["RSI_OPENAI_MAX_RETRIES"])
             client = OpenAI(**client_kwargs)
 
         self._client = client
@@ -88,8 +93,10 @@ class OpenAIBackend:
             payload["parallel_tool_calls"] = request.parallel_tool_calls
 
         response = self._client.responses.create(**payload)
+        raw_output_text = getattr(response, "output_text", "") or ""
+        output_items = getattr(response, "output", ()) or ()
         return BackendResponse(
-            text=(getattr(response, "output_text", "") or "").strip(),
+            text=raw_output_text.strip(),
             reasoning=self._extract_reasoning(response),
             usage=self._map_usage(getattr(response, "usage", None)),
             tool_calls=self._extract_responses_tool_calls(response),
@@ -98,6 +105,18 @@ class OpenAIBackend:
             status=self._as_text(getattr(response, "status", None)),
             finish_reason=self._extract_finish_reason(response),
             response_id=self._as_text(getattr(response, "id", None)),
+            metadata={
+                "raw_output_text_length": len(raw_output_text),
+                "output_item_types": [self._get_value(item, "type") for item in output_items],
+                "output_content_types": [
+                    self._get_value(content, "type")
+                    for item in output_items
+                    for content in (self._get_value(item, "content") or ())
+                ],
+                "response_error_code": self._get_value(
+                    getattr(response, "error", None), "code"
+                ),
+            },
         )
 
     def _generate_chat_completions(

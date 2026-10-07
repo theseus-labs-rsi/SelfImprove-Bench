@@ -215,6 +215,64 @@ def _adapt_runtime_boundaries(root_dir):
         run_meta_file.write(source)
 
 
+_VENDORED_IMAGE_SAMPLE = (
+    "        if len(references) > 8:\n"
+    "            references = [references[round(i * (len(references) - 1) / 7)] for i in range(8)]\n"
+)
+_CONFIGURED_IMAGE_SAMPLE = (
+    "        limit_path = Path(__file__).resolve().parent / \"visual_evidence_limit.json\"\n"
+    "        limit = json.loads(limit_path.read_text())[\"max_refinement_images\"] if limit_path.is_file() else 8\n"
+    "        if limit is not None and len(references) > limit:\n"
+    "            references = ([references[-1]] if limit == 1 else\n"
+    "                          [references[round(i * (len(references) - 1) / (limit - 1))] for i in range(limit)])\n"
+)
+_SCREENSHOT_PROMPT = "These are ordered screenshots from an agent's completed game evaluation. "
+_SCREENSHOT_TIMING = "Each image is the observation shown to the agent before that step's action. "
+
+
+def _install_visual_evidence_hook(root_dir):
+    """Add parent-versioned visual support when the pinned upstream lacks it."""
+    from benchmark.visual_evidence import refinement_image_limit
+    helper_source = os.path.join(_OUTER_DIR, "visual_evidence.py")
+    shutil.copy2(helper_source, os.path.join(root_dir, "visual_evidence.py"))
+    # The MetaAgent runs in Docker without the launcher's environment; the
+    # shared image budget travels with the candidate repository instead.
+    with open(os.path.join(root_dir, "visual_evidence_limit.json"), "w", encoding="utf-8") as stream:
+        json.dump({"max_refinement_images": refinement_image_limit()}, stream)
+    meta_path = os.path.join(root_dir, "meta_agent.py")
+    with open(meta_path, encoding="utf-8") as stream:
+        source = stream.read()
+    # Local vendored sources may already carry the equivalent helper. Do not
+    # double-call the visual model; still bundle the pinned parent-owned hook.
+    if "visual_observations = self._inspect_game_screenshots(eval_path)" in source:
+        if _CONFIGURED_IMAGE_SAMPLE in source:
+            return
+        if source.count(_VENDORED_IMAGE_SAMPLE) != 1 or source.count(_SCREENSHOT_PROMPT) != 1:
+            raise RuntimeError("Cannot apply the shared image budget to this MetaAgent version")
+        source = source.replace(_VENDORED_IMAGE_SAMPLE, _CONFIGURED_IMAGE_SAMPLE)
+        source = source.replace(_SCREENSHOT_PROMPT, _SCREENSHOT_PROMPT + _SCREENSHOT_TIMING)
+        with open(meta_path, "w", encoding="utf-8") as stream:
+            stream.write(source)
+        return
+    if "visual_observations = inspect_game_screenshots(self, eval_path)" in source:
+        return
+    marker = "        new_msg_history = chat_with_agent("
+    if source.count(marker) != 1:
+        raise RuntimeError("Cannot install visual evidence hook in this MetaAgent version")
+    insertion = r'''        from visual_evidence import inspect_game_screenshots
+        visual_observations = inspect_game_screenshots(self, eval_path)
+        if visual_observations:
+            instruction += (
+                "\nThese evaluation screenshots were inspected in a separate "
+                "multimodal call. Visual observations (not ground truth) follow; "
+                "check against the scored trajectory before editing code:\n"
+                + visual_observations[:6000]
+            )
+'''
+    with open(meta_path, "w", encoding="utf-8") as stream:
+        stream.write(source.replace(marker, insertion + marker, 1))
+
+
 def _remove_generated_tree(path):
     """Remove a generated candidate even when Git objects are read-only."""
     for current_root, dirnames, filenames in os.walk(path):
@@ -257,6 +315,9 @@ def setup_initial_candidate(
     _copy_framework_backend(root_dir)
     _adapt_seed_meta_agent(root_dir)
     _adapt_runtime_boundaries(root_dir)
+    _install_visual_evidence_hook(root_dir)
+    from .runtime_safety import stage_runtime_safety
+    stage_runtime_safety(root_dir)
     with open(os.path.join(root_dir, "Dockerfile"), "w", encoding="utf-8") as dockerfile:
         dockerfile.write(_GENERIC_DOCKERFILE)
     with open(

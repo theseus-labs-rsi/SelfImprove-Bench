@@ -30,8 +30,8 @@
       "18_04",
       "18_05"
     ],
-    "training_gameworld": "${RSI_ROOT}/gameworld_train_minecraft",
-    "official_gameworld": "${RSI_ROOT}/gameworld",
+    "training_gameworld": "${RSI_ROOT}/code/benches/gameworld/assets/core",
+    "official_gameworld": "${RSI_ROOT}/code/benches/gameworld/assets/core",
     "difficulty_claim": "each training task copies an official holdout task and changes only the quota (+-1-2); same world (official seed 42), skills and step budget, NOT empirically equal difficulty",
     "train_tasks": [
       {
@@ -154,7 +154,9 @@
         "quota": 7,
         "official_quota": 5
       }
-    ]
+    ],
+    "training_task_assets": "${RSI_ROOT}/code/benches/gameworld/assets/tasks/train",
+    "official_task_assets": "${RSI_ROOT}/code/benches/gameworld/assets/tasks/holdout"
   },
   "astray": {
     "historical_source": "/mnt/shared-storage-user/mineru2-shared/yangjie/self_evlove_game/outputs/astray15_train20_official5_20260928_130552/train-gameworld-overlay",
@@ -187,7 +189,9 @@
       "03_04",
       "03_05"
     ],
-    "training_gameworld": "${RSI_ROOT}/gameworld_train_astray",
-    "official_gameworld": "${RSI_ROOT}/gameworld"
+    "training_gameworld": "${RSI_ROOT}/code/benches/gameworld/assets/core",
+    "official_gameworld": "${RSI_ROOT}/code/benches/gameworld/assets/core",
+    "training_task_assets": "${RSI_ROOT}/code/benches/gameworld/assets/tasks/train",
+    "official_task_assets": "${RSI_ROOT}/code/benches/gameworld/assets/tasks/holdout"
   }
 }

@@ -1,5 +1,13 @@
 # Legacy Multimodal Game Experiments
 
+> GameWorld 已接入仓库根目录的 `benchmark` / `rsi_methods`。
+> 活跃资产与运行工具位于 `benches/gameworld/`，配置模板仍在本目录的 `configs/templates/`。
+> 配置导入路径统一留待讨论，请使用自己准备的本地配置执行 `python -m benchmark CONFIG`；接入说明见
+> [GameWorld README](../../benches/gameworld/README.md)，恢复说明见
+> [RESUME](../../benchmark/RESUME.md)。下文是导入来源的历史记录，旧 `run.sh`、
+> `tools/launch.py`、`prepare_checkout.py` 不再作为当前运行入口。
+> 历史重复实现保留作比对资料；其中移动或删除的目录不应再被历史脚本调用。
+
 Code-only distribution of the Minecraft and Astray experiments using ACE,
 AHE and HyperAgents. The repository's original root-level implementation is
 retained separately. No experiment results, trajectories, checkpoints,
@@ -8,10 +16,12 @@ generated candidates, API credentials or local Python environments are included.
 ## Layout
 
 - `code/`: benchmark runner, framework adapters, multimodal evidence and retry logic.
-- `gameworld/`: official evaluation games and task definitions.
-- `gameworld_train_minecraft/`, `gameworld_train_astray/`: training overlays.
+- `code/benches/gameworld/assets/core/`: one shared GameWorld implementation.
+- `code/benches/gameworld/assets/tasks/train/`: Astray and Minecraft training YAMLs.
+- `code/benches/gameworld/assets/tasks/holdout/`: original evaluation task YAMLs.
 - `configs/templates/`: six experiment configurations and framework settings.
-- `tools/`: launcher, checkpoint helpers and checkout initialization.
+- `code/benches/gameworld/utils/`: runtime step storage and browser recovery helpers.
+- `tools/`: launcher, checkout initialization and the offline step-resume checker.
 - `tests/`: offline regression tests.
 - `reference/code/`: limited historical source fixtures used by regression tests.
 - `provenance/`: source hashes, not experiment outcomes.
@@ -68,6 +78,18 @@ one candidate per refinement. Holdout requires a completed 20-round agent.
 Start with a single training round and inspect it before committing to a full run.
 
 ## Boundaries
+
+Training and holdout use the same `gameworld_root`. The configuration selects
+their YAML directories independently through `game_options.gameworld.task_assets_roots`
+(`train` and `holdout`); each generated task records its resolved `task_assets_root`.
+The shared Astray core accepts an optional `train_seed` URL parameter. Without
+it, seed 42 and the original evaluation rules remain the defaults. Minecraft
+keeps its original fixed world seed and training quota variants.
+
+Both task execution and step recovery load the same YAML. Step recovery binds
+the task, game API and page source hashes; pre-reorganization checkpoints and
+absolute paths are not automatically migrated. Task-level checkpoint behavior
+is unchanged by this asset reorganization.
 
 This packaging does not change framework algorithms or historical scores.
 The common actor adapter supplies the same observation format, but method-owned

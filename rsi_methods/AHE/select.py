@@ -78,6 +78,7 @@ def select(
     parent_evaluation: Any,
     candidate_evaluations: Mapping[str, Any],
     output_dir: str | Path,
+    selection_mode: str = "paired",
 ) -> SelectionOutcome:
     """Persist a score-based decision, then point state at the accepted copy.
 
@@ -92,10 +93,13 @@ def select(
         raise RuntimeError("AHE parent changed after candidate generation")
     if not math.isfinite(batch.parent_score):
         raise ValueError("AHE parent score must be finite")
-    parent_status, parent_score = _evaluation(parent_evaluation, "parent")
-    if parent_status != "ok" or parent_score is None:
-        raise ValueError("AHE selection needs a successful parent evaluation")
-    if not math.isclose(parent_score, batch.parent_score, rel_tol=1e-9, abs_tol=1e-12):
+    if selection_mode not in {"paired", "online"}:
+        raise ValueError("selection_mode must be 'paired' or 'online'")
+    parent_status, reported_parent_score = _evaluation(parent_evaluation, "parent")
+    parent_score = reported_parent_score if reported_parent_score is not None else batch.parent_score
+    if selection_mode == "paired" and not math.isclose(
+        parent_score, batch.parent_score, rel_tol=1e-9, abs_tol=1e-12
+    ):
         raise ValueError("Parent evaluation score differs from the refinement score")
     if not isinstance(candidate_evaluations, Mapping):
         raise TypeError("candidate_evaluations must be a mapping")
@@ -103,9 +107,13 @@ def select(
 
     # max() is stable: an equal-scoring variant earlier in the batch wins.
     winner, best_score = max(eligible, key=lambda item: item[1]) if eligible else (None, None)
-    accepted = winner is not None and best_score >= parent_score
+    accepted = winner is not None and (
+        selection_mode == "online" or parent_status != "ok" or best_score >= parent_score
+    )
     chosen = winner if accepted else None
     reason = (
+        "candidate_execution_valid" if accepted and selection_mode == "online" else
+        "candidate_recovers_failed_parent" if accepted and parent_status != "ok" else
         "candidate_not_below_parent" if accepted else
         "no_successful_candidates" if not eligible else "all_candidates_below_parent"
     )
@@ -121,6 +129,7 @@ def select(
     )
     report_path.write_text(json.dumps({
         "refinement_id": batch.refinement_id,
+        "selection_mode": selection_mode,
         "status": outcome.status,
         "reason": reason,
         "parent_workspace": str(parent),

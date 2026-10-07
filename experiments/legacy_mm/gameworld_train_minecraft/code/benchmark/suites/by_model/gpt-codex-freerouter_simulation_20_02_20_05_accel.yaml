@@ -1,8 +1,0 @@
-suite_name: gpt-codex-freerouter_simulation_20_02_20_05_accel
-headless: true
-
-cases:
-  - game: "20_monkey-mart"
-    tasks: ["20_02", "20_03", "20_04", "20_05"]
-    models: ["gpt-codex-freerouter"]
-    repeat: 1

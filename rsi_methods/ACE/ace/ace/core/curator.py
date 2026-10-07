@@ -47,6 +47,7 @@ class Curator:
         log_dir: Optional[str] = None,
         next_global_id: int = 1,
         reasoning_effort: Optional[str] = None,
+        image_paths=None,
     ) -> Tuple[str, int, List[Dict[str, Any]], Dict[str, Any]]:
         """
         Curate the playbook based on reflection feedback.
@@ -105,6 +106,7 @@ class Curator:
             log_dir=log_dir,
             use_json_mode=use_json_mode,
             reasoning_effort=reasoning_effort,
+            **({"image_paths": image_paths} if image_paths else {}),
         )
         
         # Check for empty response error

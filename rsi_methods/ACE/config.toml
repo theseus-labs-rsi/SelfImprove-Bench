@@ -2,7 +2,7 @@
 api_key_env = "OPENAI_API_KEY"
 base_url_env = "OPENAI_BASE_URL"
 api_mode = "responses"
-max_output_tokens = 512
+max_output_tokens = 8196
 
 [state]
 # Parent only; every init creates a new run_<uuid> workspace below it.
@@ -14,7 +14,7 @@ initial_playbook_path = ""
 backend = "openai"
 model = "azure/gpt-5.6-sol"
 api_mode = "responses"
-max_output_tokens = 4096
+max_output_tokens = 8196
 reasoning_effort = "high"
 output_format = "json_object"
 
@@ -29,7 +29,7 @@ model = "azure/gpt-5.6-sol"
 reasoning_effort = "high"
 
 [refine]
-max_output_tokens = 4096
+max_output_tokens = 32768
 playbook_token_budget = 80000
 curator_batch_size = 1
 use_json_mode = true

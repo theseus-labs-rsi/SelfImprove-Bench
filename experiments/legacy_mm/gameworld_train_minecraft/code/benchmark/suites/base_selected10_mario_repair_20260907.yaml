@@ -1,8 +1,0 @@
-suite_name: base_selected10_mario_repair_20260907
-headless: true
-
-cases:
-  - game: "17_mario-game"
-    tasks: ["17_03", "17_08"]
-    models: ["gpt-codex-freerouter"]
-    repeat: 1

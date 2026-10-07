@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from benchmark.token_ledger import hyperagents_usage_report
 from benchmark.contracts import (
     ExecutionStatus,
     FeedbackResult,
@@ -30,7 +31,7 @@ from .lifecycle import (
 from .runtime_agent import RuntimeAgent
 
 
-CONFIG_PATH = Path(__file__).with_name("config.toml")
+CONFIG_PATH = Path(os.environ.get("RSI_HYPERAGENTS_CONFIG_PATH", Path(__file__).with_name("config.toml")))
 _LLM_ENVIRONMENT_NAMES = {
     "OPENAI_API_KEY",
     "OPENAI_API_BASE",
@@ -45,6 +46,15 @@ _LLM_ENVIRONMENT_NAMES = {
     "DEEPSEEK_BASE_URL",
     "QWEN_API_KEY",
     "QWEN_BASE_URL",
+    # Runtime agents execute inside a Docker container.  Forward the exact
+    # transport route selected by the supervised launcher instead of silently
+    # falling back to proxy variables baked into the runtime image.
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "http_proxy",
+    "https_proxy",
+    "NO_PROXY",
+    "no_proxy",
 }
 
 
@@ -176,6 +186,70 @@ class HyperAgentsAdaptor:
         self.last_selection_report = None
         self._pending_batch = None
 
+    def resume(
+        self, batch_dir: str | Path, *, source_batch: Path,
+        before_task_index: int, target_dir: str | Path,
+    ) -> None:
+        """Restore the selected candidate from the copied batch history."""
+        self.close()
+        batch = Path(batch_dir).resolve()
+        state = batch / "state"
+        workspaces = [path for path in state.glob("run_*") if path.is_dir()]
+        if len(workspaces) != 1:
+            raise ValueError(f"Expected one HyperAgents workspace under {state}")
+        self.run_dir = state
+        self._config_snapshot = (batch / "method_config.toml").read_bytes()
+        self._configure(tomllib.loads(self._config_snapshot.decode("utf-8")))
+        self.workspace_dir = workspaces[0]
+        initial = initialize_agent(self.workspace_dir, reuse_existing=True)
+        self._snapshot = initial
+        self._refinement_round = 0
+        for task in sorted(batch.glob("task_[0-9][0-9][0-9][0-9]_*")):
+            if int(task.name[5:9]) >= before_task_index:
+                continue
+            stages = sorted(task.glob("selection_stage_*/selection.json"))
+            if not stages:
+                telemetry = task / "refinement_telemetry.json"
+                report = json.loads(telemetry.read_text(encoding="utf-8")) if telemetry.is_file() else {}
+                if report.get("status") != "skipped" or report.get("reason") != "tool_budget_exhausted":
+                    raise ValueError(f"HyperAgents task has no completed selection: {task}")
+                self._refinement_round += 1
+                continue
+            for stage in stages:
+                decision = json.loads(stage.read_text(encoding="utf-8"))
+                chosen = decision.get("selected_candidate_id")
+                if not chosen:
+                    continue
+                payload = json.loads((task / "candidate_batch.json").read_text(encoding="utf-8"))
+                candidates = [item for item in payload["candidates"] if item["candidate_id"] == chosen]
+                if len(candidates) != 1:
+                    raise ValueError(f"HyperAgents selection candidate is missing: {stage}")
+                saved = candidates[0]["snapshot"]
+                patches = []
+                recorded_batch = Path(saved["run_dir"]).resolve().parents[1]
+                if (recorded_batch.name != source_batch.name
+                        or recorded_batch.parent.name != "hyperagents"
+                        or recorded_batch.parent.parent.name != "rsi"):
+                    raise ValueError(f"HyperAgents snapshot has a different batch: {stage}")
+                for old_path in saved["lineage_patches"]:
+                    original = Path(old_path).resolve()
+                    if not original.is_relative_to(recorded_batch):
+                        raise ValueError(f"HyperAgents patch points outside source batch: {stage}")
+                    patch = batch / original.relative_to(recorded_batch)
+                    if not patch.is_file():
+                        raise FileNotFoundError(f"HyperAgents patch is missing: {patch}")
+                    patches.append(patch)
+                if saved["root_commit"] != initial.root_commit:
+                    raise ValueError(f"HyperAgents root commit changed: {stage}")
+                self._snapshot = with_lineage(
+                    initial, candidate_id=chosen, parent_id=saved["parent_id"],
+                    lineage_patches=patches,
+                )
+            self._refinement_round += 1
+        self.last_refinement_report = None
+        self.last_selection_report = None
+        self._pending_batch = None
+
     def build(self) -> RuntimeAgent:
         """Instantiate the committed candidate in an isolated container."""
         if self._snapshot is None:
@@ -241,6 +315,18 @@ class HyperAgentsAdaptor:
         except Exception:
             candidate_instance.close()
             raise
+        if transition.metadata.get("tool_budget_exhausted"):
+            self.last_refinement_report = {
+                "status": "skipped", "reason": "tool_budget_exhausted",
+                "round": next_round, "metadata": dict(transition.metadata),
+            }
+            (candidate_dir / "refinement_report.json").write_text(
+                json.dumps(to_jsonable(self.last_refinement_report), ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            candidate_instance.close()
+            self._refinement_round = next_round
+            return None
         if not transition.changed:
             transition.agent.snapshot = with_lineage(
                 self.snapshot,
@@ -256,6 +342,7 @@ class HyperAgentsAdaptor:
             "parent_id": str(self.snapshot.candidate_id),
             "patch_path": str(transition.patch_path) if transition.patch_path else None,
             "metadata": dict(transition.metadata),
+            "token_usage_report": hyperagents_usage_report(candidate_dir / "agent_output" / "meta_agent_history.json"),
         }
         (candidate_dir / "refinement_report.json").write_text(
             json.dumps(
@@ -297,6 +384,7 @@ class HyperAgentsAdaptor:
         parent_evaluation: Any,
         candidate_evaluations: Mapping[str, Any],
         output_dir: str | Path,
+        selection_mode: str = "paired",
     ) -> HyperAgentsSelectionOutput:
         """Commit the selected candidate, or retain the committed parent."""
         pending_batch = self._pending_batch
@@ -306,6 +394,8 @@ class HyperAgentsAdaptor:
             raise RuntimeError("HyperAgentsAdaptor.select() received a stale candidate batch")
         if not isinstance(candidate_evaluations, Mapping):
             raise TypeError("candidate_evaluations must be a mapping")
+        if selection_mode not in {"paired", "online"}:
+            raise ValueError("selection_mode must be 'paired' or 'online'")
 
         candidate = batch.candidates[0]
         expected_ids = {candidate.candidate_id}
@@ -327,6 +417,8 @@ class HyperAgentsAdaptor:
             accepted, reason = False, "candidate_has_no_change"
         elif candidate_status != "ok":
             accepted, reason = False, "candidate_status_not_ok"
+        elif selection_mode == "online":
+            accepted, reason = True, "changed_candidate_execution_valid"
         elif parent_score is None or candidate_score is None:
             accepted, reason = False, "selection_score_missing"
         elif candidate_score < parent_score:
@@ -419,7 +511,9 @@ class HyperAgentsAdaptor:
         if self._docker_client is None:
             import docker
 
-            self._docker_client = docker.DockerClient()
+            # A framework-scoped DOCKER_HOST keeps this lineage off the shared
+            # daemon while preserving the default socket for existing workers.
+            self._docker_client = docker.from_env() if os.environ.get("DOCKER_HOST") else docker.DockerClient()
         environment_names = {
             self.meta_model["api_key_env"],
             self.meta_model["base_url_env"],

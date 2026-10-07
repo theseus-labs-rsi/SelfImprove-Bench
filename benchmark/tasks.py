@@ -4,20 +4,16 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import asdict, dataclass
+from random import Random
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any
 
 from benches.combat import game as combat_game
 from benches.farm import game as farm_game
-from benches.heros_journey import game as hero_game
 from benches.gameworld import game as gameworld_game
+from benches.heros_journey import game as hero_game
 from benches.sweepmine import game as sweepmine_game
-try:
-    from benches.sweepmine_reorganized import game as sweepmine_reorganized_game
-except ModuleNotFoundError:
-    # The CSD checkout can be used without the optional reorganized bench.
-    sweepmine_reorganized_game = None
 
 from .config import BenchmarkConfig
 
@@ -26,12 +22,9 @@ GAMES = {
     "farm": farm_game,
     "combat": combat_game,
     "sweepmine": sweepmine_game,
-    "sweepmine_reorganized": sweepmine_reorganized_game,
     "heros_journey": hero_game,
     "gameworld": gameworld_game,
 }
-if sweepmine_reorganized_game is not None:
-    GAMES["sweepmine_reorganized"] = sweepmine_reorganized_game
 
 
 @dataclass(frozen=True)
@@ -46,6 +39,7 @@ class PlannedTask:
     replay: bool = False
     replay_of: str | None = None
     replay_gap: int | None = None
+    generation_index: int | None = None
 
     def manifest_record(self) -> dict[str, Any]:
         value = asdict(self)
@@ -68,6 +62,27 @@ class TaskManifest:
             "training": [item.manifest_record() for item in self.training],
             "holdout": [item.manifest_record() for item in self.holdout],
         }
+
+    @classmethod
+    def from_mapping(cls, value: dict[str, Any]) -> "TaskManifest":
+        """Restore the original task identities when resuming a saved run."""
+        if value.get("schema_version") != 1:
+            raise ValueError("Unsupported task manifest schema")
+
+        def restore(raw: dict[str, Any]) -> PlannedTask:
+            record = dict(raw)
+            fingerprint = record.pop("task_fingerprint", None)
+            task = PlannedTask(**record)
+            if fingerprint != task_fingerprint(task.task):
+                raise ValueError(f"Task fingerprint changed: {task.run_id}")
+            return task
+
+        return cls(
+            config_hash=str(value["config_hash"]),
+            holdout_pool=tuple(restore(item) for item in value["holdout_pool"]),
+            training=tuple(restore(item) for item in value["training"]),
+            holdout=tuple(restore(item) for item in value["holdout"]),
+        )
 
 
 def _canonical(value: Any) -> str:
@@ -96,6 +111,7 @@ def _make_task(
     group_index: int,
     used: set[str],
     seed_root: int,
+    generation_index: int | None = None,
     options: dict[str, Any] | None = None,
 ) -> PlannedTask:
     attempt = 0
@@ -103,14 +119,7 @@ def _make_task(
         task_seed = _seed(seed_root, phase, game, difficulty, index, attempt)
         task_id = f"{phase}-{game}-d{difficulty}-{index + 1:04d}"
         if game == "gameworld":
-            task = GAMES[game].generate(
-                difficulty,
-                seed=task_seed,
-                task_id=task_id,
-                phase=phase,
-                index=index,
-                options=options,
-            )
+            task = GAMES[game].generate(difficulty, seed=task_seed, task_id=task_id, phase=phase, index=index, options=options)
         else:
             task = GAMES[game].generate(difficulty, seed=task_seed, task_id=task_id)
         fingerprint = task_fingerprint(task)
@@ -124,6 +133,7 @@ def _make_task(
                 task=task,
                 task_seed=task_seed,
                 group_index=group_index,
+                generation_index=generation_index,
             )
         attempt += 1
         if attempt > 10_000:
@@ -167,6 +177,18 @@ def _stored_holdout(
 def build_manifest(config: BenchmarkConfig) -> TaskManifest:
     """Build the full benchmark deterministically, creating holdouts first."""
     config_hash = _hash(config.as_dict())
+    if config.holdout_manifest is not None:
+        source_path = Path(config.holdout_manifest)
+        source = TaskManifest.from_mapping(json.loads(source_path.read_text(encoding="utf-8")))
+        selected: list[PlannedTask] = []
+        for group_index, spec in enumerate(config.holdout):
+            matching = [task for task in source.holdout
+                        if (task.game, task.difficulty) == (spec.game, spec.difficulty)]
+            if len(matching) < spec.count:
+                raise ValueError(f"Holdout manifest has too few {spec.game} d{spec.difficulty} tasks")
+            selected.extend(replace(task, group_index=group_index)
+                            for task in matching[:spec.count])
+        return TaskManifest(config_hash, tuple(selected), (), tuple(selected))
     used: set[str] = set()
     pool: list[PlannedTask] = []
     pool_lookup: dict[tuple[str, int], list[PlannedTask]] = {}
@@ -199,16 +221,20 @@ def build_manifest(config: BenchmarkConfig) -> TaskManifest:
     replay_index = 0
     for group_index, spec in enumerate(config.schedule):
         for _ in range(spec.count):
-            item = _make_task(
-                phase="train",
-                game=spec.game,
-                difficulty=spec.difficulty,
-                index=gameworld_train_index if spec.game == "gameworld" else generated_index,
-                group_index=group_index,
-                used=used,
-                seed_root=config.seed,
-                options=config.game_options,
-            )
+            if config.repeat and normal:
+                first = normal[0]
+                item = replace(first, run_id=f"repeat-{generated_index + 1:04d}-{first.run_id}")
+            else:
+                item = _make_task(
+                    phase="train",
+                    game=spec.game,
+                    difficulty=spec.difficulty,
+                    index=gameworld_train_index if spec.game == "gameworld" else generated_index,
+                    group_index=group_index,
+                    used=used,
+                    seed_root=config.seed,
+                    options=config.game_options,
+                )
             generated_index += 1
             if spec.game == "gameworld":
                 gameworld_train_index += 1
@@ -234,8 +260,12 @@ def build_manifest(config: BenchmarkConfig) -> TaskManifest:
                         replay=True,
                         replay_of=original.run_id,
                         replay_gap=config.replay.lag,
+                        generation_index=original.generation_index,
                     )
                 )
+
+    if config.random:
+        Random(config.seed).shuffle(orchestrated)
 
     selected_holdout: list[PlannedTask] = []
     for group_index, spec in enumerate(config.holdout):

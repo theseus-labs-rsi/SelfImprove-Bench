@@ -34,132 +34,112 @@
       "train": [
         {
           "game": "18_minecraft-clone-glm",
-          "task": "18_m02",
-          "gameworld_root": "${RSI_ROOT}/gameworld_train_minecraft"
+          "task": "18_m02"
         },
         {
           "game": "18_minecraft-clone-glm",
-          "task": "18_m06",
-          "gameworld_root": "${RSI_ROOT}/gameworld_train_minecraft"
+          "task": "18_m06"
         },
         {
           "game": "18_minecraft-clone-glm",
-          "task": "18_m03",
-          "gameworld_root": "${RSI_ROOT}/gameworld_train_minecraft"
+          "task": "18_m03"
         },
         {
           "game": "18_minecraft-clone-glm",
-          "task": "18_m14",
-          "gameworld_root": "${RSI_ROOT}/gameworld_train_minecraft"
+          "task": "18_m14"
         },
         {
           "game": "18_minecraft-clone-glm",
-          "task": "18_m18",
-          "gameworld_root": "${RSI_ROOT}/gameworld_train_minecraft"
+          "task": "18_m18"
         },
         {
           "game": "18_minecraft-clone-glm",
-          "task": "18_m15",
-          "gameworld_root": "${RSI_ROOT}/gameworld_train_minecraft"
+          "task": "18_m15"
         },
         {
           "game": "18_minecraft-clone-glm",
-          "task": "18_m05",
-          "gameworld_root": "${RSI_ROOT}/gameworld_train_minecraft"
+          "task": "18_m05"
         },
         {
           "game": "18_minecraft-clone-glm",
-          "task": "18_m13",
-          "gameworld_root": "${RSI_ROOT}/gameworld_train_minecraft"
+          "task": "18_m13"
         },
         {
           "game": "18_minecraft-clone-glm",
-          "task": "18_m09",
-          "gameworld_root": "${RSI_ROOT}/gameworld_train_minecraft"
+          "task": "18_m09"
         },
         {
           "game": "18_minecraft-clone-glm",
-          "task": "18_m17",
-          "gameworld_root": "${RSI_ROOT}/gameworld_train_minecraft"
+          "task": "18_m17"
         },
         {
           "game": "18_minecraft-clone-glm",
-          "task": "18_m11",
-          "gameworld_root": "${RSI_ROOT}/gameworld_train_minecraft"
+          "task": "18_m11"
         },
         {
           "game": "18_minecraft-clone-glm",
-          "task": "18_m01",
-          "gameworld_root": "${RSI_ROOT}/gameworld_train_minecraft"
+          "task": "18_m01"
         },
         {
           "game": "18_minecraft-clone-glm",
-          "task": "18_m04",
-          "gameworld_root": "${RSI_ROOT}/gameworld_train_minecraft"
+          "task": "18_m04"
         },
         {
           "game": "18_minecraft-clone-glm",
-          "task": "18_m16",
-          "gameworld_root": "${RSI_ROOT}/gameworld_train_minecraft"
+          "task": "18_m16"
         },
         {
           "game": "18_minecraft-clone-glm",
-          "task": "18_m07",
-          "gameworld_root": "${RSI_ROOT}/gameworld_train_minecraft"
+          "task": "18_m07"
         },
         {
           "game": "18_minecraft-clone-glm",
-          "task": "18_m19",
-          "gameworld_root": "${RSI_ROOT}/gameworld_train_minecraft"
+          "task": "18_m19"
         },
         {
           "game": "18_minecraft-clone-glm",
-          "task": "18_m20",
-          "gameworld_root": "${RSI_ROOT}/gameworld_train_minecraft"
+          "task": "18_m20"
         },
         {
           "game": "18_minecraft-clone-glm",
-          "task": "18_m10",
-          "gameworld_root": "${RSI_ROOT}/gameworld_train_minecraft"
+          "task": "18_m10"
         },
         {
           "game": "18_minecraft-clone-glm",
-          "task": "18_m08",
-          "gameworld_root": "${RSI_ROOT}/gameworld_train_minecraft"
+          "task": "18_m08"
         },
         {
           "game": "18_minecraft-clone-glm",
-          "task": "18_m12",
-          "gameworld_root": "${RSI_ROOT}/gameworld_train_minecraft"
+          "task": "18_m12"
         }
       ],
       "holdout": [
         {
           "game": "18_minecraft-clone-glm",
-          "task": "18_01",
-          "gameworld_root": "${RSI_ROOT}/gameworld"
+          "task": "18_01"
         },
         {
           "game": "18_minecraft-clone-glm",
-          "task": "18_02",
-          "gameworld_root": "${RSI_ROOT}/gameworld"
+          "task": "18_02"
         },
         {
           "game": "18_minecraft-clone-glm",
-          "task": "18_03",
-          "gameworld_root": "${RSI_ROOT}/gameworld"
+          "task": "18_03"
         },
         {
           "game": "18_minecraft-clone-glm",
-          "task": "18_04",
-          "gameworld_root": "${RSI_ROOT}/gameworld"
+          "task": "18_04"
         },
         {
           "game": "18_minecraft-clone-glm",
-          "task": "18_05",
-          "gameworld_root": "${RSI_ROOT}/gameworld"
+          "task": "18_05"
         }
-      ]
+      ],
+      "gameworld_root": "${RSI_ROOT}/code/benches/gameworld/assets/core",
+      "task_assets_roots": {
+        "train": "${RSI_ROOT}/code/benches/gameworld/assets/tasks/train",
+        "holdout": "${RSI_ROOT}/code/benches/gameworld/assets/tasks/holdout"
+      }
     }
   },
   "output_dir": "${RSI_ROOT}/runs/minecraft/hyperagents/lineage",

@@ -16,18 +16,10 @@ from benchmark.contracts import (
 
 from benches.combat import game as combat_game
 from benches.farm import game as farm_game
-try:
-    from benches.heros_journey.benchmark import HeroJourneyBenchmark
-    from benches.heros_journey.task_factory import HeroJourneyDifficulty
-except ModuleNotFoundError:
-    HeroJourneyBenchmark = None
-    HeroJourneyDifficulty = None
+from benches.heros_journey.benchmark import HeroJourneyBenchmark
+from benches.heros_journey.task_factory import HeroJourneyDifficulty
 from benches.sweepmine.core import SweepmineCore
 from benches.sweepmine.play import play_feedback
-try:
-    from benches.sweepmine_reorganized.play import play_feedback as play_sweepmine_reorganized
-except ModuleNotFoundError:
-    play_sweepmine_reorganized = None
 
 
 GAME_MODULES = {"farm": farm_game, "combat": combat_game}
@@ -51,19 +43,16 @@ def _native_feedback_outcome(
         "interactions": to_jsonable(feedback.trajectory),
         "llm_metrics": {"tokens": {"total_tokens": total_tokens}},
     }
+    if game == "heros_journey":
+        record["interaction_protocol"] = evaluation.metrics.get("interaction_protocol")
+        record["score_metric"] = evaluation.metrics.get("score_metric")
+        record["completion_rate"] = evaluation.metrics.get("suite_completion_rate_mean")
     return EvaluationOutcome(record=record, feedback=feedback)
 
 
 def evaluate_sweepmine(task: Mapping[str, Any], agent: Any) -> EvaluationOutcome:
     core = SweepmineCore(dict(task))
     return _native_feedback_outcome("sweepmine", task, play_feedback(core, agent))
-
-
-def evaluate_sweepmine_reorganized(task: Mapping[str, Any], agent: Any) -> EvaluationOutcome:
-    if play_sweepmine_reorganized is None:
-        raise RuntimeError("The optional sweepmine_reorganized bench is not present in this checkout")
-    feedback = play_sweepmine_reorganized(task, agent)
-    return _native_feedback_outcome("sweepmine_reorganized", task, feedback)
 
 
 def _aggregate_hero_feedback(
@@ -73,14 +62,25 @@ def _aggregate_hero_feedback(
         raise ValueError("Hero's Journey seed suite returned no feedback")
     trajectory = []
     seed_results = []
+    completion_rates = []
+    protocols = set()
     for feedback in feedbacks:
         seed = feedback.evaluation.metrics.get("seed")
+        completion_rate = feedback.evaluation.metrics.get("completion_rate")
+        protocol = feedback.evaluation.metrics.get("interaction_protocol", "legacy_unlabeled")
+        protocols.add(protocol)
+        if isinstance(completion_rate, (int, float)) and not isinstance(completion_rate, bool):
+            completion_rates.append(float(completion_rate))
         seed_results.append({
             "seed": seed,
             "task_id": feedback.task_id,
             "status": feedback.evaluation.execution_status.value,
             "success": feedback.evaluation.success,
             "score": feedback.evaluation.score,
+            "completion_rate": completion_rate,
+            "interaction_protocol": protocol,
+            "score_metric": feedback.evaluation.metrics.get("score_metric"),
+            "parse_error": feedback.evaluation.metrics.get("parse_error"),
         })
         for step in feedback.trajectory:
             trajectory.append(replace(
@@ -117,6 +117,12 @@ def _aggregate_hero_feedback(
                 "task_type": task["task_type"],
                 "suite_size": len(feedbacks),
                 "suite_score_mean": score,
+                "suite_completion_rate_mean": (
+                    statistics.fmean(completion_rates) if completion_rates else None
+                ),
+                "suite_completion_rate_count": len(completion_rates),
+                "interaction_protocol": next(iter(protocols)) if len(protocols) == 1 else "mixed",
+                "score_metric": "reference_steps_over_executed_steps_v1",
                 "suite_success_rate": statistics.fmean(
                     float(evaluation.success) for evaluation in evaluations
                 ),
@@ -126,9 +132,10 @@ def _aggregate_hero_feedback(
     )
 
 
-def evaluate_hero_journey(task: Mapping[str, Any], agent: Any) -> EvaluationOutcome:
-    if HeroJourneyBenchmark is None or HeroJourneyDifficulty is None:
-        raise RuntimeError("Hero's Journey dependencies are not present in this checkout")
+def evaluate_hero_journey(
+    task: Mapping[str, Any], agent: Any,
+    *, reload_agent: Callable[[], Any] | None = None,
+) -> EvaluationOutcome:
     settings = HeroJourneyDifficulty.from_mapping({
         **task,
         "episode_indices": (task["episode_idx"],),
@@ -136,6 +143,7 @@ def evaluate_hero_journey(task: Mapping[str, Any], agent: Any) -> EvaluationOutc
     benchmark = HeroJourneyBenchmark(
         difficulties={int(task["difficulty"]): settings},
         seeds=[int(seed) for seed in task["seeds"]],
+        max_workers=3 if getattr(agent, "supports_parallel_calls", False) else 1,
     )
     episodes = [
         benchmark.construct_one(
@@ -146,28 +154,28 @@ def evaluate_hero_journey(task: Mapping[str, Any], agent: Any) -> EvaluationOutc
         )
         for index, seed in enumerate(task["seeds"])
     ]
-    feedback = _aggregate_hero_feedback(task, benchmark.play(episodes, agent))
+    feedback = _aggregate_hero_feedback(
+        task, benchmark.play(episodes, agent, reload_agent=reload_agent)
+    )
     return _native_feedback_outcome("heros_journey", task, feedback)
 
 
 def evaluate_task(
     game: str, task: Mapping[str, Any], *, request: Callable[..., dict[str, Any]] | None = None,
-    agent: Any | None = None,
+    agent: Any | None = None, reload_agent: Callable[[], Any] | None = None,
 ) -> EvaluationOutcome:
     if game == "gameworld":
         if agent is None:
             raise TypeError("gameworld evaluation requires an explicit RSI agent")
         from benches.gameworld.benchmark import GameWorldBenchmark
 
-        return GameWorldBenchmark().evaluate(task, agent)
-    if game in {"sweepmine", "sweepmine_reorganized", "heros_journey"}:
+        return GameWorldBenchmark(output_root=task.get("gameworld_results_root")).evaluate(task, agent)
+    if game in {"sweepmine", "heros_journey"}:
         if agent is None:
             raise TypeError(f"{game} evaluation requires an explicit agent")
         if game == "sweepmine":
             return evaluate_sweepmine(task, agent)
-        if game == "sweepmine_reorganized":
-            return evaluate_sweepmine_reorganized(task, agent)
-        return evaluate_hero_journey(task, agent)
+        return evaluate_hero_journey(task, agent, reload_agent=reload_agent)
     if request is None:
         raise TypeError(f"{game} evaluation requires a request callback")
     return EvaluationOutcome(GAME_MODULES[game].evaluate(task, request))

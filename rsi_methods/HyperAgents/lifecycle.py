@@ -6,6 +6,7 @@ import os
 import posixpath
 from pathlib import Path
 import shutil
+import uuid
 from typing import Any, Callable, Mapping
 
 from .archive_utils import (
@@ -184,6 +185,8 @@ def reconstruct_agent(
     agent.commit_hash = apply_diffs_checked(
         agent.container, list(snapshot.lineage_patches)
     )
+    from .runtime_safety import install_runtime_safety
+    agent.commit_hash = install_runtime_safety(agent.container, agent.commit_hash, repo_path)
     agent.snapshot = snapshot
     if artifact_dir is not None:
         agent.artifact_dir = Path(artifact_dir).resolve()
@@ -259,6 +262,16 @@ def refine(
         environment=agent.runtime.llm_environment,
     )
     metadata["meta_agent_command_successful"] = execution.exit_code == 0
+    usage = _read_refinement_usage(agent, agent_output)
+    if usage is not None:
+        metadata["refinement_usage"] = usage
+    if usage and usage.get("tool_budget_exhausted"):
+        metadata["tool_budget_exhausted"] = True
+        metadata["refine_successful"] = False
+        return RefineOutput(
+            agent=agent, changed=False, patch_path=None, result=None,
+            metadata=metadata,
+        )
     if execution.exit_code != 0:
         output = execution.output.decode("utf-8", errors="replace")
         raise RuntimeError(f"MetaAgent command failed: {output}")
@@ -303,6 +316,39 @@ def _checkpoint_agent(agent: InstantiatedAgent) -> None:
     agent.commit_hash = revision.output.decode("utf-8", errors="replace").strip()
 
 
+def _stage_feedback_screenshots(result: dict[str, Any], local_history: Path) -> list[str]:
+    """Bundle GameWorld feedback images without changing the original feedback."""
+
+    staged: list[str] = []
+    folder = local_history / "artifacts" / "bench_screenshots"
+    for case_index, case in enumerate(result.get("cases", [])):
+        trajectory = (case.get("feedback") or {}).get("trajectory") or []
+        case_screenshots: list[dict[str, Any]] = []
+        for step_index, step in enumerate(trajectory):
+            for image_index, image in enumerate(step.get("image_records") or []):
+                source_name = image.get("path")
+                if not isinstance(source_name, str) or not source_name:
+                    raise ValueError("Feedback screenshot has no source path")
+                source = Path(source_name).expanduser().resolve()
+                if not source.is_file():
+                    raise FileNotFoundError(f"Feedback screenshot is missing: {source}")
+                if source.suffix.lower() not in {".png", ".jpg", ".jpeg", ".gif", ".webp"}:
+                    raise ValueError(f"Unsupported feedback image: {source}")
+                if source.stat().st_size > 20 * 1024 * 1024:
+                    raise ValueError(f"Feedback image exceeds 20 MiB: {source}")
+                folder.mkdir(parents=True, exist_ok=True)
+                filename = f"case_{case_index:04d}_step_{step_index:04d}_image_{image_index:02d}{source.suffix.lower()}"
+                target = folder / filename
+                shutil.copyfile(source, target)
+                relative = f"artifacts/bench_screenshots/{filename}"
+                image["path"] = relative
+                case_screenshots.append({"step_index": step.get("step_index"), "path": relative})
+                staged.append(relative)
+        if case_screenshots:
+            case.setdefault("artifacts", {})["game_screenshots"] = case_screenshots
+    return staged
+
+
 def _stage_direct_evidence(
     agent: InstantiatedAgent,
     results: Any,
@@ -317,18 +363,19 @@ def _stage_direct_evidence(
     local_history.mkdir(parents=True, exist_ok=True)
     artifact_refs = results.get("artifacts", {}) if isinstance(results, Mapping) else {}
     source_root = Path(evidence_source_dir).resolve() if evidence_source_dir else None
+    container_history = "/tmp/evaluation_history"
     if source_root is not None:
-        source_result = source_root / "result.json"
-        if not source_result.is_file():
-            raise FileNotFoundError(f"Evidence result not found: {source_result}")
+        original_result = source_root / "result.json"
+        if not original_result.is_file():
+            raise FileNotFoundError(f"Evidence result not found: {original_result}")
+        staged_result = json.loads(original_result.read_text(encoding="utf-8"))
     else:
-        source_result = local_history / "result.json"
-        source_result.write_text(
-            json.dumps(results, ensure_ascii=False, indent=2, default=str),
-            encoding="utf-8",
-        )
+        staged_result = json.loads(json.dumps(results, ensure_ascii=False, default=str))
         if artifact_refs:
             raise ValueError("Artifact-bearing evidence requires evidence_source_dir.")
+    screenshots = _stage_feedback_screenshots(staged_result, local_history)
+    source_result = local_history / "result.json"
+    source_result.write_text(json.dumps(staged_result, ensure_ascii=False, indent=2), encoding="utf-8")
     manifest = {
         "schema_version": 1,
         "evidence_kind": "rsi_evaluation_evidence",
@@ -345,8 +392,10 @@ def _stage_direct_evidence(
         ),
         "artifact_resolution": (
             "During MetaAgent execution, artifact paths in result.json are relative "
-            "to /tmp/evaluation_history."
+            "to /tmp/evaluation_history. Game screenshots are copied to "
+            "artifacts/bench_screenshots and also passed to a multimodal inspection call."
         ),
+        "game_screenshot_count": len(screenshots),
         "canonical_source": (
             os.path.relpath(source_root, agent.snapshot.run_dir) if source_root else None
         ),
@@ -359,7 +408,6 @@ def _stage_direct_evidence(
     if source_artifacts is not None:
         if artifact_refs and not source_artifacts.is_dir():
             raise FileNotFoundError(f"Evidence artifacts not found: {source_artifacts}")
-    container_history = "/tmp/evaluation_history"
     cleared = agent.container.exec_run(["rm", "-rf", container_history], workdir="/")
     log_container_output(cleared)
     created = agent.container.exec_run(["mkdir", "-p", container_history], workdir="/")
@@ -377,6 +425,36 @@ def _stage_direct_evidence(
     return container_history
 
 
+_USAGE_RECORDING_BOOTSTRAP = """
+import json
+import runpy
+import sys
+from pathlib import Path
+import meta_agent
+
+usage_path = Path(sys.argv[1])
+sys.argv = ["run_meta_agent.py", *sys.argv[2:]]
+original_chat = meta_agent.chat_with_agent
+
+def tracked_chat(*args, **kwargs):
+    history = original_chat(*args, **kwargs)
+    last = history[-1] if history else {}
+    usage = dict(last.get("usage") or {})
+    if last.get("tool_budget_exhausted"):
+        usage["tool_budget_exhausted"] = True
+        usage["tool_calls_executed"] = last["tool_calls_executed"]
+        usage["tool_call_limit"] = last["tool_call_limit"]
+    if usage.get("total_tokens", 0) > 0 or usage.get("tool_budget_exhausted"):
+        usage_path.write_text(json.dumps(usage), encoding="utf-8")
+    if last.get("tool_budget_exhausted"):
+        raise SystemExit(0)
+    return history
+
+meta_agent.chat_with_agent = tracked_chat
+runpy.run_path("run_meta_agent.py", run_name="__main__")
+"""
+
+
 def _meta_agent_command(
     agent: InstantiatedAgent,
     *,
@@ -387,7 +465,8 @@ def _meta_agent_command(
 ) -> list[str]:
     model = agent.runtime.meta_model
     command = [
-        "timeout", "21600", "python", "run_meta_agent.py",
+        "timeout", "21600", "python", "-c", _USAGE_RECORDING_BOOTSTRAP,
+        posixpath.join(output_path, "meta_agent_usage.json"),
         "--model", model["name"],
     ]
     if model.get("reasoning_effort"):
@@ -414,6 +493,9 @@ def _collect_refinement(
     container_output: str,
     metadata: dict[str, Any],
 ) -> RefineOutput:
+    usage = _read_refinement_usage(agent, container_output)
+    if usage is not None:
+        metadata["refinement_usage"] = usage
     local_output = output_dir / "agent_output"
     copy_from_container(
         agent.container,
@@ -451,6 +533,40 @@ def _collect_refinement(
         result=None,
         metadata=metadata,
     )
+
+
+def _read_refinement_usage(
+    agent: InstantiatedAgent, container_output: str,
+) -> dict[str, Any] | None:
+    path = posixpath.join(container_output, "meta_agent_usage.json")
+    result = agent.container.exec_run(["cat", path], workdir="/")
+    if result.exit_code != 0:
+        return None
+    try:
+        raw = json.loads(result.output.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    fields = {
+        "prompt_num_tokens": "input_tokens",
+        "response_num_tokens": "output_tokens",
+        "reasoning_num_tokens": "reasoning_tokens",
+        "total_num_tokens": "total_tokens",
+        "cached_prompt_num_tokens": "cached_input_tokens",
+    }
+    if not isinstance(raw, dict):
+        return None
+    valid_usage = all(
+        type(raw.get(key)) is int and raw[key] >= 0 for key in fields.values()
+    ) and raw.get("total_tokens", 0) > 0
+    exhausted = raw.get("tool_budget_exhausted") is True
+    if not valid_usage and not exhausted:
+        return None
+    usage = {name: raw[key] for name, key in fields.items()} if valid_usage else {}
+    if exhausted:
+        usage["tool_budget_exhausted"] = True
+        usage["tool_calls_executed"] = raw.get("tool_calls_executed")
+        usage["tool_call_limit"] = raw.get("tool_call_limit")
+    return usage
 
 
 def _validate_patch_scope(patch_path: Path) -> None:

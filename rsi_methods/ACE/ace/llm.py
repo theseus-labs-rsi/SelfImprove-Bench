@@ -23,10 +23,11 @@ def timed_llm_call(
     max_tokens: int = 4096,
     log_dir=None,
     sleep_seconds: float = 15,
-    retries_on_timeout: int = 1000,
+    retries_on_timeout: int = 5,
     attempt: int = 1,
     use_json_mode: bool = False,
     reasoning_effort: str | None = None,
+    image_paths=None,
 ):
     """
     Make a timed LLM call with error handling and retry logic.
@@ -65,6 +66,7 @@ def timed_llm_call(
     prompt_time = time.time()
     
     print(f"[{role.upper()}] Starting call {call_id}...")
+    attempt_ledger = []
     
     while True:
         try:
@@ -77,19 +79,44 @@ def timed_llm_call(
                 "output_format": "json_object" if use_json_mode else None,
                 "reasoning_effort": reasoning_effort,
             }
+            if image_paths:
+                api_params["image_paths"] = list(image_paths)
 
             call_start = time.time()
+            attempt_entry = {
+                "attempt": attempt,
+                "started_at": datetime.now().isoformat(),
+                "usage_complete": False,
+                "unknown_may_have_billed": True,
+            }
+            attempt_ledger.append(attempt_entry)
             response = dispatcher.distribute(**api_params)
             call_end = time.time()
 
             # Check if response is valid
             if not response or not response.text:
-                raise Exception("Empty response from API")
+                usage = response.usage if response else None
+                details = {
+                    "status": response.status if response else None,
+                    "finish_reason": response.finish_reason if response else None,
+                    "response_id": response.response_id if response else None,
+                    "input_tokens": usage.input_tokens if usage else None,
+                    "output_tokens": usage.output_tokens if usage else None,
+                    "reasoning_tokens": usage.reasoning_tokens if usage else None,
+                    "metadata": response.metadata if response else None,
+                }
+                raise Exception(f"Empty response from API: {details}")
 
             response_time = time.time()
             total_time = response_time - start_time
             response_content = response.text
             usage = response.usage
+            attempt_entry.update(
+                status="response_received",
+                total_tokens=usage.total_tokens if usage else None,
+                usage_complete=bool(usage and isinstance(usage.total_tokens, int)),
+                unknown_may_have_billed=not bool(usage and isinstance(usage.total_tokens, int)),
+            )
 
             call_info = {
                 "role": role,
@@ -116,7 +143,23 @@ def timed_llm_call(
                 "reasoning_num_tokens": (
                     usage.reasoning_tokens if usage else None
                 ),
+                "attempt_ledger": list(attempt_ledger),
+                "usage_complete": all(x["usage_complete"] for x in attempt_ledger),
             }
+            if not call_info["usage_complete"]:
+                call_info["known_successful_response_tokens"] = call_info["total_num_tokens"]
+                for key in ("prompt_num_tokens", "response_num_tokens",
+                            "total_num_tokens", "cached_prompt_num_tokens",
+                            "reasoning_num_tokens"):
+                    call_info[key] = None
+            if image_paths:
+                from benchmark.visual_evidence import image_file
+                import hashlib
+                call_info["visual_inputs"] = [
+                    {"path": str(image_file(p)),
+                     "sha256": hashlib.sha256(image_file(p).read_bytes()).hexdigest()}
+                    for p in image_paths
+                ]
             
             print(f"[{role.upper()}] Call {call_id} completed in {total_time:.2f}s")
             
@@ -126,6 +169,19 @@ def timed_llm_call(
             return response_content, call_info
             
         except Exception as e:
+            if attempt_ledger:
+                attempt_ledger[-1].update(status="failed", error_type=type(e).__name__)
+                if log_dir:
+                    # Preserve the failed intent even if a later retry succeeds.
+                    import json
+                    from pathlib import Path
+                    ledger_path = Path(log_dir) / "request_attempts.jsonl"
+                    ledger_path.parent.mkdir(parents=True, exist_ok=True)
+                    with ledger_path.open("a", encoding="utf-8") as handle:
+                        handle.write(json.dumps({
+                            "call_id": call_id, "role": role,
+                            **attempt_ledger[-1],
+                        }) + "\n")
             # Check for both timeout and rate limit errors
             is_timeout = any(k in str(e).lower() for k in ["timeout", "timed out", "connection"])
             is_rate_limit = any(k in str(e).lower() for k in ["rate limit", "429", "rate_limit_exceeded"])
@@ -169,7 +225,7 @@ def timed_llm_call(
                 # Log problematic requests for SambaNova support
                 log_problematic_request(call_id, prompt, model, api_params, e, log_dir, False,
                                        None)
-            
+
             # For empty responses, we handle differently based on context
             if is_empty_response:
                 # Log the problematic request for SambaNova support

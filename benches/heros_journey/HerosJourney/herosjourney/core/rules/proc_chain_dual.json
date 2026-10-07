@@ -1,0 +1,100 @@
+{
+  "_note": "P-Chain-Dual: each seed samples identifiable action, count, and three-block order logic.",
+  "input_category": "entity.npc",
+  "input_meta": {
+    "name": ["name_pools.first", "name_pools.last"],
+    "repeat_name": ["name_pools.repeat_first", "name_pools.repeat_last"],
+    "properties": {"location": "locations"}
+  },
+  "inputs": [
+    {"name": "class", "n_values": 4, "pool": "attributes.class", "nonce_pool": "attribute_slots.0", "nonce_label": "attribute_labels.0"},
+    {"name": "role", "n_values": 4, "pool": "attributes.role", "nonce_pool": "attribute_slots.1", "nonce_label": "attribute_labels.1"},
+    {"name": "rank", "n_values": 4, "pool": "attributes.class", "nonce_pool": "attribute_slots.2", "nonce_label": "attribute_labels.2"}
+  ],
+  "output": {
+    "type": "process",
+    "seeded_logic": {"family": "ordered_extensions_v1", "block_count": 3},
+    "outputs": [
+      {"name": "block_a_action", "n_values": 2},
+      {"name": "block_a_count", "n_values": 6},
+      {"name": "block_b_action", "n_values": 2},
+      {"name": "block_b_count", "n_values": 6},
+      {"name": "order_pattern", "n_values": 6}
+    ],
+    "functions": [],
+    "composition": {
+      "fn": "pipeline",
+      "stages": [
+        {
+          "output": "block_a_action",
+          "inputs": [{"attr": "class"}],
+          "table": [0, 1, 1, 0]
+        },
+        {
+          "output": "block_a_count",
+          "inputs": [{"attr": "role"}],
+          "table": [2, 4, 3, 5]
+        },
+        {
+          "output": "block_b_action",
+          "inputs": [{"attr": "rank"}],
+          "table": [1, 0, 1, 0]
+        },
+        {
+          "output": "block_b_count",
+          "inputs": [{"attr": "class"}],
+          "table": [3, 5, 2, 4]
+        },
+        {
+          "output": "order_pattern",
+          "inputs": [{"attr": "class"}, {"attr": "role"}],
+          "table": [[0,1,2,3],[2,3,4,5],[4,5,0,1],[0,1,2,3]]
+        }
+      ]
+    },
+    "extra_pools": {
+      "activity.ritual": {"name_keys": ["rituals"]},
+      "activity.potion": {"name_keys": ["potions"]},
+      "activity.ritual_pre": {"name_keys": ["rituals"]},
+      "activity.potion_pre": {"name_keys": ["potions"]},
+      "activity.ritual_post": {"name_keys": ["rituals"]},
+      "activity.potion_post": {"name_keys": ["potions"]}
+    },
+    "extensions": [
+      {
+        "count": {"from_dim": "block_a_count"},
+        "action": {"from_dim": "block_a_action", "values": ["perform", "drink"]},
+        "pool": {"by_action": {"perform": "activity.ritual_pre", "drink": "activity.potion_pre"}},
+        "position": {
+          "from_dim": "order_pattern",
+          "values": [
+            {"before": "buy_0"},
+            {"before": "perform_prep"},
+            {"before": "buy_0"},
+            {"before": "go_entity"},
+            {"before": "go_entity"},
+            {"before": "drink_prep"}
+          ]
+        },
+        "is_hidden": true
+      },
+      {
+        "count": {"from_dim": "block_b_count"},
+        "action": {"from_dim": "block_b_action", "values": ["perform", "drink"]},
+        "pool": {"by_action": {"perform": "activity.ritual_post", "drink": "activity.potion_post"}},
+        "position": {
+          "from_dim": "order_pattern",
+          "values": [
+            {"before": "go_entity"},
+            {"before": "go_entity"},
+            {"before": "drink_prep"},
+            {"before": "buy_0"},
+            {"before": "perform_prep"},
+            {"before": "buy_0"}
+          ]
+        },
+        "is_hidden": true
+      }
+    ]
+  }
+}
