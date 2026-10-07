@@ -1,0 +1,24 @@
+task_id: "18_h03"
+game_id: 18_minecraft-clone-glm
+evaluator_id: game_api_metric
+max_steps: 100
+task_target_score_field: 12
+task_start_score_field: 0
+pause_during_inference: true
+continue_on_fail: true
+
+task_prompt: |
+  Collect at least 12 newly gained leaves in this run.
+  Only leaves collected after the run begins count. Move among tree canopies,
+  change camera pitch and position to keep reaching new leaves blocks.
+
+evaluator_config:
+  terminal_status: success
+  score_field: game_state.inventory.item_gains.leaves
+  end_field: terminal.isTerminal
+  metrics_fields:
+    - game_state.inventory.item_gains.leaves
+    - metrics.nearby_leaves_count
+    - metrics.targeted_block_type
+    - metrics.targeted_block_distance
+    - game_state.environment.break_progress

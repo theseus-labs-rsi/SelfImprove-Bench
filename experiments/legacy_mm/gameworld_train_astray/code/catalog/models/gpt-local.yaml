@@ -1,0 +1,14 @@
+model_name: gpt-local
+prompt_template_id: game_agent_template
+
+output_format: |
+    - You must call exactly ONE tool per step.
+    - The tool name must be a registered action id.
+    - Include `reasoning` as a short rationale.
+    - Do not output free-form text.
+
+model: "gpt-5.6-terra"
+endpoint: "http://35.220.164.252:3888/v1"
+request_timeout: 120.0
+
+enable_memory: true

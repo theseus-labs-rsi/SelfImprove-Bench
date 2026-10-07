@@ -1,0 +1,79 @@
+suite_name: simulation_codex_exec_fair_remaining18_20260907
+headless: true
+
+# 12_01 and 12_02 completed under the same Codex configuration in
+# simulation_codex_exec_fair_full_20260907_20260907_021452.
+# Interleave games so early results cover the full Simulation category.
+cases:
+  - game: "12_fireboy-and-watergirl"
+    tasks: ["12_03"]
+    models: ["codex-exec"]
+    repeat: 1
+  - game: "18_minecraft-clone-glm"
+    tasks: ["18_01"]
+    models: ["codex-exec"]
+    repeat: 1
+  - game: "20_monkey-mart"
+    tasks: ["20_01"]
+    models: ["codex-exec"]
+    repeat: 1
+  - game: "31_wolf3d"
+    tasks: ["31_01"]
+    models: ["codex-exec"]
+    repeat: 1
+  - game: "12_fireboy-and-watergirl"
+    tasks: ["12_04"]
+    models: ["codex-exec"]
+    repeat: 1
+  - game: "18_minecraft-clone-glm"
+    tasks: ["18_02"]
+    models: ["codex-exec"]
+    repeat: 1
+  - game: "20_monkey-mart"
+    tasks: ["20_02"]
+    models: ["codex-exec"]
+    repeat: 1
+  - game: "31_wolf3d"
+    tasks: ["31_02"]
+    models: ["codex-exec"]
+    repeat: 1
+  - game: "12_fireboy-and-watergirl"
+    tasks: ["12_05"]
+    models: ["codex-exec"]
+    repeat: 1
+  - game: "18_minecraft-clone-glm"
+    tasks: ["18_03"]
+    models: ["codex-exec"]
+    repeat: 1
+  - game: "20_monkey-mart"
+    tasks: ["20_03"]
+    models: ["codex-exec"]
+    repeat: 1
+  - game: "31_wolf3d"
+    tasks: ["31_03"]
+    models: ["codex-exec"]
+    repeat: 1
+  - game: "18_minecraft-clone-glm"
+    tasks: ["18_04"]
+    models: ["codex-exec"]
+    repeat: 1
+  - game: "20_monkey-mart"
+    tasks: ["20_04"]
+    models: ["codex-exec"]
+    repeat: 1
+  - game: "31_wolf3d"
+    tasks: ["31_04"]
+    models: ["codex-exec"]
+    repeat: 1
+  - game: "18_minecraft-clone-glm"
+    tasks: ["18_05"]
+    models: ["codex-exec"]
+    repeat: 1
+  - game: "20_monkey-mart"
+    tasks: ["20_05"]
+    models: ["codex-exec"]
+    repeat: 1
+  - game: "31_wolf3d"
+    tasks: ["31_05"]
+    models: ["codex-exec"]
+    repeat: 1

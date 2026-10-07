@@ -1,0 +1,93 @@
+{
+  "parsnip": {
+    "name": "防风草",
+    "seed_price": 20,
+    "maturity_days": 4,
+    "yield_per_harvest": 1,
+    "fruit_price": 35
+  },
+  "garlic": {
+    "name": "蒜",
+    "seed_price": 40,
+    "maturity_days": 4,
+    "yield_per_harvest": 1,
+    "fruit_price": 60
+  },
+  "potato": {
+    "name": "土豆",
+    "seed_price": 50,
+    "maturity_days": 6,
+    "yield_per_harvest": 5,
+    "fruit_price": 20
+  },
+  "tulip": {
+    "name": "郁金香",
+    "seed_price": 20,
+    "maturity_days": 6,
+    "yield_per_harvest": 2,
+    "fruit_price": 30
+  },
+  "kale": {
+    "name": "甘蓝菜",
+    "seed_price": 70,
+    "maturity_days": 6,
+    "yield_per_harvest": 1,
+    "fruit_price": 110
+  },
+  "blue_jazz": {
+    "name": "蓝爵",
+    "seed_price": 30,
+    "maturity_days": 7,
+    "yield_per_harvest": 2,
+    "fruit_price": 40
+  },
+  "cauliflower": {
+    "name": "花椰菜",
+    "seed_price": 80,
+    "maturity_days": 12,
+    "yield_per_harvest": 1,
+    "fruit_price": 175
+  },
+  "rhubarb": {
+    "name": "大黄",
+    "seed_price": 100,
+    "maturity_days": 13,
+    "yield_per_harvest": 1,
+    "fruit_price": 220
+  },
+  "carrot": {
+    "name": "胡萝卜",
+    "seed_price": 20,
+    "maturity_days": 3,
+    "yield_per_harvest": 1,
+    "fruit_price": 35
+  },
+  "unmilled_rice": {
+    "name": "未碾米",
+    "seed_price": 40,
+    "maturity_days": 8,
+    "yield_per_harvest": 10,
+    "fruit_price": 10
+  },
+  "coffee_bean": {
+    "name": "咖啡豆",
+    "seed_price": 450,
+    "maturity_days": 10,
+    "yield_per_harvest":20 ,
+    "fruit_price": 30
+  },
+  "green_bean": {
+    "name": "青豆",
+    "seed_price": 200,
+    "maturity_days": 10,
+    "yield_per_harvest": 8,
+    "fruit_price": 40
+  },
+  "strawberry": {
+    "name": "草莓",
+    "seed_price": 300,
+    "maturity_days": 8,
+    "yield_per_harvest": 5,
+    "fruit_price": 100
+  }
+}

@@ -1,0 +1,14 @@
+suite_name: simulation_codex_exec_fair_pilot_20260907
+headless: true
+
+comparison_contract:
+  baseline_model: "gpt-codex-freerouter"
+  candidate_model: "codex-exec"
+
+# Paired preflight run. Do not expand to the full suite until request artifacts
+# confirm matching model, reasoning, prompt, memory, task, and evaluator settings.
+cases:
+  - game: "31_wolf3d"
+    tasks: ["31_03"]
+    models: ["gpt-codex-freerouter", "codex-exec"]
+    repeat: 1

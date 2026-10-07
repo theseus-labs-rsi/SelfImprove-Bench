@@ -1,0 +1,20 @@
+suite_name: gpt-codex-freerouter_31_34_task01
+headless: true
+
+cases:
+  - game: "31_wolf3d"
+    tasks: ["31_01"]
+    models: ["gpt-codex-freerouter"]
+    repeat: 1
+  - game: "32_wordle"
+    tasks: ["32_01"]
+    models: ["gpt-codex-freerouter"]
+    repeat: 1
+  - game: "33_worlds-hardest-game"
+    tasks: ["33_01"]
+    models: ["gpt-codex-freerouter"]
+    repeat: 1
+  - game: "34_worlds-hardest-game-2"
+    tasks: ["34_01"]
+    models: ["gpt-codex-freerouter"]
+    repeat: 1

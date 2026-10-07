@@ -1,0 +1,193 @@
+{
+  "minecraft": {
+    "historical_source": "/mnt/shared-storage-user/mineru2-shared/yangjie/self_evlove_game/outputs/minecraft_ahe_refine1_dufu_20261001/gameworld-overlay",
+    "train": [
+      "18_m02",
+      "18_m06",
+      "18_m03",
+      "18_m14",
+      "18_m18",
+      "18_m15",
+      "18_m05",
+      "18_m13",
+      "18_m09",
+      "18_m17",
+      "18_m11",
+      "18_m01",
+      "18_m04",
+      "18_m16",
+      "18_m07",
+      "18_m19",
+      "18_m20",
+      "18_m10",
+      "18_m08",
+      "18_m12"
+    ],
+    "official": [
+      "18_01",
+      "18_02",
+      "18_03",
+      "18_04",
+      "18_05"
+    ],
+    "training_gameworld": "${RSI_ROOT}/gameworld_train_minecraft",
+    "official_gameworld": "${RSI_ROOT}/gameworld",
+    "difficulty_claim": "each training task copies an official holdout task and changes only the quota (+-1-2); same world (official seed 42), skills and step budget, NOT empirically equal difficulty",
+    "train_tasks": [
+      {
+        "task": "18_m01",
+        "from": "18_01",
+        "quota": 18,
+        "official_quota": 20
+      },
+      {
+        "task": "18_m02",
+        "from": "18_01",
+        "quota": 19,
+        "official_quota": 20
+      },
+      {
+        "task": "18_m03",
+        "from": "18_01",
+        "quota": 21,
+        "official_quota": 20
+      },
+      {
+        "task": "18_m04",
+        "from": "18_01",
+        "quota": 22,
+        "official_quota": 20
+      },
+      {
+        "task": "18_m05",
+        "from": "18_02",
+        "quota": 18,
+        "official_quota": 20
+      },
+      {
+        "task": "18_m06",
+        "from": "18_02",
+        "quota": 19,
+        "official_quota": 20
+      },
+      {
+        "task": "18_m07",
+        "from": "18_02",
+        "quota": 21,
+        "official_quota": 20
+      },
+      {
+        "task": "18_m08",
+        "from": "18_02",
+        "quota": 22,
+        "official_quota": 20
+      },
+      {
+        "task": "18_m09",
+        "from": "18_03",
+        "quota": 48,
+        "official_quota": 50
+      },
+      {
+        "task": "18_m10",
+        "from": "18_03",
+        "quota": 49,
+        "official_quota": 50
+      },
+      {
+        "task": "18_m11",
+        "from": "18_03",
+        "quota": 51,
+        "official_quota": 50
+      },
+      {
+        "task": "18_m12",
+        "from": "18_03",
+        "quota": 52,
+        "official_quota": 50
+      },
+      {
+        "task": "18_m13",
+        "from": "18_04",
+        "quota": 18,
+        "official_quota": 20
+      },
+      {
+        "task": "18_m14",
+        "from": "18_04",
+        "quota": 19,
+        "official_quota": 20
+      },
+      {
+        "task": "18_m15",
+        "from": "18_04",
+        "quota": 21,
+        "official_quota": 20
+      },
+      {
+        "task": "18_m16",
+        "from": "18_04",
+        "quota": 22,
+        "official_quota": 20
+      },
+      {
+        "task": "18_m17",
+        "from": "18_05",
+        "quota": 3,
+        "official_quota": 5
+      },
+      {
+        "task": "18_m18",
+        "from": "18_05",
+        "quota": 4,
+        "official_quota": 5
+      },
+      {
+        "task": "18_m19",
+        "from": "18_05",
+        "quota": 6,
+        "official_quota": 5
+      },
+      {
+        "task": "18_m20",
+        "from": "18_05",
+        "quota": 7,
+        "official_quota": 5
+      }
+    ]
+  },
+  "astray": {
+    "historical_source": "/mnt/shared-storage-user/mineru2-shared/yangjie/self_evlove_game/outputs/astray15_train20_official5_20260928_130552/train-gameworld-overlay",
+    "train": [
+      "03_t01",
+      "03_t02",
+      "03_t03",
+      "03_t04",
+      "03_t05",
+      "03_t06",
+      "03_t07",
+      "03_t08",
+      "03_t09",
+      "03_t10",
+      "03_t11",
+      "03_t12",
+      "03_t13",
+      "03_t14",
+      "03_t15",
+      "03_t16",
+      "03_t17",
+      "03_t18",
+      "03_t19",
+      "03_t20"
+    ],
+    "official": [
+      "03_01",
+      "03_02",
+      "03_03",
+      "03_04",
+      "03_05"
+    ],
+    "training_gameworld": "${RSI_ROOT}/gameworld_train_astray",
+    "official_gameworld": "${RSI_ROOT}/gameworld"
+  }
+}

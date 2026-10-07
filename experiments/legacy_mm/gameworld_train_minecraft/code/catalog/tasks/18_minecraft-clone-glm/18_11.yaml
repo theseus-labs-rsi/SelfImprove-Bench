@@ -1,0 +1,30 @@
+task_id: "18_11"
+game_id: 18_minecraft-clone-glm
+evaluator_id: game_api_metric
+max_steps: 100
+task_target_score_field: 2
+task_start_score_field: 0
+pause_during_inference: true
+continue_on_fail: true
+
+task_prompt: |
+  Collect at least 2 newly collected wood logs during this run.
+  Your progress is the number of wood logs gained after the run begins.
+  Starting inventory items do not count toward this task; only wood logs gained after the run begins count.
+  Find a nearby tree, line up the crosshair with its trunk, and mine the log blocks until collected.
+
+evaluator_config:
+  terminal_status: success
+  score_field: game_state.inventory.item_gains.wood_log
+  end_field: terminal.isTerminal
+  metrics_fields:
+    - game_state.inventory.item_gains.wood_log
+    - game_state.inventory.item_counts.wood_log
+    - metrics.collected_positive_total
+    - metrics.targeted_block_exists
+    - metrics.targeted_block_type
+    - metrics.targeted_block_distance
+    - game_state.environment.break_progress
+    - gameTimeMs
+    - terminal.outcome
+    - terminal.isTerminal

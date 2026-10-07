@@ -1,0 +1,25 @@
+task_id: "18_19"
+game_id: 18_minecraft-clone-glm
+evaluator_id: game_api_metric
+max_steps: 100
+task_target_score_field: 8
+task_start_score_field: 0
+pause_during_inference: true
+continue_on_fail: true
+
+task_prompt: |
+  Mine at least 8 newly collected dirt blocks during this run.
+  Begin with a nearby exposed dirt face, keep mining the same reachable
+  surface, and use the observed item gain to decide whether to continue.
+
+evaluator_config:
+  terminal_status: success
+  score_field: game_state.inventory.item_gains.dirt
+  end_field: terminal.isTerminal
+  metrics_fields:
+    - game_state.inventory.item_gains.dirt
+    - metrics.targeted_block_type
+    - metrics.depth_below_surface
+    - game_state.environment.break_progress
+    - terminal.outcome
+    - terminal.isTerminal

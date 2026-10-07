@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- [DETERMINISTIC_RANDOM] -->
+<script>
+// [DETERMINISTIC_RANDOM] Seeded randomness + time for reproducible gameplay
+(function() {
+    'use strict';
+    var SEED = (42 >>> 0);
+    function mulberry32(s) {
+        return function() {
+            s |= 0; s = s + 0x6D2B79F5 | 0;
+            var t = Math.imul(s ^ s >>> 15, 1 | s);
+            t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+            return ((t ^ t >>> 14) >>> 0) / 4294967296;
+        };
+    }
+
+    function makeRng(seed) {
+        return mulberry32(seed >>> 0);
+    }
+
+    var rng = makeRng(SEED);
+    var rngCrypto = makeRng(SEED ^ 0x9E3779B9);
+
+    var originalRandom = Math.random;
+    Math.random = function() { return rng(); };
+
+    var originalCrypto = window.crypto || window.msCrypto || null;
+    var originalGetRandomValues = originalCrypto && originalCrypto.getRandomValues
+        ? originalCrypto.getRandomValues.bind(originalCrypto)
+        : null;
+    var originalRandomUUID = originalCrypto && originalCrypto.randomUUID
+        ? originalCrypto.randomUUID.bind(originalCrypto)
+        : null;
+
+    function fillRandomBytes(typedArray) {
+        for (var i = 0; i < typedArray.length; i++) {
+            typedArray[i] = (rngCrypto() * 256) | 0;
+        }
+        return typedArray;
+    }
+
+    function toHex(byte) {
+        var hex = byte.toString(16);
+        return hex.length === 1 ? '0' + hex : hex;
+    }
+
+    function randomUUID() {
+        var bytes = new Uint8Array(16);
+        fillRandomBytes(bytes);
+        bytes[6] = (bytes[6] & 0x0f) | 0x40;
+        bytes[8] = (bytes[8] & 0x3f) | 0x80;
+        return (
+            toHex(bytes[0]) + toHex(bytes[1]) + toHex(bytes[2]) + toHex(bytes[3]) + '-' +
+            toHex(bytes[4]) + toHex(bytes[5]) + '-' +
+            toHex(bytes[6]) + toHex(bytes[7]) + '-' +
+            toHex(bytes[8]) + toHex(bytes[9]) + '-' +
+            toHex(bytes[10]) + toHex(bytes[11]) + toHex(bytes[12]) + toHex(bytes[13]) +
+            toHex(bytes[14]) + toHex(bytes[15])
+        );
+    }
+
+    function ensureCrypto() {
+        if (window.crypto) {
+            return window.crypto;
+        }
+        if (window.msCrypto) {
+            return window.msCrypto;
+        }
+        try {
+            window.crypto = {};
+            return window.crypto;
+        } catch (e) {
+            return {};
+        }
+    }
+
+    var cryptoObj = ensureCrypto();
+    try {
+        cryptoObj.getRandomValues = function(typedArray) {
+            if (!typedArray || typeof typedArray.length !== 'number') {
+                throw new TypeError('Expected typed array');
+            }
+            return fillRandomBytes(typedArray);
+        };
+    } catch (e) {}
+    try {
+        cryptoObj.randomUUID = randomUUID;
+    } catch (e) {}
+    try {
+        if (window.msCrypto && window.msCrypto !== cryptoObj) {
+            window.msCrypto = cryptoObj;
+        }
+    } catch (e) {}
+
+    function wrapSeedrandom(fn) {
+        if (typeof fn !== 'function') {
+            return fn;
+        }
+        var wrapped = function(seed, options) {
+            if (seed === undefined || seed === null || seed === '') {
+                seed = String(SEED);
+            }
+            return fn.call(this, seed, options);
+        };
+        for (var key in fn) {
+            try {
+                wrapped[key] = fn[key];
+            } catch (e) {}
+        }
+        return wrapped;
+    }
+
+    function hookSeedrandom(target, prop) {
+        var current = target[prop];
+        if (typeof current === 'function') {
+            current = wrapSeedrandom(current);
+            try {
+                target[prop] = current;
+            } catch (e) {}
+        }
+        try {
+            Object.defineProperty(target, prop, {
+                configurable: true,
+                get: function() { return current; },
+                set: function(fn) { current = wrapSeedrandom(fn); }
+            });
+        } catch (e) {}
+    }
+
+    hookSeedrandom(Math, 'seedrandom');
+    hookSeedrandom(window, 'seedrandom');
+
+    window.__resetRandom = function() {
+        rng = makeRng(SEED);
+        rngCrypto = makeRng(SEED ^ 0x9E3779B9);
+        Math.random = function() { return rng(); };
+    };
+    window.__restoreRandom = function() {
+        Math.random = originalRandom;
+        if (originalCrypto) {
+            if (originalGetRandomValues) {
+                originalCrypto.getRandomValues = originalGetRandomValues;
+            }
+            if (originalRandomUUID) {
+                originalCrypto.randomUUID = originalRandomUUID;
+            }
+        }
+    };
+
+    console.log('[DeterministicRandom] Seeded with:', SEED);
+})();
+</script>
+<!-- [DETERMINISTIC_RANDOM] -->
+
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Minecraft Clone</title>
+    <style>
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            overflow: hidden;
+            background: #000;
+            font-family: 'VT323', 'Courier New', monospace;
+            image-rendering: pixelated;
+        }
+        #game-container {
+            width: 100vw;
+            height: 100vh;
+        }
+        canvas {
+            display: block;
+            image-rendering: pixelated;
+        }
+        /* Crosshair */
+        #crosshair {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            z-index: 100;
+            display: none;
+        }
+        #crosshair::before,
+        #crosshair::after {
+            content: '';
+            position: absolute;
+            background: white;
+            mix-blend-mode: difference;
+        }
+        #crosshair::before {
+            width: 20px;
+            height: 2px;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+        #crosshair::after {
+            width: 2px;
+            height: 20px;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+        /* HUD */
+        #hud {
+            position: fixed;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 100;
+            pointer-events: none;
+        }
+        /* Hotbar */
+        #hotbar {
+            display: flex;
+            gap: 2px;
+            background: rgba(0,0,0,0.4);
+            padding: 4px;
+        }
+        .hotbar-slot {
+            width: 40px;
+            height: 40px;
+            background: #8b8b8b;
+            border: 2px solid;
+            border-color: #373737 #fff #fff #373737;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+        .hotbar-slot.selected {
+            border: 3px solid #fff;
+            box-shadow: 0 0 0 1px #000;
+        }
+        .hotbar-slot canvas {
+            width: 32px;
+            height: 32px;
+            image-rendering: pixelated;
+        }
+        .hotbar-slot .count {
+            position: absolute;
+            bottom: 1px;
+            right: 2px;
+            color: white;
+            font-size: 12px;
+            font-family: 'VT323', monospace;
+            text-shadow: 1px 1px 2px #000;
+        }
+        /* Stats */
+        #stats {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        #health-bar, #hunger-bar {
+            display: flex;
+            gap: 1px;
+            margin: 2px 0;
+        }
+        .heart, .hunger {
+            width: 16px;
+            height: 16px;
+            background-size: contain;
+            image-rendering: pixelated;
+        }
+        /* Main Menu */
+        #main-menu {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background:
+                /* Dirt texture pattern */
+                repeating-linear-gradient(
+                    0deg,
+                    transparent,
+                    transparent 4px,
+                    rgba(0,0,0,0.1) 4px,
+                    rgba(0,0,0,0.1) 8px
+                ),
+                repeating-linear-gradient(
+                    90deg,
+                    transparent,
+                    transparent 4px,
+                    rgba(0,0,0,0.1) 4px,
+                    rgba(0,0,0,0.1) 8px
+                ),
+                radial-gradient(ellipse at center, #6b5344 0%, #4a3728 100%);
+            background-size: 8px 8px, 8px 8px, 100% 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        /* Dirt texture overlay */
+        #main-menu::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image:
+                radial-gradient(circle at 10% 20%, rgba(90,60,30,0.3) 0%, transparent 3%),
+                radial-gradient(circle at 30% 50%, rgba(70,50,20,0.2) 0%, transparent 2%),
+                radial-gradient(circle at 50% 10%, rgba(80,55,25,0.3) 0%, transparent 4%),
+                radial-gradient(circle at 70% 80%, rgba(100,70,40,0.2) 0%, transparent 3%),
+                radial-gradient(circle at 90% 30%, rgba(60,40,15,0.3) 0%, transparent 2%),
+                radial-gradient(circle at 15% 70%, rgba(85,60,35,0.2) 0%, transparent 3%),
+                radial-gradient(circle at 85% 60%, rgba(75,50,25,0.3) 0%, transparent 2%),
+                radial-gradient(circle at 45% 90%, rgba(95,65,35,0.2) 0%, transparent 4%);
+            pointer-events: none;
+        }
+        #main-menu h1 {
+            font-size: 64px;
+            color: #3f3f3f;
+            text-shadow:
+                4px 4px 0 #1a1a1a,
+                -2px -2px 0 #5f5f5f,
+                2px 0 0 #2a2a2a,
+                0 2px 0 #2a2a2a;
+            margin-bottom: 60px;
+            font-family: 'VT323', monospace;
+            letter-spacing: 8px;
+            position: relative;
+            z-index: 1;
+            /* Minecraft-style title color */
+            background: linear-gradient(180deg, #5f5f5f 0%, #3f3f3f 50%, #2f2f2f 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            filter: drop-shadow(3px 3px 0 #000);
+        }
+        .menu-btn {
+            width: 280px;
+            padding: 14px 24px;
+            margin: 6px;
+            font-size: 20px;
+            font-family: 'VT323', monospace;
+            background: linear-gradient(180deg, #8b8b8b 0%, #6d6d6d 50%, #5a5a5a 100%);
+            border: 3px solid;
+            border-color: #fff #373737 #373737 #fff;
+            cursor: pointer;
+            color: #ffffa0;
+            text-shadow: 2px 2px #3f3f00;
+            letter-spacing: 2px;
+            position: relative;
+            z-index: 1;
+        }
+        .menu-btn:hover {
+            background: linear-gradient(180deg, #9b9bff 0%, #7d7ddd 50%, #6a6acc 100%);
+            color: #ffff00;
+        }
+        .menu-btn:active {
+            border-color: #373737 #fff #fff #373737;
+            transform: translate(1px, 1px);
+        }
+        .menu-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .menu-btn:disabled:hover {
+            background: linear-gradient(180deg, #8b8b8b 0%, #6d6d6d 50%, #5a5a5a 100%);
+            color: #ffffa0;
+        }
+        /* Pause Menu */
+        #pause-menu {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.85);
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        #pause-menu h2 {
+            color: #fff;
+            font-size: 36px;
+            margin-bottom: 30px;
+            text-shadow: 2px 2px #000;
+            font-family: 'VT323', monospace;
+            letter-spacing: 4px;
+        }
+        /* Inventory */
+        #inventory-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.7);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        #inventory-panel {
+            background: #c6c6c6;
+            border: 4px solid;
+            border-color: #fff #555 #555 #fff;
+            padding: 10px;
+            font-family: 'VT323', monospace;
+        }
+        #inventory-title {
+            text-align: center;
+            margin-bottom: 10px;
+            font-weight: bold;
+            font-size: 18px;
+            color: #404040;
+            text-shadow: 1px 1px #fff;
+        }
+        #inventory-grid {
+            display: grid;
+            grid-template-columns: repeat(9, 40px);
+            gap: 2px;
+            margin-bottom: 10px;
+        }
+        .inv-slot {
+            width: 40px;
+            height: 40px;
+            background: #8b8b8b;
+            border: 2px solid;
+            border-color: #373737 #fff #fff #373737;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            cursor: pointer;
+        }
+        .inv-slot:hover {
+            background: #9b9b9b;
+        }
+        .inv-slot canvas {
+            width: 32px;
+            height: 32px;
+            image-rendering: pixelated;
+        }
+        .inv-slot .count {
+            position: absolute;
+            bottom: 2px;
+            right: 4px;
+            color: white;
+            font-size: 10px;
+            text-shadow: 1px 1px #000;
+        }
+        #crafting-section {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 10px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #999;
+        }
+        #crafting-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 40px);
+            gap: 2px;
+        }
+        #crafting-arrow {
+            font-size: 28px;
+            color: #404040;
+            padding: 0 5px;
+        }
+        #crafting-result {
+            width: 50px;
+            height: 50px;
+            background: #8b8b8b;
+            border: 2px solid;
+            border-color: #373737 #fff #fff #373737;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+        }
+        #inventory-label {
+            color: #404040;
+            font-size: 14px;
+            text-shadow: 1px 1px #fff;
+            margin-bottom: 4px;
+        }
+        #inventory-separator {
+            height: 6px;
+        }
+        #inventory-hotbar-grid {
+            display: grid;
+            grid-template-columns: repeat(9, 40px);
+            gap: 2px;
+        }
+        #dragged-item {
+            position: fixed;
+            pointer-events: none;
+            z-index: 2000;
+            display: none;
+            width: 32px;
+            height: 32px;
+            image-rendering: pixelated;
+        }
+        #dragged-item canvas {
+            width: 32px;
+            height: 32px;
+            image-rendering: pixelated;
+        }
+        #dragged-item .count {
+            position: absolute;
+            bottom: 0;
+            right: 2px;
+            color: white;
+            font-size: 12px;
+            font-family: 'VT323', monospace;
+            text-shadow: 1px 1px 2px #000;
+        }
+        /* Debug Info */
+        #debug-info {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-size: 14px;
+            text-shadow: 1px 1px #000;
+            z-index: 100;
+            display: none;
+            background: rgba(0,0,0,0.6);
+            padding: 10px;
+            font-family: 'VT323', monospace;
+            line-height: 1.4;
+        }
+        /* Loading */
+        #loading {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(180deg, #6b5344 0%, #4a3728 100%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+            color: white;
+            font-family: 'VT323', monospace;
+            font-size: 24px;
+            text-shadow: 2px 2px #000;
+        }
+        #loading-bar {
+            width: 320px;
+            height: 24px;
+            background: #2a2a2a;
+            border: 3px solid;
+            border-color: #555 #1a1a1a #1a1a1a #555;
+            margin-top: 20px;
+        }
+        #loading-progress {
+            height: 100%;
+            background: linear-gradient(180deg, #7fff7f 0%, #5acc5a 50%, #3a9a3a 100%);
+            width: 0%;
+            transition: width 0.2s;
+        }
+        /* Underwater overlay */
+        #underwater-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 50;
+            display: none;
+            background: radial-gradient(ellipse at center, transparent 0%, rgba(0,100,150,0.3) 100%);
+        }
+    </style>
+</head>
+<body>
+    <div id="loading">
+        <div>Loading Minecraft Clone...</div>
+        <div id="loading-bar"><div id="loading-progress"></div></div>
+    </div>
+
+    <div id="main-menu">
+        <h1>MINECRAFT</h1>
+        <button class="menu-btn" id="btn-new-world">New World</button>
+        <button class="menu-btn" id="btn-load-world">Load World</button>
+    </div>
+
+    <div id="game-container"></div>
+    <div id="crosshair"></div>
+
+    <div id="hud">
+        <div id="stats">
+            <div id="health-bar"></div>
+            <div id="hunger-bar"></div>
+        </div>
+        <div id="hotbar"></div>
+    </div>
+
+    <div id="pause-menu">
+        <h2>Game Paused</h2>
+        <button class="menu-btn" id="btn-resume">Resume</button>
+        <button class="menu-btn" id="btn-save">Save World</button>
+        <button class="menu-btn" id="btn-quit">Quit to Menu</button>
+    </div>
+
+    <div id="inventory-screen">
+        <div id="inventory-panel">
+            <div id="inventory-title">Crafting</div>
+            <div id="crafting-section">
+                <div id="crafting-grid"></div>
+                <div id="crafting-arrow">→</div>
+                <div id="crafting-result"></div>
+            </div>
+            <div id="inventory-label">Inventory</div>
+            <div id="inventory-grid"></div>
+            <div id="inventory-separator"></div>
+            <div id="inventory-hotbar-grid"></div>
+        </div>
+        <div id="dragged-item"></div>
+    </div>
+
+    <div id="debug-info"></div>
+    <div id="underwater-overlay"></div>
+
+    <!-- Click to start overlay -->
+    <div id="click-to-play" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 500; cursor: pointer; background: rgba(0,0,0,0.5);">
+        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; color: white; font-family: 'VT323', monospace; text-shadow: 2px 2px 4px rgba(0,0,0,0.8);">
+            <div style="font-size: 40px; margin-bottom: 20px; color: #ffff80;">▶ Click to Play</div>
+            <div style="font-size: 20px; opacity: 0.9; margin-bottom: 8px;">WASD - Move | Space - Jump | Shift - Sprint</div>
+            <div style="font-size: 20px; opacity: 0.9; margin-bottom: 8px;">Left Click (Hold) - Break Block | Right Click - Place Block</div>
+            <div style="font-size: 20px; opacity: 0.9; margin-bottom: 8px;">E - Inventory | ESC - Pause | F3 - Debug</div>
+            <div style="font-size: 20px; opacity: 0.9;">Scroll / 1-9 - Switch Hotbar Slot</div>
+        </div>
+    </div>
+
+    <!-- Three.js -->
+    <script src="three.min.js"></script>
+
+    <!-- Game Modules -->
+    <script src="noise.js"></script>
+    <script src="textures.js"></script>
+    <script src="chunk.js"></script>
+    <script src="terrain.js"></script>
+    <script src="player.js"></script>
+    <script src="blocks.js"></script>
+    <script src="inventory.js"></script>
+    <script src="mobs.js"></script>
+    <script src="lighting.js"></script>
+    <script src="audio.js"></script>
+    <script src="particles.js"></script>
+    <script src="ui.js"></script>
+    <script src="save.js"></script>
+    <script src="main.js"></script>
+    <script src="game_api.js"></script>
+
+    <!-- [AUTO_START] Benchmark auto-start: skip menu, start game with seed 42, force pointer lock -->
+    <script>
+    (function() {
+        'use strict';
+        function tryAutoStart() {
+            if (typeof startGame !== 'function' || typeof initUI !== 'function') {
+                setTimeout(tryAutoStart, 200);
+                return;
+            }
+            console.log('[AutoStart] Starting game with seed 42');
+            initUI();
+            startGame(42, null);
+            // Force pointer-lock state so keyboard/mouse input works without real pointer lock
+            if (typeof player !== 'undefined' && player && typeof player.forceLock === 'function') {
+                player.forceLock();
+                console.log('[AutoStart] Pointer lock forced');
+            }
+        }
+        if (document.readyState === 'complete') {
+            tryAutoStart();
+        } else {
+            window.addEventListener('load', tryAutoStart);
+        }
+    })();
+    </script>
+    <!-- [AUTO_START] -->
+</body>
+</html>

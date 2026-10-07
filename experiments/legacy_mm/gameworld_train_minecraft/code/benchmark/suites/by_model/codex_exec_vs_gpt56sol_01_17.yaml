@@ -1,0 +1,12 @@
+suite_name: codex_exec_vs_gpt56sol_01_17
+headless: true
+
+cases:
+  - game: "01_2048"
+    tasks: ["01_01"]
+    models: ["codex-exec", "gpt-codex-freerouter"]
+    repeat: 1
+  - game: "17_mario-game"
+    tasks: ["17_01"]
+    models: ["codex-exec", "gpt-codex-freerouter"]
+    repeat: 1

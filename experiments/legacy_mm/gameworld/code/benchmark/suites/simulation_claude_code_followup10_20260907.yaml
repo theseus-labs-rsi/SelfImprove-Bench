@@ -1,0 +1,24 @@
+suite_name: simulation_claude_code_followup10_20260907
+headless: true
+
+cases:
+  - game: "03_astray"
+    tasks: ["03_01", "03_02"]
+    models: ["claude-code"]
+    repeat: 1
+  - game: "04_boxel-rebound"
+    tasks: ["04_03", "04_04"]
+    models: ["claude-code"]
+    repeat: 1
+  - game: "07_chrome-dino"
+    tasks: ["07_02", "07_03"]
+    models: ["claude-code"]
+    repeat: 1
+  - game: "17_mario-game"
+    tasks: ["17_03", "17_08"]
+    models: ["claude-code"]
+    repeat: 1
+  - game: "34_worlds-hardest-game-2"
+    tasks: ["34_02", "34_03"]
+    models: ["claude-code"]
+    repeat: 1

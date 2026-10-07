@@ -1,0 +1,26 @@
+task_id: "18_h06"
+game_id: 18_minecraft-clone-glm
+evaluator_id: game_api_metric
+max_steps: 100
+task_target_score_field: 2
+task_start_score_field: 0
+pause_during_inference: true
+continue_on_fail: true
+
+task_prompt: |
+  Mine at least 2 newly collected iron ore blocks in this run.
+  Only iron ore gained after the run begins counts. Search stone and
+  underground faces, identify iron ore and align the camera before mining.
+
+evaluator_config:
+  terminal_status: success
+  score_field: game_state.inventory.item_gains.iron_ore
+  end_field: terminal.isTerminal
+  metrics_fields:
+    - game_state.inventory.item_gains.iron_ore
+    - metrics.nearby_iron_ore_count
+    - metrics.nearest_iron_ore_distance
+    - metrics.targeted_block_type
+    - metrics.targeted_block_distance
+    - metrics.depth_below_surface
+    - game_state.environment.break_progress

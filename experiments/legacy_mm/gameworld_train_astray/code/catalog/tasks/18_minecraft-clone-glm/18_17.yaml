@@ -1,0 +1,24 @@
+task_id: "18_17"
+game_id: 18_minecraft-clone-glm
+evaluator_id: game_api_metric
+max_steps: 100
+task_target_score_field: 5
+task_start_score_field: 0
+pause_during_inference: true
+continue_on_fail: true
+
+task_prompt: |
+  Acquire at least 5 newly collected leaves during this run.
+  Only leaves gained after the run begins count toward this task.
+  Search nearby tree canopies, keep the target leaves in view, and collect them until the quota is complete.
+
+evaluator_config:
+  terminal_status: success
+  score_field: game_state.inventory.item_gains.leaves
+  end_field: terminal.isTerminal
+  metrics_fields:
+    - game_state.inventory.item_gains.leaves
+    - metrics.targeted_block_type
+    - game_state.environment.break_progress
+    - terminal.outcome
+    - terminal.isTerminal

@@ -1,0 +1,167 @@
+{
+  "seed": 20260923,
+  "schedule": [
+    {
+      "game": "gameworld",
+      "difficulty": 1,
+      "count": 20
+    }
+  ],
+  "holdout": [
+    {
+      "game": "gameworld",
+      "difficulty": 1,
+      "count": 5
+    }
+  ],
+  "holdout_tasks_per_difficulty": 5,
+  "evolution_window": 1,
+  "agent": {
+    "provider": "ace",
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "low",
+    "timeout": 600,
+    "max_attempts": 1
+  },
+  "game_options": {
+    "gameworld": {
+      "framework": "ace",
+      "model_spec": "azure-gpt-5.6-sol",
+      "max_steps": 100,
+      "reasoning_effort": "low",
+      "resumable_steps": false,
+      "ahe_refinement_every": 1,
+      "train": [
+        {
+          "game": "03_astray",
+          "task": "03_t01",
+          "gameworld_root": "${RSI_ROOT}/gameworld_train_astray"
+        },
+        {
+          "game": "03_astray",
+          "task": "03_t02",
+          "gameworld_root": "${RSI_ROOT}/gameworld_train_astray"
+        },
+        {
+          "game": "03_astray",
+          "task": "03_t03",
+          "gameworld_root": "${RSI_ROOT}/gameworld_train_astray"
+        },
+        {
+          "game": "03_astray",
+          "task": "03_t04",
+          "gameworld_root": "${RSI_ROOT}/gameworld_train_astray"
+        },
+        {
+          "game": "03_astray",
+          "task": "03_t05",
+          "gameworld_root": "${RSI_ROOT}/gameworld_train_astray"
+        },
+        {
+          "game": "03_astray",
+          "task": "03_t06",
+          "gameworld_root": "${RSI_ROOT}/gameworld_train_astray"
+        },
+        {
+          "game": "03_astray",
+          "task": "03_t07",
+          "gameworld_root": "${RSI_ROOT}/gameworld_train_astray"
+        },
+        {
+          "game": "03_astray",
+          "task": "03_t08",
+          "gameworld_root": "${RSI_ROOT}/gameworld_train_astray"
+        },
+        {
+          "game": "03_astray",
+          "task": "03_t09",
+          "gameworld_root": "${RSI_ROOT}/gameworld_train_astray"
+        },
+        {
+          "game": "03_astray",
+          "task": "03_t10",
+          "gameworld_root": "${RSI_ROOT}/gameworld_train_astray"
+        },
+        {
+          "game": "03_astray",
+          "task": "03_t11",
+          "gameworld_root": "${RSI_ROOT}/gameworld_train_astray"
+        },
+        {
+          "game": "03_astray",
+          "task": "03_t12",
+          "gameworld_root": "${RSI_ROOT}/gameworld_train_astray"
+        },
+        {
+          "game": "03_astray",
+          "task": "03_t13",
+          "gameworld_root": "${RSI_ROOT}/gameworld_train_astray"
+        },
+        {
+          "game": "03_astray",
+          "task": "03_t14",
+          "gameworld_root": "${RSI_ROOT}/gameworld_train_astray"
+        },
+        {
+          "game": "03_astray",
+          "task": "03_t15",
+          "gameworld_root": "${RSI_ROOT}/gameworld_train_astray"
+        },
+        {
+          "game": "03_astray",
+          "task": "03_t16",
+          "gameworld_root": "${RSI_ROOT}/gameworld_train_astray"
+        },
+        {
+          "game": "03_astray",
+          "task": "03_t17",
+          "gameworld_root": "${RSI_ROOT}/gameworld_train_astray"
+        },
+        {
+          "game": "03_astray",
+          "task": "03_t18",
+          "gameworld_root": "${RSI_ROOT}/gameworld_train_astray"
+        },
+        {
+          "game": "03_astray",
+          "task": "03_t19",
+          "gameworld_root": "${RSI_ROOT}/gameworld_train_astray"
+        },
+        {
+          "game": "03_astray",
+          "task": "03_t20",
+          "gameworld_root": "${RSI_ROOT}/gameworld_train_astray"
+        }
+      ],
+      "holdout": [
+        {
+          "game": "03_astray",
+          "task": "03_01",
+          "gameworld_root": "${RSI_ROOT}/gameworld"
+        },
+        {
+          "game": "03_astray",
+          "task": "03_02",
+          "gameworld_root": "${RSI_ROOT}/gameworld"
+        },
+        {
+          "game": "03_astray",
+          "task": "03_03",
+          "gameworld_root": "${RSI_ROOT}/gameworld"
+        },
+        {
+          "game": "03_astray",
+          "task": "03_04",
+          "gameworld_root": "${RSI_ROOT}/gameworld"
+        },
+        {
+          "game": "03_astray",
+          "task": "03_05",
+          "gameworld_root": "${RSI_ROOT}/gameworld"
+        }
+      ]
+    }
+  },
+  "output_dir": "${RSI_ROOT}/runs/astray/ace/lineage",
+  "continue_on_error": false
+}

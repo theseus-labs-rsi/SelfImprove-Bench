@@ -1,0 +1,8 @@
+suite_name: gpt-codex-freerouter_31_wolf3d_all_tasks
+headless: true
+
+cases:
+  - game: "31_wolf3d"
+    tasks: ["31_01", "31_02", "31_03", "31_04", "31_05"]
+    models: ["gpt-codex-freerouter"]
+    repeat: 1

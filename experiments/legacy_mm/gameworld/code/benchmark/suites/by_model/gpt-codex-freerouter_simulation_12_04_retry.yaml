@@ -1,0 +1,8 @@
+suite_name: gpt-codex-freerouter_simulation_12_04_retry
+headless: true
+
+cases:
+  - game: "12_fireboy-and-watergirl"
+    tasks: ["12_04"]
+    models: ["gpt-codex-freerouter"]
+    repeat: 1

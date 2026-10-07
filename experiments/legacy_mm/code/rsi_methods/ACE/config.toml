@@ -1,0 +1,37 @@
+[backend.openai]
+api_key_env = "OPENAI_API_KEY"
+base_url_env = "OPENAI_BASE_URL"
+api_mode = "responses"
+max_output_tokens = 512
+
+[state]
+# Parent only; every init creates a new run_<uuid> workspace below it.
+workspace_root = "/mnt/shared-storage-user/mineru2-shared/yangjie/self_evlove_game_legacy_mm/runs/_state/ace"
+# Optional explicit template; empty creates the standard empty playbook.
+initial_playbook_path = ""
+
+[agent]
+backend = "openai"
+model = "gpt-5.6-sol"
+api_mode = "responses"
+max_output_tokens = 4096
+reasoning_effort = "low"
+output_format = "json_object"
+
+[reflector]
+backend = "openai"
+model = "gpt-5.6-sol"
+reasoning_effort = "low"
+
+[curator]
+backend = "openai"
+model = "gpt-5.6-sol"
+reasoning_effort = "low"
+
+[refine]
+max_output_tokens = 4096
+playbook_token_budget = 80000
+curator_batch_size = 1
+use_json_mode = true
+# Enable only when Benchmark explicitly permits ground-truth exposure.
+use_ground_truth = false

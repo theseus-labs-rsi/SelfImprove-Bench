@@ -1,0 +1,34 @@
+suite_name: simulation_codex_exec_selected_remaining7_20260907
+headless: true
+
+# Selected hard/discriminative Simulation tasks. Codex result for 12_02 is
+# reused from simulation_codex_exec_fair_full_20260907_20260907_021452.
+cases:
+  - game: "12_fireboy-and-watergirl"
+    tasks: ["12_04"]
+    models: ["codex-exec"]
+    repeat: 1
+  - game: "18_minecraft-clone-glm"
+    tasks: ["18_01"]
+    models: ["codex-exec"]
+    repeat: 1
+  - game: "18_minecraft-clone-glm"
+    tasks: ["18_05"]
+    models: ["codex-exec"]
+    repeat: 1
+  - game: "20_monkey-mart"
+    tasks: ["20_03"]
+    models: ["codex-exec"]
+    repeat: 1
+  - game: "20_monkey-mart"
+    tasks: ["20_05"]
+    models: ["codex-exec"]
+    repeat: 1
+  - game: "31_wolf3d"
+    tasks: ["31_03"]
+    models: ["codex-exec"]
+    repeat: 1
+  - game: "31_wolf3d"
+    tasks: ["31_05"]
+    models: ["codex-exec"]
+    repeat: 1

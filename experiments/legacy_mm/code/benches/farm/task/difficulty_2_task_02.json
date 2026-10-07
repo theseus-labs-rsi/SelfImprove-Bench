@@ -1,0 +1,86 @@
+{
+  "task_id": "farm-d2-02",
+  "difficulty": 2,
+  "initial_money": 200,
+  "farmland_count": 12,
+  "duration_days": 12,
+  "available_crops": [
+    "carrot",
+    "green_bean",
+    "parsnip",
+    "rhubarb",
+    "strawberry",
+    "unmilled_rice"
+  ],
+  "crop_catalog": {
+    "carrot": {
+      "id": "carrot",
+      "name": "胡萝卜",
+      "seed_price": 20,
+      "maturity_days": 3,
+      "yield_per_harvest": 1,
+      "fruit_price": 35
+    },
+    "green_bean": {
+      "id": "green_bean",
+      "name": "青豆",
+      "seed_price": 200,
+      "maturity_days": 10,
+      "yield_per_harvest": 8,
+      "fruit_price": 40
+    },
+    "parsnip": {
+      "id": "parsnip",
+      "name": "防风草",
+      "seed_price": 20,
+      "maturity_days": 4,
+      "yield_per_harvest": 1,
+      "fruit_price": 35
+    },
+    "rhubarb": {
+      "id": "rhubarb",
+      "name": "大黄",
+      "seed_price": 100,
+      "maturity_days": 13,
+      "yield_per_harvest": 1,
+      "fruit_price": 220
+    },
+    "strawberry": {
+      "id": "strawberry",
+      "name": "草莓",
+      "seed_price": 300,
+      "maturity_days": 8,
+      "yield_per_harvest": 5,
+      "fruit_price": 100
+    },
+    "unmilled_rice": {
+      "id": "unmilled_rice",
+      "name": "未碾米",
+      "seed_price": 40,
+      "maturity_days": 8,
+      "yield_per_harvest": 10,
+      "fruit_price": 10
+    }
+  },
+  "rules": {
+    "day_numbering": "1-based",
+    "daily_operation_order": [
+      "buy_seeds",
+      "plant",
+      "harvest",
+      "sell"
+    ],
+    "harvest_day": "plant_day + maturity_days",
+    "unsold_fruit_has_no_value": true
+  },
+  "reference_daily_profits": {
+    "carrot": 5.0,
+    "green_bean": 12.0,
+    "parsnip": 3.75,
+    "rhubarb": 9.23076923076923,
+    "strawberry": 25.0,
+    "unmilled_rice": 7.5
+  },
+  "reference_profit": 510,
+  "reference_method": "greedy_daily_profit_lookahead"
+}

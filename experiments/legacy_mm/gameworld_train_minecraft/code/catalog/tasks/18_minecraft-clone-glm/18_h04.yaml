@@ -1,0 +1,26 @@
+task_id: "18_h04"
+game_id: 18_minecraft-clone-glm
+evaluator_id: game_api_metric
+max_steps: 100
+task_target_score_field: 3
+task_start_score_field: 0
+pause_during_inference: true
+continue_on_fail: true
+
+task_prompt: |
+  End up carrying at least 3 distinct types of items at the same time.
+  You start with an empty inventory. Choose resources from different nearby
+  locations; getting more units of an already owned item does not help.
+
+evaluator_config:
+  terminal_status: success
+  score_field: metrics.items_unique
+  end_field: terminal.isTerminal
+  metrics_fields:
+    - metrics.items_unique
+    - game_state.inventory.item_counts.wood_log
+    - game_state.inventory.item_counts.dirt
+    - game_state.inventory.item_counts.stone
+    - game_state.inventory.item_counts.leaves
+    - game_state.inventory.item_counts.coal_ore
+    - game_state.inventory.item_counts.iron_ore

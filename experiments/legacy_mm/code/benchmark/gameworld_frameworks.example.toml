@@ -1,0 +1,24 @@
+# Open-source routing example. Do not put an API key in this file.
+# Export the variables before running an experiment:
+#   export GAMEWORLD_RSI_MODEL="your-model-id"
+#   export OPENAI_BASE_URL="https://your-openai-compatible-endpoint/v1"
+#   export OPENAI_API_KEY="..."
+
+[common]
+model_env = "GAMEWORLD_RSI_MODEL"
+base_url_env = "OPENAI_BASE_URL"
+api_key_env = "OPENAI_API_KEY"
+
+[ace]
+adaptor = "rsi_methods.ACE.ACEAdaptor.ACEAdaptor"
+client_module = "ace_game_client"
+client_class = "ACEGameClient"
+
+[hyperagents]
+adaptor = "rsi_methods.HyperAgents.HyperAgentsAdaptor.HyperAgentsAdaptor"
+client_module = "hyperagents_game_client"
+client_class = "HyperAgentsGameClient"
+
+[ahe]
+adaptor = "rsi_methods.AHE.AHEAdaptor.AHEAdaptor"
+client_class = "AHEGameClient"

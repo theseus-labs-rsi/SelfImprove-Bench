@@ -1,0 +1,26 @@
+task_id: "18_18"
+game_id: 18_minecraft-clone-glm
+evaluator_id: game_api_metric
+max_steps: 100
+task_target_score_field: 8
+task_start_score_field: 0
+pause_during_inference: true
+continue_on_fail: true
+
+task_prompt: |
+  Mine at least 8 newly collected stone blocks during this run.
+  Use a compact nearby excavation, preserve the stone target in view, and
+  avoid spending the budget on unnecessary exploration.
+
+evaluator_config:
+  terminal_status: success
+  score_field: game_state.inventory.item_gains.stone
+  end_field: terminal.isTerminal
+  metrics_fields:
+    - game_state.inventory.item_gains.stone
+    - metrics.nearby_stone_count
+    - metrics.depth_below_surface
+    - metrics.targeted_block_type
+    - game_state.environment.break_progress
+    - terminal.outcome
+    - terminal.isTerminal

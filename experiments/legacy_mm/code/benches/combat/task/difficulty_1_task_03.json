@@ -1,0 +1,142 @@
+{
+  "task_id": "combat-d1-03",
+  "difficulty": 1,
+  "player": {
+    "max_hp": 80,
+    "initial_hp": 80,
+    "initial_gold": 120,
+    "energy_per_turn": 3,
+    "draw_count": 5
+  },
+  "initial_deck": {
+    "guard": 4,
+    "iron_wave": 1,
+    "strike": 4
+  },
+  "card_catalog": {
+    "guard": {
+      "id": "guard",
+      "name": "Guard",
+      "tier": 1,
+      "price": 28,
+      "cost": 1,
+      "damage": 0,
+      "block": 5
+    },
+    "iron_wave": {
+      "id": "iron_wave",
+      "name": "Iron Wave",
+      "tier": 1,
+      "price": 42,
+      "cost": 1,
+      "damage": 5,
+      "block": 4
+    },
+    "strike": {
+      "id": "strike",
+      "name": "Strike",
+      "tier": 1,
+      "price": 30,
+      "cost": 1,
+      "damage": 6,
+      "block": 0
+    }
+  },
+  "enemy_catalog": {
+    "acid_slime": {
+      "id": "acid_slime",
+      "name": "Acid Slime",
+      "tier": 1,
+      "boss": false,
+      "max_hp": 28,
+      "reward_gold": 45,
+      "intent_cycle": [
+        {
+          "type": "attack",
+          "value": 6
+        },
+        {
+          "type": "guard",
+          "value": 4
+        },
+        {
+          "type": "attack",
+          "value": 8
+        }
+      ]
+    },
+    "guardian_1": {
+      "id": "guardian_1",
+      "name": "Bronze Guardian",
+      "tier": 1,
+      "boss": true,
+      "max_hp": 48,
+      "reward_gold": 70,
+      "intent_cycle": [
+        {
+          "type": "attack",
+          "value": 8
+        },
+        {
+          "type": "guard",
+          "value": 8
+        },
+        {
+          "type": "attack",
+          "value": 11
+        }
+      ]
+    }
+  },
+  "stages": [
+    {
+      "stage_id": "combat_1",
+      "type": "combat",
+      "enemy": "acid_slime",
+      "draw_order": [
+        "guard",
+        "iron_wave",
+        "strike"
+      ]
+    },
+    {
+      "stage_id": "shop_1",
+      "type": "shop",
+      "offers": [
+        "guard",
+        "strike",
+        "iron_wave"
+      ],
+      "heal_price": 35,
+      "heal_amount": 18
+    },
+    {
+      "stage_id": "boss",
+      "type": "combat",
+      "enemy": "guardian_1",
+      "draw_order": [
+        "iron_wave",
+        "guard",
+        "strike"
+      ]
+    }
+  ],
+  "rules": {
+    "single_chapter": true,
+    "maximum_card_tier": 1,
+    "maximum_enemy_tier": 1,
+    "max_combat_turns": 15,
+    "player_block_resets_each_turn": true,
+    "enemy_intents_are_public_and_repeat": true,
+    "draw_order": "For each combat, expand owned card counts in the public draw_order; copies are distributed round-robin, draw_count cards are drawn each turn, and the resulting cycle repeats.",
+    "shop_order": "buy listed cards in plan order, then optionally buy one heal"
+  },
+  "reference_score": 425,
+  "reference_method": "deterministic_beam_search_verified",
+  "solvability": {
+    "verified": true,
+    "generation_attempt": 1,
+    "method": "reference plan replay through the public simulator",
+    "beam_width": 80
+  }
+}

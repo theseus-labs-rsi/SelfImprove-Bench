@@ -1,0 +1,32 @@
+task_id: "18_06"
+game_id: 18_minecraft-clone-glm
+evaluator_id: game_api_metric
+max_steps: 100
+task_target_score_field: 4
+task_start_score_field: 0
+pause_during_inference: true
+continue_on_fail: true
+
+task_prompt: |
+  Gather at least 4 newly collected wood logs during this run.
+  Your progress is the number of wood logs gained after the run begins.
+  Starting inventory items do not count toward this task; only wood logs gained after the run begins count.
+  Find a reachable tree, line up with its trunk, mine the visible log blocks, and stop when the quota is complete.
+
+evaluator_config:
+  terminal_status: success
+  score_field: game_state.inventory.item_gains.wood_log
+  end_field: terminal.isTerminal
+  metrics_fields:
+    - game_state.inventory.item_gains.wood_log
+    - game_state.inventory.item_counts.wood_log
+    - metrics.items_total
+    - metrics.items_unique
+    - metrics.held_selected_item_type
+    - metrics.held_selected_item_count
+    - game_state.inventory.selected_slot
+    - game_state.environment.targeted_block.block_type
+    - game_state.environment.break_progress
+    - gameTimeMs
+    - terminal.outcome
+    - terminal.isTerminal

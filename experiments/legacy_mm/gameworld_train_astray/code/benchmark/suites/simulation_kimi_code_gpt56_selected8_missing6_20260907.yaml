@@ -1,0 +1,16 @@
+suite_name: simulation_kimi_code_gpt56_selected8_missing6_20260907
+headless: true
+
+cases:
+  - game: "12_fireboy-and-watergirl"
+    tasks: ["12_02", "12_04"]
+    models: ["kimi-code-gpt56"]
+    repeat: 1
+  - game: "20_monkey-mart"
+    tasks: ["20_03", "20_05"]
+    models: ["kimi-code-gpt56"]
+    repeat: 1
+  - game: "31_wolf3d"
+    tasks: ["31_03", "31_05"]
+    models: ["kimi-code-gpt56"]
+    repeat: 1

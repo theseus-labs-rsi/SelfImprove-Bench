@@ -1,0 +1,16 @@
+suite_name: gpt-codex-freerouter_simulation_missing_12_18_20
+headless: true
+
+cases:
+  - game: "12_fireboy-and-watergirl"
+    tasks: ["12_01", "12_02", "12_03", "12_04", "12_05"]
+    models: ["gpt-codex-freerouter"]
+    repeat: 1
+  - game: "18_minecraft-clone-glm"
+    tasks: ["18_01", "18_02", "18_03", "18_04", "18_05"]
+    models: ["gpt-codex-freerouter"]
+    repeat: 1
+  - game: "20_monkey-mart"
+    tasks: ["20_01", "20_02", "20_03", "20_04", "20_05"]
+    models: ["gpt-codex-freerouter"]
+    repeat: 1
