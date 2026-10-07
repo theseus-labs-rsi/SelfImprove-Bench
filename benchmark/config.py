@@ -21,6 +21,7 @@ SUPPORTED_PROVIDERS = (
     "ace",
     "baseline",
     "hyperagents",
+    "hyperdsh",
     "self_harness",
     "ahe",
 )
@@ -78,7 +79,8 @@ class BenchmarkConfig:
     holdout_seed: int = 100
     holdout_tasks_per_difficulty: int = HOLDOUT_TASKS_PER_DIFFICULTY
     game_options: dict[str, Any] = field(default_factory=dict)
-    online_evolution: bool = False
+    random: bool = False
+    repeat: bool = False
     holdout_manifest: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
@@ -90,6 +92,12 @@ def _positive(value: Any, label: str, *, maximum: int | None = None) -> int:
         raise ValueError(f"{label} must be a positive integer")
     if maximum is not None and value > maximum:
         raise ValueError(f"{label} must not exceed {maximum}")
+    return value
+
+
+def _boolean(value: Any, label: str) -> bool:
+    if not isinstance(value, bool):
+        raise ValueError(f"{label} must be a boolean")
     return value
 
 
@@ -155,7 +163,9 @@ def config_from_mapping(value: dict[str, Any]) -> BenchmarkConfig:
             "schedule enables replay, so replay.every and replay.lag must be positive"
         )
 
-    online_evolution = bool(value.get("online_evolution", False))
+    # Reject legacy protocol settings rather than silently changing their meaning.
+    if "online_evolution" in value:
+        raise ValueError("online_evolution is no longer supported; remove it from the configuration")
 
     agent_raw = value.get("agent", {})
     if not isinstance(agent_raw, dict):
@@ -187,22 +197,17 @@ def config_from_mapping(value: dict[str, Any]) -> BenchmarkConfig:
     sweepmine = load_difficulty_manifest()
     hero = load_hero_difficulties()
     requested_games = {item.game for item in (*schedule, *holdout)}
-    interactive_providers = {"ace", "baseline", "hyperagents", "self_harness", "ahe"}
+    interactive_providers = {
+        "ace", "baseline", "hyperagents", "hyperdsh", "self_harness", "ahe"
+    }
     if "sweepmine" in requested_games and provider not in interactive_providers:
         raise ValueError(
-            "Sweepmine requires an RSI agent provider: ace, baseline, hyperagents, self_harness, or ahe"
+            "Sweepmine requires an RSI agent provider: ace, baseline, hyperagents, hyperdsh, self_harness, or ahe"
         )
     if "heros_journey" in requested_games and provider not in interactive_providers:
         raise ValueError(
-            "Hero's Journey requires an RSI agent provider: ace, baseline, hyperagents, self_harness, or ahe"
+            "Hero's Journey requires an RSI agent provider: ace, baseline, hyperagents, hyperdsh, self_harness, or ahe"
         )
-    if online_evolution:
-        if provider not in {"ace", "ahe", "hyperagents"}:
-            raise ValueError(
-                "online_evolution currently supports ace, ahe, or hyperagents"
-            )
-        if len(schedule) != 1:
-            raise ValueError("online_evolution requires exactly one schedule item")
     for item in (*schedule, *holdout):
         if item.game == "sweepmine" and item.difficulty not in sweepmine:
             available = ", ".join(str(level) for level in sorted(sweepmine))
@@ -237,7 +242,8 @@ def config_from_mapping(value: dict[str, Any]) -> BenchmarkConfig:
             "sweepmine": {"difficulties": sweepmine},
             "heros_journey": {"difficulties": hero},
         },
-        online_evolution=online_evolution,
+        random=_boolean(value.get("random", False), "random"),
+        repeat=_boolean(value.get("repeat", False), "repeat"),
         holdout_manifest=holdout_manifest,
     )
 

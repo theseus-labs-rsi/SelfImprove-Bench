@@ -6,7 +6,7 @@ import json
 from copy import deepcopy
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 from . import rsi_session
 from .client import load_rsi_integration, request_json
@@ -17,7 +17,7 @@ from .metrics import calculate_metrics, format_metrics
 from .tasks import GAMES, PlannedTask, TaskManifest, build_manifest
 
 
-RSI_METHODS = frozenset({"ace", "baseline", "hyperagents", "self_harness", "ahe"})
+RSI_METHODS = frozenset({"ace", "baseline", "hyperagents", "hyperdsh", "self_harness", "ahe"})
 
 
 def _write_json(path: Path, value: Any) -> None:
@@ -48,6 +48,23 @@ def _suite_feedback(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def _token_total(metrics: dict[str, Any]) -> int:
     value = metrics.get("tokens", {}).get("total_tokens")
     return value if isinstance(value, int) and not isinstance(value, bool) else 0
+
+
+def _is_fatal_method_error(config: BenchmarkConfig, record: Mapping[str, Any]) -> bool:
+    if record.get("status") in {"ok", "skipped"}:
+        return False
+    if config.agent.provider == "ahe":
+        return rsi_session.is_fatal_ahe_error(record.get("error"))
+    if config.agent.provider == "hyperdsh":
+        return rsi_session.is_fatal_hyperdsh_error(record.get("error"))
+    return False
+
+
+def _must_stop_after_error(config: BenchmarkConfig, record: Mapping[str, Any]) -> bool:
+    """Stop on fatal method errors even when ordinary errors may be tolerated."""
+    if record.get("status") in {"ok", "skipped"}:
+        return False
+    return not config.continue_on_error or _is_fatal_method_error(config, record)
 
 
 class AgentController:
@@ -387,6 +404,10 @@ def _run_one(
         and task.phase == "train"
         and not task.replay
         and controller.session is not None
+        and not (
+            controller.provider == "hyperdsh"
+            and rsi_session.is_fatal_hyperdsh_error(result.get("error"))
+        )
     ):
         try:
             controller.refine(task, result, ordinal, feedback=outcome.feedback)
@@ -435,7 +456,8 @@ def _run_one(
                 ),
             }
         except Exception as exc:
-            selection_summary = {"status": "error", "error_type": type(exc).__name__, "error": str(exc)}
+            error = f"AHE selection failed: {exc}" if controller.provider == "ahe" else str(exc)
+            selection_summary = {"status": "error", "error_type": type(exc).__name__, "error": error}
             result = {
                 **result,
                 "parent_status": result.get("status"),
@@ -443,7 +465,7 @@ def _run_one(
                 "parent_error": result.get("error"),
                 "status": "error",
                 "error_type": type(exc).__name__,
-                "error": str(exc),
+                "error": error,
             }
     refinement_seconds = float(refinement.get("duration_seconds", 0.0)) if isinstance(refinement, dict) else 0.0
     refinement_tokens = _token_total(refinement) if isinstance(refinement, dict) else 0
@@ -471,309 +493,6 @@ def _run_one(
     return record
 
 
-def _persist_online_record(
-    task: PlannedTask,
-    result: dict[str, Any],
-    *,
-    ordinal: int,
-    output_dir: Path,
-    execution_seconds: float,
-    refinement: dict[str, Any] | None = None,
-    selection: dict[str, Any] | None = None,
-    candidate_validation_tokens: int = 0,
-    candidate_validation_seconds: float = 0.0,
-    extra_tokens: int = 0,
-    extra_seconds: float = 0.0,
-) -> dict[str, Any]:
-    """Persist one first-seen online task without double-counting candidate cost."""
-
-    refinement_seconds = (
-        float(refinement.get("duration_seconds", 0.0))
-        if isinstance(refinement, dict) else 0.0
-    )
-    refinement_tokens = _token_total(refinement) if isinstance(refinement, dict) else 0
-    inference_tokens = _token_total(result.get("llm_metrics", {}))
-    record = {
-        **result,
-        "run_id": task.run_id,
-        "phase": task.phase,
-        "group_index": task.group_index,
-        "generation_index": task.generation_index,
-        "task_seed": task.task_seed,
-        "replay": task.replay,
-        "replay_of": task.replay_of,
-        "replay_gap": task.replay_gap,
-        "execution_seconds": round(execution_seconds, 6),
-        "refinement": refinement,
-        "selection": selection,
-        "candidate_validation_tokens": candidate_validation_tokens,
-        "candidate_validation_seconds": round(candidate_validation_seconds, 6),
-        "refinement_seconds": refinement_seconds,
-        "inference_tokens": inference_tokens,
-        "refinement_tokens": refinement_tokens,
-        "total_tokens": refinement_tokens + candidate_validation_tokens + extra_tokens,
-        "total_seconds": round(
-            refinement_seconds + candidate_validation_seconds + extra_seconds, 6
-        ),
-    }
-    if refinement is None:
-        record["total_tokens"] = inference_tokens
-        record["total_seconds"] = round(execution_seconds, 6)
-    path = output_dir / "runs" / task.phase / f"{ordinal:04d}_{task.run_id}.json"
-    _write_json(path, record)
-    score = record.get("relative_score")
-    score_text = f"{score:.6f}" if isinstance(score, (int, float)) else "N/A"
-    print(
-        f"[{task.phase}] {ordinal:04d} {task.game} d{task.difficulty} "
-        f"generation={task.generation_index} replay={task.replay} "
-        f"status={record['status']} relative_score={score_text}",
-        flush=True,
-    )
-    return record
-
-
-def _online_candidate_stage(
-    current_task: PlannedTask,
-    current_outcome: EvaluationOutcome,
-    current_record_path: Path,
-    target_task: PlannedTask,
-    *,
-    controller: AgentController,
-    output_dir: Path,
-    generation_index: int,
-) -> tuple[
-    tuple[EvaluationOutcome, float] | None,
-    dict[str, Any],
-    dict[str, Any] | None,
-    int,
-    float,
-]:
-    controller.refine(
-        current_task,
-        current_outcome.record,
-        generation_index,
-        feedback=current_outcome.feedback,
-    )
-    refinement = controller.session.refinement_telemetry
-    parent_evaluation = _selection_evaluation(
-        current_outcome.record, current_record_path
-    )
-    batch = controller.session.pending_batch
-    stages: list[dict[str, Any]] = []
-    seen_batches: set[tuple[str, ...]] = set()
-    validation_tokens = 0
-    validation_seconds = 0.0
-    selected: tuple[EvaluationOutcome, float] | None = None
-
-    while batch is not None:
-        ids = tuple(str(item.candidate_id) for item in batch.candidates)
-        if not ids or ids in seen_batches:
-            raise ValueError("candidate batch is empty or repeated")
-        seen_batches.add(ids)
-        selection, evaluations, outcomes, stage_tokens, stage_seconds = _evaluate_candidates(
-            target_task,
-            batch,
-            parent_evaluation,
-            controller=controller,
-            output_dir=output_dir,
-            ordinal=generation_index,
-            stage_index=len(stages),
-            selection_mode="online",
-        )
-        validation_tokens += stage_tokens
-        validation_seconds += stage_seconds
-        status = str(getattr(selection, "status", "")).lower()
-        committed_id = getattr(selection, "committed_candidate_id", None)
-        stages.append({
-            "stage_index": len(stages),
-            "candidate_ids": list(ids),
-            "evaluations": evaluations,
-            "status": status,
-            "committed_candidate_id": committed_id,
-            "candidate_validation_tokens": stage_tokens,
-            "candidate_validation_seconds": round(stage_seconds, 6),
-        })
-        if status == "needs_validation":
-            batch = getattr(selection, "batch", None)
-            if batch is None:
-                raise ValueError("needs_validation selection must provide a batch")
-            continue
-        if status not in {"committed", "completed", "unchanged"}:
-            raise ValueError(f"Unsupported RSI selection status: {status or '<missing>'}")
-        if committed_id is not None:
-            selected = outcomes.get(str(committed_id))
-            if selected is None:
-                raise ValueError("committed candidate has no evaluation outcome")
-        batch = None
-
-    summary = {
-        "mode": "online",
-        "stages": stages,
-        "status": stages[-1]["status"] if stages else "unchanged",
-        "committed_candidate_id": (
-            stages[-1]["committed_candidate_id"] if stages else None
-        ),
-    }
-    return selected, summary, refinement, validation_tokens, validation_seconds
-
-
-def _run_online_training(
-    manifest: TaskManifest,
-    *,
-    controller: AgentController,
-    output_dir: Path,
-    prior_records: list[dict[str, Any]] | None = None,
-) -> list[dict[str, Any]]:
-    tasks = list(manifest.training)
-    if not tasks or tasks[0].replay or tasks[0].generation_index != 0:
-        raise ValueError("online evolution manifest must start with generation 0")
-
-    records = list(prior_records or [])
-    if records:
-        position = len(records)
-        current_ordinal = max(index for index in range(1, position + 1)
-                              if not tasks[index - 1].replay)
-        current_task = tasks[current_ordinal - 1]
-        current_record = records[current_ordinal - 1]
-        current_outcome = EvaluationOutcome(
-            current_record, controller.make_feedback(current_task, current_record)
-        )
-        current_session_active = False
-    else:
-        baseline = tasks[0]
-        baseline_started = time.perf_counter()
-        controller.begin(baseline)
-        current_outcome = _evaluate(
-            baseline, request=controller.request, agent=controller.active_agent
-        )
-        baseline_result = _ahe_skipped_result(current_outcome.record, controller)
-        if baseline_result is not current_outcome.record:
-            current_outcome = EvaluationOutcome(baseline_result, current_outcome.feedback)
-            controller.session.skip_task()
-        baseline_seconds = time.perf_counter() - baseline_started
-        current_record = _persist_online_record(
-            baseline, current_outcome.record, ordinal=1, output_dir=output_dir,
-            execution_seconds=baseline_seconds,
-        )
-        records = [current_record]
-        current_task = baseline
-        current_ordinal = 1
-        current_session_active = current_record["status"] == "ok"
-        position = 1
-
-    while position < len(tasks):
-        target = tasks[position]
-        target_ordinal = position + 1
-        if target.replay:
-            raise ValueError("online replay must follow a completed generation")
-        if target.generation_index is None or target.generation_index < 1:
-            raise ValueError("online target must have a positive generation index")
-        feedback_ordinal = next((index for index in range(position, 0, -1)
-                                 if not tasks[index - 1].replay
-                                 and records[index - 1]["status"] == "ok"), None)
-        if feedback_ordinal is not None and not current_session_active:
-            controller.begin(tasks[feedback_ordinal - 1])
-
-        try:
-            if feedback_ordinal is None:
-                selected, refinement, validation_tokens, validation_seconds = None, None, 0, 0.0
-                selection = {"mode": "online", "status": "skipped", "reason": "no_valid_feedback"}
-            else:
-                feedback_task = tasks[feedback_ordinal - 1]
-                feedback_record = records[feedback_ordinal - 1]
-                feedback_outcome = (
-                    current_outcome if feedback_ordinal == current_ordinal else
-                    EvaluationOutcome(feedback_record, controller.make_feedback(feedback_task, feedback_record))
-                )
-                selected, selection, refinement, validation_tokens, validation_seconds = _online_candidate_stage(
-                    feedback_task,
-                    feedback_outcome,
-                    output_dir / "runs" / "train" / f"{feedback_ordinal:04d}_{feedback_task.run_id}.json",
-                    target,
-                    controller=controller,
-                    output_dir=output_dir,
-                    generation_index=target.generation_index,
-                )
-            fallback_tokens = 0
-            fallback_seconds = 0.0
-            if selected is None:
-                fallback_started = time.perf_counter()
-                controller.begin(target)
-                next_outcome = _evaluate(
-                    target, request=controller.request, agent=controller.active_agent
-                )
-                fallback_seconds = time.perf_counter() - fallback_started
-                fallback_tokens = _token_total(next_outcome.record.get("llm_metrics", {}))
-                skipped_result = _ahe_skipped_result(next_outcome.record, controller)
-                if skipped_result is not next_outcome.record:
-                    next_outcome = EvaluationOutcome(skipped_result, next_outcome.feedback)
-                    selection = {**selection, "status": "skipped", "reason": skipped_result["skip_reason"]}
-                    controller.session.skip_task()
-                    controller.active_agent = None
-                selection["fallback_parent_evaluation"] = True
-                execution_seconds = fallback_seconds
-                next_session_active = next_outcome.record["status"] == "ok"
-            else:
-                next_outcome, execution_seconds = selected
-                selection["fallback_parent_evaluation"] = False
-                next_session_active = False
-            next_record = _persist_online_record(
-                target,
-                next_outcome.record,
-                ordinal=target_ordinal,
-                output_dir=output_dir,
-                execution_seconds=execution_seconds,
-                refinement=refinement,
-                selection=selection,
-                candidate_validation_tokens=validation_tokens,
-                candidate_validation_seconds=validation_seconds,
-                extra_tokens=fallback_tokens,
-                extra_seconds=fallback_seconds,
-            )
-        except Exception as exc:
-            refinement = controller.session.refinement_telemetry
-            next_outcome = EvaluationOutcome(_error_result(target, exc))
-            next_record = _persist_online_record(
-                target,
-                next_outcome.record,
-                ordinal=target_ordinal,
-                output_dir=output_dir,
-                execution_seconds=0.0,
-                refinement=refinement,
-                selection={
-                    "mode": "online",
-                    "status": "error",
-                    "error_type": type(exc).__name__,
-                    "error": str(exc),
-                },
-            )
-            records.append(next_record)
-            break
-
-        records.append(next_record)
-        current_task = target
-        current_outcome = next_outcome
-        current_record = next_record
-        current_ordinal = target_ordinal
-        current_session_active = next_session_active
-        position += 1
-        while position < len(tasks) and tasks[position].replay:
-            replay = tasks[position]
-            replay_record = _run_one(
-                replay,
-                controller=controller,
-                ordinal=position + 1,
-                output_dir=output_dir,
-            )
-            records.append(replay_record)
-            position += 1
-            if replay_record["status"] not in {"ok", "skipped"} and not controller.config.continue_on_error:
-                return records
-        if next_record["status"] not in {"ok", "skipped"} and not controller.config.continue_on_error:
-            break
-    return records
-
-
 def _move_to_discarded(output_dir: Path, source: Path) -> None:
     """Preserve earlier discarded artifacts when resuming the same lineage."""
     destination = output_dir / "discarded" / source.relative_to(output_dir)
@@ -798,8 +517,7 @@ def _discard_copied_latest(output_dir: Path, controller: AgentController) -> Non
     else:
         newest = training[-1] if training else None
     if newest is not None and session.resume_phase == "train":
-        record = json.loads(newest.read_text(encoding="utf-8"))
-        index = record.get("generation_index") if controller.config.online_evolution else int(newest.name[:4])
+        index = int(newest.name[:4])
         if index is None or int(index) != session.resume_before_task_index:
             newest = None
     if newest is not None:
@@ -834,6 +552,8 @@ def run_benchmark(
     config: BenchmarkConfig, *, target_dir: str | Path | None = None,
 ) -> dict[str, Any]:
     """Generate, orchestrate, evaluate and persist one complete benchmark."""
+    if config.agent.provider == "hyperdsh" and target_dir is not None:
+        raise ValueError("HyperDSH does not support resume; --target-dir cannot be used")
     source_dir = Path(config.output_dir).resolve()
     output_dir = Path(target_dir).resolve() if target_dir is not None else source_dir
     resuming_holdout = False
@@ -884,11 +604,7 @@ def run_benchmark(
         _write_json(output_dir / "task_manifest.json", manifest.as_dict())
         _persist_tasks(output_dir, manifest)
 
-    refinement_count = (
-        sum(item.count for item in config.schedule)
-        if config.online_evolution
-        else sum(not task.replay for task in manifest.training)
-    )
+    refinement_count = sum(not task.replay for task in manifest.training)
     controller = AgentController(
         config, output_dir, refinement_count,
         resume_from=source_dir if target_dir is not None else None,
@@ -901,34 +617,28 @@ def run_benchmark(
     training_records = _existing_records(output_dir, manifest.training, "train") if target_dir is not None else []
     holdout_records = _existing_records(output_dir, manifest.holdout, "holdout") if target_dir is not None else []
     try:
-        if config.online_evolution:
-            training_records = _run_online_training(
-                manifest, controller=controller, output_dir=output_dir,
-                prior_records=training_records,
+        for index, task in enumerate(manifest.training, start=1):
+            if index <= len(training_records):
+                continue
+            record = _run_one(
+                task, controller=controller, ordinal=index, output_dir=output_dir
             )
-        else:
-            for index, task in enumerate(manifest.training, start=1):
-                if index <= len(training_records):
-                    continue
-                record = _run_one(
-                    task, controller=controller, ordinal=index, output_dir=output_dir
-                )
-                training_records.append(record)
-                if record["status"] not in {"ok", "skipped"} and not config.continue_on_error:
-                    break
+            training_records.append(record)
+            if _must_stop_after_error(config, record):
+                break
 
         # Holdout starts only after all scheduled evolution/refinement has
         # finished. AgentController.begin loads but never refines the final RSI version.
         if len(training_records) == len(manifest.training) and (
             resuming_holdout or config.continue_on_error
             or all(item["status"] in {"ok", "skipped"} for item in training_records)
-        ):
+        ) and not any(_is_fatal_method_error(config, item) for item in training_records):
             for index, task in enumerate(manifest.holdout, start=1):
                 if index <= len(holdout_records):
                     continue
                 record = _run_one(task, controller=controller, ordinal=index, output_dir=output_dir)
                 holdout_records.append(record)
-                if record["status"] not in {"ok", "skipped"} and not config.continue_on_error:
+                if _must_stop_after_error(config, record):
                     break
     finally:
         controller.close()

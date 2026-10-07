@@ -1,0 +1,3 @@
+# Evolvable profile layer. Runtime-owned model, persona, task, sandbox and tool
+# gates are applied afterward and cannot be bypassed from this file.
+[]

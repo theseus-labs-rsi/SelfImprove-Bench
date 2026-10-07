@@ -1,0 +1,41 @@
+[meta_backend.openai]
+# Keep api_key empty to read credentials from the environment. Empty values fall back
+# to the environment variable names below.
+api_key = ""
+base_url = "https://api.deepseek.com"
+api_key_env = "OPENAI_API_KEY"
+base_url_env = "OPENAI_BASE_URL"
+api_mode = "chat_completions"
+
+[meta_agent]
+backend = "openai"
+model = "deepseek-v4-pro"
+reasoning_effort = "low"
+max_output_tokens = 65536
+
+[dsh]
+command = "dsh"
+profile = "hyperdsh"
+timeout_seconds = 300
+telemetry_disabled = true
+# Retry only when the DSH process is terminated by a POSIX signal. Ordinary
+# nonzero exits and timeouts are not retried. Supported range: 0-3.
+signal_retries = 1
+
+[task_agent]
+provider = "deepseek-official"
+model = "deepseek-v4-pro"
+reasoning_effort = "low"
+max_output_tokens = 65536
+
+[task_provider]
+# Keep api_key empty to read credentials from the environment. The key is injected only
+# into the DSH child process and is not written to its settings or artifacts.
+api = "openai-completions"
+api_key = ""
+base_url = "https://api.deepseek.com"
+api_key_env = "HUMANLAYA_API_KEY"
+base_url_env = "HUMANLAYA_BASE_URL"
+
+[refine]
+max_refinement_rounds = 1

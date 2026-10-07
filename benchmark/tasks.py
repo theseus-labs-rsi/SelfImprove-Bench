@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from random import Random
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any
@@ -211,42 +212,30 @@ def build_manifest(config: BenchmarkConfig) -> TaskManifest:
     generated_index = 0
     replay_index = 0
     for group_index, spec in enumerate(config.schedule):
-        group_normal: list[PlannedTask] = []
-        task_count = spec.count + 1 if config.online_evolution else spec.count
-        for local_index in range(task_count):
-            item = _make_task(
-                phase="train",
-                game=spec.game,
-                difficulty=spec.difficulty,
-                index=generated_index,
-                group_index=group_index,
-                used=used,
-                seed_root=config.seed,
-                generation_index=(local_index if config.online_evolution else None),
-            )
+        for _ in range(spec.count):
+            if config.repeat and normal:
+                first = normal[0]
+                item = replace(first, run_id=f"repeat-{generated_index + 1:04d}-{first.run_id}")
+            else:
+                item = _make_task(
+                    phase="train",
+                    game=spec.game,
+                    difficulty=spec.difficulty,
+                    index=generated_index,
+                    group_index=group_index,
+                    used=used,
+                    seed_root=config.seed,
+                )
             generated_index += 1
-            group_normal.append(item)
             normal.append(item)
             orchestrated.append(item)
             if (
                 spec.replay
                 and config.replay.enabled
-                and (
-                    local_index % config.replay.every == 0
-                    if config.online_evolution
-                    else len(normal) % config.replay.every == 0
-                )
-                and (
-                    local_index > config.replay.lag
-                    if config.online_evolution
-                    else len(normal) > config.replay.lag
-                )
+                and len(normal) % config.replay.every == 0
+                and len(normal) > config.replay.lag
             ):
-                original = (
-                    group_normal[-config.replay.lag - 1]
-                    if config.online_evolution
-                    else normal[-config.replay.lag - 1]
-                )
+                original = normal[-config.replay.lag - 1]
                 replay_index += 1
                 orchestrated.append(
                     PlannedTask(
@@ -260,9 +249,12 @@ def build_manifest(config: BenchmarkConfig) -> TaskManifest:
                         replay=True,
                         replay_of=original.run_id,
                         replay_gap=config.replay.lag,
-                        generation_index=local_index,
+                        generation_index=original.generation_index,
                     )
                 )
+
+    if config.random:
+        Random(config.seed).shuffle(orchestrated)
 
     selected_holdout: list[PlannedTask] = []
     for group_index, spec in enumerate(config.holdout):

@@ -24,7 +24,7 @@ from . import rsi_session
 
 
 BASELINE_PROVIDERS = ("codex", "claude", "deepseek", "openai")
-RSI_PROVIDERS = ("ace", "baseline", "hyperagents", "self_harness", "ahe")
+RSI_PROVIDERS = ("ace", "baseline", "hyperagents", "hyperdsh", "self_harness", "ahe")
 PROVIDER_CHOICES = BASELINE_PROVIDERS + RSI_PROVIDERS
 DSH_INSTALL_HELP = (
     "DeepSeek Harness (dsh) is not installed. Install it with:\n"
@@ -611,7 +611,10 @@ def request_json(
             if "rsi_agent_call" in telemetry:
                 record["rsi_agent_call"] = telemetry["rsi_agent_call"]
             attempts.append(record)
-            if attempt == max_attempts:
+            non_retryable = (
+                normalized == "ahe" and rsi_session.is_fatal_ahe_error(answer)
+            )
+            if attempt == max_attempts or non_retryable:
                 if metrics is not None:
                     metrics.update(
                         duration_seconds=round(time.perf_counter() - started, 6),
@@ -622,7 +625,7 @@ def request_json(
                 if len(preview) > 8000:
                     preview = f"<truncated; showing last 8000 characters>\n{preview[-8000:]}"
                 raise LLMClientError(
-                    f"Invalid action after {max_attempts} attempts: {exc}\nLast response:\n{preview or '<empty response>'}"
+                    f"Invalid action after {attempt} attempts: {exc}\nLast response:\n{preview or '<empty response>'}"
                 ) from exc
             current_prompt = (
                 f"{prompt}\n\nYour previous response failed validation ({exc}). "

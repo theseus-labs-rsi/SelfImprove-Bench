@@ -23,7 +23,41 @@ from .contracts import (
 )
 
 
-RSI_PROVIDERS = frozenset({"ace", "baseline", "hyperagents", "self_harness", "ahe"})
+RSI_PROVIDERS = frozenset({"ace", "baseline", "hyperagents", "hyperdsh", "self_harness", "ahe"})
+AHE_FATAL_ERROR_MARKERS = (
+    "ahe selection",
+    "ahe candidate generation failed",
+    "ahe refine needs a trace",
+    "budget has been exceeded",
+    "context too full",
+    "pending rsi candidate batch",
+    "prompt too long",
+)
+HYPERDSH_FATAL_ERROR_MARKERS = (
+    "deepseek harness command",
+    "deepseek harness exited with code",
+    "deepseek harness terminated by signal",
+    "hyperdsh requires",
+    "hyperdsh refinement dependencies are missing",
+    "hyperdsh profile patch",
+    "dsh: plugin tree failed to load",
+    "docker daemon is unavailable",
+    "docker image build failed",
+    "docker container creation failed",
+    "metaagent command failed",
+)
+
+
+def is_fatal_ahe_error(value: Any) -> bool:
+    """Identify AHE errors for which retrying is inappropriate."""
+    message = str(value or "").lower()
+    return any(marker in message for marker in AHE_FATAL_ERROR_MARKERS)
+
+
+def is_fatal_hyperdsh_error(value: Any) -> bool:
+    """Identify errors indicating a broken HyperDSH runtime."""
+    message = str(value or "").lower()
+    return any(marker in message for marker in HYPERDSH_FATAL_ERROR_MARKERS)
 
 
 def _copy_resume_workspace(source: Path, target: Path, method: str) -> tuple[Path, Path, int, str]:
@@ -43,11 +77,9 @@ def _copy_resume_workspace(source: Path, target: Path, method: str) -> tuple[Pat
                sorted((source / "runs" / "train").glob("[0-9][0-9][0-9][0-9]_*.json"))]
     config = json.loads((source / "config.resolved.json").read_text(encoding="utf-8"))
     manifest = json.loads((source / "task_manifest.json").read_text(encoding="utf-8"))
-    online = config.get("online_evolution", False)
-    indices = [int(record["generation_index"]) for record in records
-               if online and record.get("generation_index") is not None]
-    if not online:
-        indices = list(range(1, len(records) + 1))
+    if config.get("online_evolution", False):
+        raise ValueError("Resuming legacy online_evolution runs is no longer supported")
+    indices = list(range(1, len(records) + 1))
     before = max([*task_numbers, *indices], default=1)
     has_holdout = any((source / "runs" / "holdout").glob("*.json"))
     training_complete = len(records) == len(manifest["training"])
@@ -59,13 +91,6 @@ def _copy_resume_workspace(source: Path, target: Path, method: str) -> tuple[Pat
     phase = "holdout" if has_holdout or (training_complete and can_enter_holdout) else "train"
     if phase == "holdout":
         before += 1
-    if online:
-        for record in records:
-            index = record.get("generation_index")
-            selection = record.get("selection")
-            if index is not None and index < before and isinstance(selection, dict):
-                if selection.get("status") in {"committed", "unchanged", "completed"} and index not in task_numbers:
-                    raise ValueError(f"Missing RSI artifact for committed generation {index}: {source_batch}")
     shutil.copytree(source, target)
     return source_batch, target / "rsi" / method / source_batch.name, before, phase
 
@@ -262,6 +287,8 @@ class RSIBatchSession:
             raise ValueError("task_count must be positive")
         if (resume_from is None) != (target_dir is None):
             raise ValueError("resume_from and target_dir must be provided together")
+        if normalized == "hyperdsh" and resume_from is not None:
+            raise ValueError("HyperDSH does not support resume; start a clean lineage instead")
         if resume_from is not None and normalized not in {"ace", "ahe", "hyperagents"}:
             raise ValueError(f"RSI method {normalized!r} does not support resume")
         self.method = normalized
@@ -307,9 +334,12 @@ class RSIBatchSession:
         elif config_path is not None:
             resolved_config = Path(config_path).resolve()
             if resolved_config.is_file():
-                (self.artifact_dir / "method_config.toml").write_bytes(
-                    resolved_config.read_bytes()
-                )
+                snapshot_path = self.artifact_dir / "method_config.toml"
+                redact = getattr(self.adaptor, "_redacted_config_text", None)
+                if callable(redact):
+                    snapshot_path.write_text(redact(), encoding="utf-8")
+                else:
+                    snapshot_path.write_bytes(resolved_config.read_bytes())
         manifest = {
             "schema_version": 1,
             "method": self.method,
@@ -352,6 +382,16 @@ class RSIBatchSession:
             return AHEAdaptor(
                 run_dir=self.artifact_dir / "state",
                 timeout_seconds=float(getattr(self.agent_config, "timeout", 300.0)),
+            )
+        if self.method == "hyperdsh":
+            from rsi_methods.HyperDSH.HyperDSHAdaptor import HyperDSHAdaptor
+
+            return HyperDSHAdaptor(
+                run_dir=self.artifact_dir / "state",
+                reuse_existing=False,
+                max_refinement_rounds=task_count,
+                model=getattr(self.agent_config, "model", None),
+                timeout_seconds=getattr(self.agent_config, "timeout", 300),
             )
         try:
             from rsi_methods.HyperAgents.HyperAgentsAdaptor import HyperAgentsAdaptor
@@ -482,8 +522,8 @@ class RSIBatchSession:
             raise RuntimeError("RSIBatchSession.select() has no pending candidate batch")
         if not isinstance(candidate_evaluations, Mapping):
             raise TypeError("candidate_evaluations must be a mapping")
-        if selection_mode not in {"paired", "online"}:
-            raise ValueError("selection_mode must be 'paired' or 'online'")
+        if selection_mode != "paired":
+            raise ValueError("selection_mode must be 'paired'; online selection is no longer supported")
         expected_ids = _candidate_ids(batch)
         normalized_results = {str(key): value for key, value in candidate_evaluations.items()}
         if set(normalized_results) != expected_ids:
@@ -503,12 +543,13 @@ class RSIBatchSession:
             json.dumps(to_jsonable(selection_input), ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
         )
+        selection_options = {} if self.method == "hyperdsh" else {"selection_mode": selection_mode}
         selection = self.adaptor.select(
             batch=batch,
             parent_evaluation=parent_evaluation,
             candidate_evaluations=normalized_results,
             output_dir=stage_dir,
-            selection_mode=selection_mode,
+            **selection_options,
         )
         status = str(getattr(selection, "status", "")).strip().lower()
         replacement = getattr(selection, "batch", None)
@@ -704,6 +745,8 @@ __all__ = [
     "create_rsi_batch",
     "execution_status_for_error",
     "is_rsi_infrastructure_error",
+    "is_fatal_ahe_error",
+    "is_fatal_hyperdsh_error",
     "extract_rsi_answer",
     "make_feedback_result",
     "make_step_feedback",

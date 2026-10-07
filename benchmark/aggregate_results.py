@@ -259,7 +259,7 @@ def _legacy_repeat(repeat_dir: Path, run_root: Path) -> dict[str, Any]:
     metadata = _legacy_metadata(run_root)
     label = run_root.name.lower()
     row["benchmark"] = metadata.get("benchmark") or next((name for name in ("sweepmine", "combat", "farm", "hero") if name in label), None)
-    row["method"] = metadata.get("method") or next((name for name in ("hyperagents", "ace", "self_harness", "ahe") if name in label), None)
+    row["method"] = metadata.get("method") or next((name for name in ("hyperagents", "hyperdsh", "ace", "self_harness", "ahe") if name in label), None)
     row["provider"] = metadata.get("provider") or row["method"]
     row["difficulty"] = metadata.get("difficulty")
     metadata_complete = metadata.get("metadata_complete", False)
