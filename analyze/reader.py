@@ -3,6 +3,7 @@
 import difflib
 import filecmp
 import json
+import math
 import warnings
 from pathlib import Path
 from typing import Any
@@ -142,6 +143,54 @@ def read_ahe_candidate(candidate_dir: str | Path) -> dict[str, str]:
 
 # ===== 方法级组织方法 =====
 
+def _score_fields(
+    report: dict[str, Any] | None, candidate_id: str | None = None,
+) -> dict[str, Any]:
+    """读取实际父代与候选评分；缺失或非有限数值保留为空。"""
+    report = report or {}
+    parent = report.get("parent_score")
+    scores = report.get("candidate_scores", {})
+    current = scores.get(candidate_id) if isinstance(scores, dict) else None
+    if "candidate_score" in report and (
+        candidate_id is None or report.get("selected_candidate_id") == candidate_id
+    ):
+        current = report["candidate_score"]
+    valid = lambda value: isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+    parent = parent if valid(parent) else None
+    current = current if valid(current) else None
+    return {
+        "parent_score": parent, "current_score": current,
+        "score_delta": current - parent if current is not None and parent is not None else None,
+    }
+
+
+def collect_ace_scores(experiment_dir: str | Path) -> dict[str, dict[str, Any]]:
+    """按 task 读取逐轮选择结果，不改变 ACE 产物读取接口。"""
+    root = Path(experiment_dir).resolve()
+    tasks = root.glob("task_*") if (root / "batch_manifest.json").is_file() else root.glob("rsi/ace/*/task_*")
+    return {task.name: _score_fields(_read_hyper_selection(task)) for task in tasks if task.is_dir()}
+
+
+def _evaluation_scores(
+    candidate_dir: Path, root: Path, fallback: dict[str, Any],
+) -> dict[str, Any]:
+    """优先读取候选 result，并按 parent_run_id 匹配同轮父代结果。"""
+    path = candidate_dir / "evaluation" / "result.json"
+    if not path.is_file():
+        return fallback
+    result = _read_json_object(path)
+    current = result.get("relative_score") if result.get("status") == "ok" else None
+    parent = fallback["parent_score"]
+    run_id = result.get("parent_run_id")
+    if isinstance(run_id, str):
+        matches = [path for path in (root / "runs" / "train").glob("*.json") if path.stem.partition("_")[2] == run_id]
+        if len(matches) > 1:
+            raise ValueError(f"父代评估结果不唯一：{run_id}")
+        if matches:
+            record = _read_json_object(matches[0])
+            parent = record.get("relative_score") if record.get("status") == "ok" else None
+    return _score_fields({"parent_score": parent, "candidate_score": current})
+
 def collect_ace_artifacts(
     experiment_dir: str | Path,
 ) -> list[tuple[str, list[dict[str, Any]] | None]]:
@@ -262,6 +311,8 @@ def _build_hyper_trace_node(
     accepted = metadata.get("refine_successful")
     return {
         "node_id": candidate_id,
+        **_evaluation_scores(task_dir / "agent_output", task_dir.parent,
+                             _score_fields(_read_hyper_selection(task_dir), candidate_id)),
         "parent_id": None if raw_parent in (None, "initial") else raw_parent,
         "task_id": task_dir.name,
         "run_id": run_id,
@@ -338,6 +389,8 @@ def _build_hyper_node(
     accepted = selection.get("accepted") if selected is True else (False if selected_id else None)
     return {
         "node_id": candidate_id,
+        **_evaluation_scores(patch_path.parent, task_dir.parents[3],
+                             _score_fields(selection, candidate_id)),
         "parent_id": parent_id,
         "task_id": task_dir.name,
         "run_id": run_id,
@@ -403,11 +456,20 @@ def collect_ahe_artifacts(
 
     nodes: list[dict[str, Any]] = []
     parent_id: str | None = None
+    reports = {}
+    for path in run_dirs[0].glob("task_*/selection_stage_*/ahe_selection.json"):
+        report = _read_json_object(path)
+        reports.setdefault(report.get("refinement_id"), []).append(report)
     for iteration_dir in iteration_dirs:
         variant_dir = _single_ahe_variant(iteration_dir)
         node_id = f"{iteration_dir.name}:{variant_dir.name}"
+        matching = reports.get(iteration_dir.name, [])
+        if len(matching) > 1:
+            raise ValueError(f"AHE 评分结果不唯一：{iteration_dir.name}")
         nodes.append({
             "node_id": node_id,
+            **_evaluation_scores(variant_dir, Path(experiment_dir).resolve(),
+                                 _score_fields(matching[0] if matching else None, variant_dir.name)),
             "parent_id": parent_id,
             "iteration": iteration_dir.name,
             "variant": variant_dir.name,

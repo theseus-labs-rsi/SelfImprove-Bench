@@ -26,6 +26,7 @@ def _base_node(source: dict[str, Any], snapshot_ids: list[str]) -> dict[str, Any
         "accepted": source["accepted"],
         "changed": source["changed"],
         "artifact_path": source["artifact_path"],
+        **{key: source[key] for key in ("parent_score", "current_score", "score_delta")},
         "snapshot_opinion_ids": list(snapshot_ids),
         "created_opinion_ids": [],
         "unresolved_opinions": [],
@@ -123,7 +124,7 @@ def run_hyper_analysis(
         sources = sources[:limit]
     destination = Path(output_path).resolve()
     state: dict[str, Any] = {
-        "schema_version": 5,
+        "schema_version": 6,
         "method": method_name,
         "experiment_dir": str(Path(experiment_dir).resolve()),
         "run_id": sources[0]["run_id"] if sources else None,

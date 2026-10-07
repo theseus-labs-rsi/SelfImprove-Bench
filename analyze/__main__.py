@@ -51,6 +51,10 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def _print_node(node: dict[str, Any]) -> None:
     """输出单轮状态和四个统计维度。"""
+    print(
+        f"[{node['node_id']}] parent_score={node.get('parent_score')} "
+        f"current_score={node.get('current_score')} score_delta={node.get('score_delta')}"
+    )
     if node["status"] != "completed":
         print(f"[{node['node_id']}] {node['status']}")
         return

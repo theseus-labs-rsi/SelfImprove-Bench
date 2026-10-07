@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from .llm import AnalysisOutput, ImprovementOpinion, analyze_artifact
-from .reader import collect_ace_artifacts
+from .reader import collect_ace_artifacts, collect_ace_scores
 
 
 def _empty_counts(values: list[str]) -> dict[str, int]:
@@ -160,11 +160,12 @@ def run_ace_analysis(
 ) -> dict[str, Any]:
     """顺序分析 ACE 结点，并在每轮后持久化完整追踪状态。"""
     artifacts = collect_ace_artifacts(experiment_dir)
+    scores = collect_ace_scores(experiment_dir)
     if limit is not None:
         artifacts = artifacts[:limit]
     destination = Path(output_path).resolve()
     state: dict[str, Any] = {
-        "schema_version": 5,
+        "schema_version": 6,
         "method": "ACE",
         "experiment_dir": str(Path(experiment_dir).resolve()),
         "model": model,
@@ -178,6 +179,7 @@ def run_ace_analysis(
     parent_id: str | None = None
     for node_id, artifact in artifacts:
         node = _base_node(node_id, parent_id, snapshot_ids)
+        node.update(scores[node_id])
         try:
             if artifact is None:
                 node.update({
