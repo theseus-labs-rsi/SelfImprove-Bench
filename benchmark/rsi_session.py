@@ -397,6 +397,7 @@ class RSIBatchSession:
         )
 
     def _create_adaptor(self, task_count: int) -> Any:
+        """Keep method-owned settings in method TOML configuration."""
         if self.method == "ace":
             from rsi_methods.ACE.ACEAdaptor import ACEAdaptor
 
@@ -415,9 +416,6 @@ class RSIBatchSession:
             return AHEAdaptor(
                 run_dir=self.artifact_dir / "state",
                 timeout_seconds=float(getattr(self.agent_config, "timeout", 300.0)),
-                model=getattr(self.agent_config, "model", None),
-                reasoning_effort=getattr(self.agent_config, "reasoning_effort", None),
-                refinement_every=getattr(self.agent_config, "ahe_refinement_every", None),
             )
         if self.method == "hyperdsh":
             from rsi_methods.HyperDSH.HyperDSHAdaptor import HyperDSHAdaptor
@@ -426,7 +424,6 @@ class RSIBatchSession:
                 run_dir=self.artifact_dir / "state",
                 reuse_existing=False,
                 max_refinement_rounds=task_count,
-                model=getattr(self.agent_config, "model", None),
                 timeout_seconds=getattr(self.agent_config, "timeout", 300),
             )
         try:

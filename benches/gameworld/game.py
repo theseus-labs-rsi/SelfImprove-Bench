@@ -23,6 +23,8 @@ def generate(
     GameWorld tasks are not synthesized from a numeric difficulty. The CSD
     manifest therefore supplies disjoint train and holdout pools explicitly.
     ``difficulty`` remains in the outer CSD contract for shared metrics.
+    ``model_spec`` selects a GameWorld catalog profile; the RSI API model
+    is configured in the method TOML.
     """
 
     raw_options = dict(options or {})

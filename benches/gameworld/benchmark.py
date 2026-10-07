@@ -287,6 +287,7 @@ class GameWorldBenchmark:
                     for index in range(len(base_clients))
                 ]
 
+            # Catalog profile for GameWorld setup; the RSI agent owns the API model.
             model_spec = str(
                 task.get("model_spec")
                 or os.environ.get("GAMEWORLD_MODEL_ID")
@@ -294,7 +295,7 @@ class GameWorldBenchmark:
             ).strip()
             if not model_spec:
                 raise RuntimeError(
-                    "GameWorld model is not configured; set game_options.gameworld.model_spec "
+                    "GameWorld catalog profile is not configured; set game_options.gameworld.model_spec "
                     "or GAMEWORLD_MODEL_ID"
                 )
             import zlib

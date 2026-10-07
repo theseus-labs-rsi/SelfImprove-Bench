@@ -134,12 +134,7 @@
           "game": "03_astray",
           "task": "03_05"
         }
-      ],
-      "gameworld_root": "${RSI_ROOT}/code/benches/gameworld/assets/core",
-      "task_assets_roots": {
-        "train": "${RSI_ROOT}/code/benches/gameworld/assets/tasks/train",
-        "holdout": "${RSI_ROOT}/code/benches/gameworld/assets/tasks/holdout"
-      }
+      ]
     }
   },
   "output_dir": "${RSI_ROOT}/runs/astray/ace/lineage",

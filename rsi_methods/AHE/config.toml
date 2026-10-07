@@ -5,7 +5,7 @@ api_key_env = "OPENAI_API_KEY"
 base_url_env = "OPENAI_BASE_URL"
 
 [agent]
-# An explicit model passed by the benchmark takes precedence over this value.
+# Actor and Evolve Agent share this method-level model setting.
 # Leave empty to fall back to LLM_MODEL in the process environment.
 model = "azure/gpt-5.6-sol"
 reasoning_effort = "high"

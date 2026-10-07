@@ -213,8 +213,6 @@ def config_from_mapping(value: dict[str, Any]) -> BenchmarkConfig:
             gameworld_options.get("framework", provider)
         ).strip().lower()
         gameworld_options.setdefault("framework", provider)
-        if agent_raw.get("model"):
-            gameworld_options.setdefault("model_spec", str(agent_raw["model"]))
         if provider not in {"ace", "hyperagents", "ahe"}:
             raise ValueError(
                 "GameWorld requires agent.provider to be ace, hyperagents, or ahe"

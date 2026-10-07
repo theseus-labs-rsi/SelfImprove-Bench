@@ -1,0 +1,46 @@
+{
+  "seed": 20260923,
+  "schedule": [
+    {
+      "game": "gameworld",
+      "difficulty": 1,
+      "count": 1
+    }
+  ],
+  "holdout": [
+    {
+      "game": "gameworld",
+      "difficulty": 1,
+      "count": 1
+    }
+  ],
+  "holdout_tasks_per_difficulty": 1,
+  "evolution_window": 1,
+  "agent": {
+    "provider": "ahe",
+    "timeout": 600,
+    "max_attempts": 1
+  },
+  "game_options": {
+    "gameworld": {
+      "framework": "ahe",
+      "model_spec": "azure-gpt-5.6-sol",
+      "max_steps": 2,
+      "resumable_steps": false,
+      "train": [
+        {
+          "game": "03_astray",
+          "task": "03_t01"
+        }
+      ],
+      "holdout": [
+        {
+          "game": "03_astray",
+          "task": "03_01"
+        }
+      ]
+    }
+  },
+  "output_dir": "../outputs/smoke_gameworld_flash_20261007/astray/ahe",
+  "continue_on_error": false
+}

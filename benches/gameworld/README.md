@@ -28,6 +28,21 @@ benchmark runner
 
 训练和留出任务在配置中显式列出，不按数字 difficulty 随机生成，也不允许 train/holdout 重叠。
 
+## 安装依赖
+
+在运行 benchmark 的 Python 环境中，从 `code` 目录执行：
+
+```powershell
+python -m pip install --upgrade -e ./benches/gameworld/assets/core/code --only-binary=greenlet,pillow,pyzmq,cryptography
+python -m playwright install chromium
+```
+
+GameWorld 的依赖统一声明在 `assets/core/code/pyproject.toml`，其 `requirements.txt`
+通过 `-e .` 引用该声明，需在文件所在目录使用。外层依赖仍由 `code/requirements.txt` 管理。
+上述版本选择覆盖普通 CPython 3.12/3.13 的 Windows x64 环境；Playwright 1.49.1
+使用 greenlet 3.1.1，Pillow 10.4.0 和 PyZMQ 26.2.0 提供 Python 3.13 预编译包。
+升级 Playwright 后需重新安装对应的 Chromium。安装兼容性与 benchmark 运行结果仍需验证。
+
 ## 三种框架
 
 公开代码同时支持三种方法，框架与模型是两个独立维度：
@@ -44,18 +59,29 @@ benchmark runner
 - `rsi_methods.HyperAgents.HyperAgentsAdaptor.HyperAgentsAdaptor`
 - `rsi_methods.AHE.AHEAdaptor.AHEAdaptor`
 
-代码不写入 API key。模型由配置中的 `agent.model` / `game_options.gameworld.model_spec` 指定，endpoint 和 key 由外部环境变量提供。
+在本仓库的 RSI 接入中，执行与进化 agent 的 API 模型由各方法的 `config.toml` 控制。
+benchmark JSON 控制任务清单、数量、seed、游戏步数与运行编排；其中的 `agent.model`
+不覆盖这些 RSI 方法的模型设置。API key 和 endpoint 从方法 TOML 指定的环境变量读取。
 
-方法层默认配置使用 `azure/gpt-5.6-sol`，推理强度为 `high`。历史实验模板的模型与推理参数保持原样；其中 `game_options.gameworld.model_spec` 使用 catalog ID `azure-gpt-5.6-sol`。运行前按实际 API 准备本地配置，不要把 API key 写入 Git。
+`game_options.gameworld.model_spec` 是 **GameWorld catalog 配置条目的 ID**，
+用于定位 `assets/core/code/catalog/models/<ID>.yaml`，提供提示模板、输出格式和默认客户端参数。
+GameWorld wrapper 把实际模型调用交给 RSI agent，使用方法 TOML 中的执行模型；
+refinement 同样使用方法 TOML 中对应的进化模型。
+
+当前 `model_spec: "azure-gpt-5.6-sol"` 保留历史 catalog 条目以兼容现有客户端初始化。
+这个 ID 的名称不表示实际 RSI 请求使用 GPT，也不要求它与方法 TOML 的模型名一致。
+临时切换 DeepSeek 时应修改方法 TOML 的模型设置，保留可用的 GameWorld catalog ID。
+未配置 `model_spec` 时，使用环境变量 `GAMEWORLD_MODEL_ID` 指定 catalog ID。
 
 ## 配置与运行
 
-六份历史配置模板仍位于 `experiments/legacy_mm/configs/templates/`：
+六份配置已放入 `configs/`，历史模板仍位于 `experiments/legacy_mm/configs/templates/`：
 
 - `astray_{ace,ahe,hyperagents}.json`
 - `minecraft_{ace,ahe,hyperagents}.json`
 
 默认使用 `assets/core/`，任务 YAML 分别在 `assets/tasks/train/` 和 `assets/tasks/holdout/`。
+历史配置的 `output_dir` 保留 `${RSI_ROOT}` 占位符，当前入口不展开环境变量，运行前需手动替换。
 显式 `gameworld_root` 优先于 `GAMEWORLD_ROOT`，环境变量优先于内置核心。
 使用外部核心时可显式提供 `task_assets_roots.train` / `holdout`。
 在仓库根目录运行，例如 PowerShell：
@@ -71,7 +97,11 @@ python -m benchmark YOUR_LOCAL_CONFIG.json --max-new-train-runs 1
 它们是完整实验模板（20 train / 5 holdout）；首次检查请在自己的本地配置中缩小任务数量与 `max_steps`。
 GameWorld 运行产物保存在各自 `output_dir/gameworld/`，不依赖旧 launcher 初始化。
 运行需要 Playwright 及 Chromium；HyperAgents 还需要可用的 Docker 环境。
-本次仅完成代码接入，浏览器、容器、API 的实际连通性由下一轮 smoke test 确认。
+根据 2026-10-07 的手动运行日志，Astray + ACE 的最小训练和留出评测均为 `status=ok`；
+AHE、HyperAgents 与 Minecraft 组合仍待验证，步骤级恢复也未在本轮 smoke 中验证。
+视频回放需要系统 PATH 中的 FFmpeg；缺少时不影响已保存的评测结果。
+不需要视频时，CMD 可执行 `set GAMEWORLD_DISABLE_VIDEO_REPLAY=1`，
+PowerShell 可执行 `$env:GAMEWORLD_DISABLE_VIDEO_REPLAY = "1"`。
 
 切换框架时，同时修改 `agent.provider` 和 `game_options.gameworld.framework`；二者不一致会在配置解析阶段直接拒绝，避免出现“使用 AHE refinement、实际却跑 ACE client”的隐性错配。
 

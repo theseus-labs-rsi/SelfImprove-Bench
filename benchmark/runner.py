@@ -6,7 +6,6 @@ import json
 from copy import deepcopy
 import time
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any, Mapping
 from uuid import uuid4
 
@@ -89,16 +88,11 @@ class AgentController:
                 {"resume_from": resume_from, "target_dir": output_dir}
                 if resume_from is not None else {}
             )
-            agent_config = config.agent
-            settings = config.game_options.get("gameworld", {})
-            if self.provider == "ahe" and "ahe_refinement_every" in settings:
-                agent_config = SimpleNamespace(**vars(config.agent),
-                    ahe_refinement_every=settings["ahe_refinement_every"])
             self.session = self.bridge.create_rsi_batch(
                 self.provider,
                 output_dir / "rsi",
                 task_count=max(1, training_count),
-                agent=agent_config,
+                agent=config.agent,
                 batch_id=batch_id, resume=resume,
                 **resume_args,
             )
