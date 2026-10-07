@@ -12,7 +12,7 @@ from benches.heros_journey.task_factory import load_difficulty_manifest as load_
 from benches.sweepmine.task_factory import load_difficulty_manifest
 
 
-SUPPORTED_GAMES = ("farm", "combat", "sweepmine", "sweepmine_reorganized", "heros_journey")
+SUPPORTED_GAMES = ("farm", "combat", "sweepmine", "heros_journey")
 SUPPORTED_PROVIDERS = (
     "codex",
     "claude",
@@ -192,10 +192,6 @@ def config_from_mapping(value: dict[str, Any]) -> BenchmarkConfig:
         raise ValueError(
             "Sweepmine requires an RSI agent provider: ace, baseline, hyperagents, self_harness, or ahe"
         )
-    if "sweepmine_reorganized" in requested_games and provider not in interactive_providers:
-        raise ValueError(
-            "Sweepmine induction requires an RSI agent provider: ace, baseline, hyperagents, self_harness, or ahe"
-        )
     if "heros_journey" in requested_games and provider not in interactive_providers:
         raise ValueError(
             "Hero's Journey requires an RSI agent provider: ace, baseline, hyperagents, self_harness, or ahe"
@@ -239,7 +235,6 @@ def config_from_mapping(value: dict[str, Any]) -> BenchmarkConfig:
         holdout_tasks_per_difficulty=pool_size,
         game_options={
             "sweepmine": {"difficulties": sweepmine},
-            "sweepmine_reorganized": {"difficulties": (1, 2, 3, 4, 5)},
             "heros_journey": {"difficulties": hero},
         },
         online_evolution=online_evolution,

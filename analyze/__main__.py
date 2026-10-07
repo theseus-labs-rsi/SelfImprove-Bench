@@ -34,6 +34,12 @@ def _build_parser() -> argparse.ArgumentParser:
     hyper.add_argument("--model", default=os.getenv("OPENAI_MODEL"), help="模型名称")
     hyper.add_argument("--limit", type=_positive_int, help="仅分析拓扑序前 N 个结点")
     hyper.add_argument("--timeout", type=float, help="单次 API 请求超时秒数")
+    hyperdsh = commands.add_parser("hyperdsh", help="按父子树分析 HyperDSH 候选")
+    hyperdsh.add_argument("experiment_dir", help="HyperDSH 实验目录")
+    hyperdsh.add_argument("--output", default="hyperdsh_analysis.json", help="追踪状态输出路径")
+    hyperdsh.add_argument("--model", default=os.getenv("OPENAI_MODEL"), help="模型名称")
+    hyperdsh.add_argument("--limit", type=_positive_int, help="仅分析拓扑序前 N 个结点")
+    hyperdsh.add_argument("--timeout", type=float, help="单次 API 请求超时秒数")
     ahe = commands.add_parser("ahe", help="顺序分析 AHE iteration")
     ahe.add_argument("experiment_dir", help="AHE 实验目录")
     ahe.add_argument("--output", default="ahe_analysis.json", help="追踪状态输出路径")
@@ -70,9 +76,10 @@ def main() -> None:
             on_node=_print_node,
         )
         print(f"完成：{len(state['nodes'])} 个结点，输出到 {args.output}")
-    elif args.command == "hyper":
+    elif args.command in {"hyper", "hyperdsh"}:
         if not args.model:
             raise SystemExit("请通过 --model 或 OPENAI_MODEL 指定模型")
+        method_name = "HyperAgent" if args.command == "hyper" else "HyperDSH"
         state = run_hyper_analysis(
             args.experiment_dir,
             args.output,
@@ -80,6 +87,7 @@ def main() -> None:
             limit=args.limit,
             timeout=args.timeout,
             on_node=_print_node,
+            method_name=method_name,
         )
         print(f"完成：{len(state['nodes'])} 个结点，输出到 {args.output}")
     elif args.command == "ahe":

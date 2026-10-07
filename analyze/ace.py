@@ -184,6 +184,14 @@ def run_ace_analysis(
                     "status": "missing_artifact", "analysis": None,
                     "summary": None, "telemetry": {},
                 })
+            elif not artifact:
+                empty = AnalysisOutput(method="ACE", round=node_id, opinions=[])
+                node.update({
+                    "status": "unchanged",
+                    "analysis": empty.model_dump(mode="json"),
+                    "summary": summarize_analysis(empty),
+                    "telemetry": {},
+                })
             else:
                 prior = [state["opinions"][item] for item in snapshot_ids]
                 telemetry: dict[str, Any] = {}

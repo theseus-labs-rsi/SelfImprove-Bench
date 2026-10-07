@@ -1,5 +1,6 @@
 """调用 LLM 分析单轮 RSI 改进产物。"""
 
+import json
 import os
 from enum import Enum
 from typing import Any
@@ -59,6 +60,27 @@ class AnalysisOutput(BaseModel):
 
     class Config:
         extra = "forbid"
+
+
+def _recover_output_from_validation_error(exc: Exception) -> AnalysisOutput | None:
+    """从结构化解析异常中提取唯一可通过 schema 的 JSON 对象。"""
+    errors = exc.errors() if hasattr(exc, "errors") else []
+    raw_values = [item.get("input") for item in errors if isinstance(item, dict)]
+    decoder = json.JSONDecoder()
+    valid: list[AnalysisOutput] = []
+
+    for raw in raw_values:
+        if not isinstance(raw, str):
+            continue
+        for start, character in enumerate(raw):
+            if character != "{":
+                continue
+            try:
+                candidate, _ = decoder.raw_decode(raw, start)
+                valid.append(AnalysisOutput.model_validate(candidate))
+            except (json.JSONDecodeError, ValueError):
+                continue
+    return valid[0] if len(valid) == 1 else None
 
 
 def _create_openai_client(
@@ -218,6 +240,7 @@ def analyze_artifact(
         client = _create_openai_client(api_key, base_url, timeout)
 
     prompt = build_analysis_prompt(method, round_id, artifacts, prior_opinions)
+    response = None
     try:
         response = client.responses.parse(
             model=selected_model,
@@ -225,11 +248,17 @@ def analyze_artifact(
             text_format=AnalysisOutput,
         )
     except Exception as exc:
-        raise AnalysisLLMError(f"LLM 分析请求失败：{exc}") from exc
+        output = _recover_output_from_validation_error(exc)
+        if output is None:
+            raise AnalysisLLMError(f"LLM 分析请求失败：{exc}") from exc
+        if telemetry is not None:
+            telemetry["structured_parse_recovered"] = True
+    else:
+        output = getattr(response, "output_parsed", None)
 
-    output = getattr(response, "output_parsed", None)
     if output is None:
         raise AnalysisLLMError("LLM 未返回可解析的结构化结果")
     _validate_output(output, method, round_id, prior_opinions)
-    _record_telemetry(response, "analysis", telemetry)
+    if response is not None:
+        _record_telemetry(response, "analysis", telemetry)
     return output

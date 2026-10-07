@@ -104,6 +104,28 @@ def read_ace_operations(path: str | Path) -> list[dict[str, Any]]:
     return records
 
 
+def _read_ace_curator_operations(task_dir: Path) -> list[dict[str, Any]] | None:
+    """从 trace task 的 curator 响应读取本轮操作；缺失文件返回 None。"""
+    sources = sorted(task_dir.glob("curator_refine_*.json"))
+    if not sources:
+        return None
+    if len(sources) != 1:
+        raise ValueError(f"ACE curator 响应文件不唯一：{task_dir}")
+
+    record = _read_json_object(sources[0])
+    response = record.get("response")
+    if not isinstance(response, str):
+        raise ValueError(f"ACE curator response 必须是字符串：{sources[0]}")
+    try:
+        content = json.loads(response)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"ACE curator response 不是有效 JSON：{sources[0]}") from exc
+    operations = content.get("operations") if isinstance(content, dict) else None
+    if not isinstance(operations, list) or not all(isinstance(item, dict) for item in operations):
+        raise ValueError(f"ACE curator operations 必须是对象列表：{sources[0]}")
+    return operations
+
+
 def read_hyperagent_patch(path: str | Path) -> str:
     """从指定的 HyperAgent model_patch.diff 读取原始补丁。"""
     return _read_utf8_text(path)
@@ -124,7 +146,17 @@ def collect_ace_artifacts(
     experiment_dir: str | Path,
 ) -> list[tuple[str, list[dict[str, Any]] | None]]:
     """从 ACE 实验目录读取各 task 的原始改进记录。"""
-    ace_root = Path(experiment_dir).resolve() / "rsi" / "ace"
+    source_root = Path(experiment_dir).resolve()
+    if (source_root / "batch_manifest.json").is_file():
+        task_dirs = sorted(path for path in source_root.iterdir() if _is_task_dir(path))
+        if not task_dirs:
+            raise FileNotFoundError(f"ACE trace task 目录不存在：{source_root}")
+        return [
+            (task_dir.name, _read_ace_curator_operations(task_dir))
+            for task_dir in task_dirs
+        ]
+
+    ace_root = source_root / "rsi" / "ace"
     if not ace_root.is_dir():
         raise FileNotFoundError(f"ACE 运行目录不存在：{ace_root}")
 
@@ -152,20 +184,93 @@ def collect_hyperagent_artifacts(
     experiment_dir: str | Path,
 ) -> list[dict[str, Any]]:
     """读取唯一有效 HyperAgent run，并按显式 parent_id 排序候选。"""
-    root = Path(experiment_dir).resolve() / "rsi" / "hyperagents"
+    return _collect_hyper_tree_artifacts(
+        experiment_dir, method_dir="hyperagents", method_name="HyperAgent",
+    )
+
+
+def collect_hyperdsh_artifacts(
+    experiment_dir: str | Path,
+) -> list[dict[str, Any]]:
+    """读取唯一有效 HyperDSH run，并按显式 parent_id 排序候选。"""
+    return _collect_hyper_tree_artifacts(
+        experiment_dir, method_dir="hyperdsh", method_name="HyperDSH",
+    )
+
+
+def _collect_hyper_tree_artifacts(
+    experiment_dir: str | Path,
+    *,
+    method_dir: str,
+    method_name: str,
+) -> list[dict[str, Any]]:
+    """按方法目录读取 HyperAgent 风格的候选树。"""
+    source_root = Path(experiment_dir).resolve()
+    if (source_root / "batch_manifest.json").is_file():
+        return _read_hyper_trace_batch(source_root, method_name)
+
+    root = source_root / "rsi" / method_dir
     if not root.is_dir():
-        raise FileNotFoundError(f"HyperAgent 运行目录不存在：{root}")
+        raise FileNotFoundError(f"{method_name} 运行目录不存在：{root}")
 
     run_dirs = [path for path in root.iterdir() if _has_hyper_tasks(path)]
     if len(run_dirs) != 1:
         names = [path.name for path in run_dirs]
-        raise ValueError(f"HyperAgent 有效 run 应当唯一，实际找到 {len(run_dirs)} 个：{names}")
+        raise ValueError(f"{method_name} 有效 run 应当唯一，实际找到 {len(run_dirs)} 个：{names}")
 
     nodes: list[dict[str, Any]] = []
     task_dirs = sorted(path for path in run_dirs[0].iterdir() if _is_task_dir(path))
     for task_dir in task_dirs:
-        nodes.extend(_read_hyper_task(task_dir, run_dirs[0].name))
-    return _order_hyper_nodes(nodes)
+        nodes.extend(_read_hyper_task(task_dir, run_dirs[0].name, method_name))
+    return _order_hyper_nodes(nodes, method_name)
+
+
+def _read_hyper_trace_batch(root: Path, method_name: str) -> list[dict[str, Any]]:
+    """从已选定单候选的 HyperAgent trace batch 重建父子链。"""
+    manifest = _read_json_object(root / "batch_manifest.json")
+    run_id = manifest.get("batch_id")
+    if not isinstance(run_id, str):
+        raise ValueError(f"{method_name} batch 缺少 batch_id：{root}")
+
+    nodes: list[dict[str, Any]] = []
+    for task_dir in sorted(path for path in root.iterdir() if _is_task_dir(path)):
+        report = _read_json_object(task_dir / "refinement_report.json")
+        metadata = report.get("metadata")
+        if not isinstance(metadata, dict):
+            raise ValueError(f"HyperAgent refinement metadata 无效：{task_dir}")
+        nodes.append(_build_hyper_trace_node(task_dir, run_id, report, metadata))
+    if not nodes:
+        raise FileNotFoundError(f"{method_name} trace task 目录不存在：{root}")
+    return _order_hyper_nodes(nodes, method_name)
+
+
+def _build_hyper_trace_node(
+    task_dir: Path,
+    run_id: str,
+    report: dict[str, Any],
+    metadata: dict[str, Any],
+) -> dict[str, Any]:
+    """把单候选 task 报告转换为统一 HyperAgent 结点。"""
+    candidate_id = report.get("candidate_id")
+    raw_parent = metadata.get("parent_genid")
+    if not isinstance(candidate_id, str):
+        raise ValueError(f"HyperAgent trace 缺少 candidate_id：{task_dir}")
+    if raw_parent not in (None, "initial") and not isinstance(raw_parent, str):
+        raise ValueError(f"HyperAgent trace parent_genid 无效：{candidate_id}")
+
+    patch_path = task_dir / "agent_output" / "model_patch.diff"
+    accepted = metadata.get("refine_successful")
+    return {
+        "node_id": candidate_id,
+        "parent_id": None if raw_parent in (None, "initial") else raw_parent,
+        "task_id": task_dir.name,
+        "run_id": run_id,
+        "changed": bool(report.get("changed")),
+        "selected": True,
+        "accepted": accepted if isinstance(accepted, bool) else None,
+        "artifact_path": str(patch_path),
+        "artifact": read_hyperagent_patch(patch_path) if patch_path.is_file() else None,
+    }
 
 
 def _is_task_dir(path: Path) -> bool:
@@ -178,12 +283,16 @@ def _has_hyper_tasks(path: Path) -> bool:
     return path.is_dir() and any(_is_task_dir(child) for child in path.iterdir())
 
 
-def _read_hyper_task(task_dir: Path, run_id: str) -> list[dict[str, Any]]:
+def _read_hyper_task(
+    task_dir: Path,
+    run_id: str,
+    method_name: str,
+) -> list[dict[str, Any]]:
     """读取一个 task 中的全部候选及其选择状态。"""
     batch_path = task_dir / "candidate_batch.json"
     if not batch_path.is_file():
         warnings.warn(
-            f"跳过缺少 candidate_batch.json 的 HyperAgent task：{task_dir}",
+            f"跳过缺少 candidate_batch.json 的 {method_name} task：{task_dir}",
             RuntimeWarning,
             stacklevel=2,
         )
@@ -240,25 +349,28 @@ def _build_hyper_node(
     }
 
 
-def _order_hyper_nodes(nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _order_hyper_nodes(
+    nodes: list[dict[str, Any]],
+    method_name: str = "HyperAgent",
+) -> list[dict[str, Any]]:
     """按 parent_id 拓扑排序，同时检查重复、缺失父结点和环。"""
     by_id = {node["node_id"]: node for node in nodes}
     if len(by_id) != len(nodes):
-        raise ValueError("HyperAgent 包含重复 candidate_id")
+        raise ValueError(f"{method_name} 包含重复 candidate_id")
     ordered: list[dict[str, Any]] = []
     states: dict[str, int] = {}
 
     def visit(node_id: str) -> None:
         state = states.get(node_id, 0)
         if state == 1:
-            raise ValueError(f"HyperAgent parent_id 形成环：{node_id}")
+            raise ValueError(f"{method_name} parent_id 形成环：{node_id}")
         if state == 2:
             return
         states[node_id] = 1
         parent_id = by_id[node_id]["parent_id"]
         if parent_id is not None:
             if parent_id not in by_id:
-                raise ValueError(f"HyperAgent 父结点不存在：{node_id} -> {parent_id}")
+                raise ValueError(f"{method_name} 父结点不存在：{node_id} -> {parent_id}")
             visit(parent_id)
         states[node_id] = 2
         ordered.append(by_id[node_id])

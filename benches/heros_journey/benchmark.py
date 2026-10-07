@@ -6,7 +6,7 @@ import copy
 import json
 import re
 import sys
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -147,6 +147,8 @@ class HeroJourneyBenchmark:
         self,
         tasks: Sequence[HeroJourneyTask],
         agent: Any,
+        *,
+        reload_agent: Callable[[], Any] | None = None,
     ) -> FeedbackResults:
         task_list = list(tasks)
         self._validate_tasks(task_list)
@@ -154,8 +156,19 @@ class HeroJourneyBenchmark:
             self._episode_artifacts = {}
             return []
 
+        if reload_agent is not None and self._max_workers != 1:
+            raise ValueError("Agent reload requires serial Hero episodes")
         if self._max_workers == 1:
-            outcomes = [self._play_safely(task, agent) for task in task_list]
+            outcomes = []
+            active_agent = agent
+            for index, task in enumerate(task_list):
+                outcome = self._play_safely(
+                    task, active_agent, timeout_as_zero=reload_agent is not None
+                )
+                outcomes.append(outcome)
+                if (reload_agent is not None and index + 1 < len(task_list)
+                        and outcome[0].evaluation.execution_status == ExecutionStatus.TIMEOUT):
+                    active_agent = reload_agent()
         else:
             worker_count = min(self._max_workers, len(task_list))
             with ThreadPoolExecutor(max_workers=worker_count) as executor:
@@ -293,6 +306,8 @@ class HeroJourneyBenchmark:
         self,
         task: HeroJourneyTask,
         agent: Any,
+        *,
+        timeout_as_zero: bool = False,
     ) -> tuple[FeedbackResult, dict[str, Any] | None]:
         calls: list[_ModelCall] = []
         try:
@@ -335,6 +350,9 @@ class HeroJourneyBenchmark:
             artifact_data["interaction_protocol"] = task.settings.interaction_protocol
             artifact_data["action_limit"] = task.action_limit
             return feedback, artifact_data
+        except TimeoutError as exc:
+            status = ExecutionStatus.TIMEOUT if timeout_as_zero else ExecutionStatus.ERROR
+            return self._error_feedback(task, calls, exc, status=status), None
         except Exception as exc:
             return self._error_feedback(task, calls, exc), None
 
@@ -401,14 +419,16 @@ class HeroJourneyBenchmark:
             ),
         )
 
-    def _error_feedback(self, task, calls, exc) -> FeedbackResult:
+    def _error_feedback(
+        self, task, calls, exc, *, status: ExecutionStatus = ExecutionStatus.ERROR
+    ) -> FeedbackResult:
         message = f"{type(exc).__name__}: {exc}"
         return FeedbackResult(
             task_id=task.task_id,
             task=task.snapshot(),
             trajectory=self._build_trajectory(calls, []),
             evaluation=TaskEvaluation(
-                execution_status=ExecutionStatus.ERROR,
+                execution_status=status,
                 success=False,
                 score=0.0,
                 feedback=message,

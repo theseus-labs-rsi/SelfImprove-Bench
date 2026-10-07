@@ -255,10 +255,13 @@ def _selection_evaluation(
 
 
 def _evaluate(
-    task: PlannedTask, request: Any | None = None, agent: Any | None = None
+    task: PlannedTask, request: Any | None = None, agent: Any | None = None,
+    reload_agent: Any | None = None,
 ) -> EvaluationOutcome:
     try:
-        return evaluate_task(task.game, task.task, request=request, agent=agent)
+        return evaluate_task(
+            task.game, task.task, request=request, agent=agent, reload_agent=reload_agent
+        )
     except Exception as exc:
         return EvaluationOutcome(_error_result(task, exc))
 
@@ -351,10 +354,21 @@ def _run_one(
     try:
         controller.begin(task)
         began = True
+        def reload_active_agent() -> Any:
+            controller.begin(task)
+            return controller.active_agent
+
+        reload_agent = (
+            reload_active_agent
+            if task.phase == "holdout" and task.game == "heros_journey"
+            and controller.provider == "ahe" and controller.session is not None
+            else None
+        )
         outcome = _evaluate(
             task,
             request=controller.request,
             agent=controller.active_agent,
+            reload_agent=reload_agent,
         )
         result = _ahe_skipped_result(outcome.record, controller)
     except Exception as exc:
@@ -822,6 +836,7 @@ def run_benchmark(
     """Generate, orchestrate, evaluate and persist one complete benchmark."""
     source_dir = Path(config.output_dir).resolve()
     output_dir = Path(target_dir).resolve() if target_dir is not None else source_dir
+    resuming_holdout = False
     if target_dir is None:
         output_dir.mkdir(parents=True, exist_ok=True)
     if target_dir is not None:
@@ -848,8 +863,11 @@ def run_benchmark(
             for old, new in zip(saved_manifest.holdout, manifest.holdout)
         ):
             raise ValueError("Resume holdout schedule differs from saved lineage")
-        _existing_records(source_dir, saved_manifest.training, "train")
+        completed_training = _existing_records(source_dir, saved_manifest.training, "train")
         completed_holdout = _existing_records(source_dir, saved_manifest.holdout, "holdout")
+        if completed_holdout and len(completed_training) != len(saved_manifest.training):
+            raise ValueError("Holdout records exist before training is complete")
+        resuming_holdout = bool(completed_holdout)
         if any(
             old.manifest_record() != new.manifest_record()
             for old, new in zip(
@@ -902,7 +920,8 @@ def run_benchmark(
         # Holdout starts only after all scheduled evolution/refinement has
         # finished. AgentController.begin loads but never refines the final RSI version.
         if len(training_records) == len(manifest.training) and (
-            config.continue_on_error or all(item["status"] in {"ok", "skipped"} for item in training_records)
+            resuming_holdout or config.continue_on_error
+            or all(item["status"] in {"ok", "skipped"} for item in training_records)
         ):
             for index, task in enumerate(manifest.holdout, start=1):
                 if index <= len(holdout_records):

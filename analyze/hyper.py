@@ -6,8 +6,8 @@ from pathlib import Path
 from typing import Any
 
 from .ace import refine_snapshot, summarize_analysis
-from .llm import analyze_artifact
-from .reader import collect_hyperagent_artifacts
+from .llm import AnalysisLLMError, analyze_artifact
+from .reader import collect_hyperagent_artifacts, collect_hyperdsh_artifacts
 
 
 def _write_state(path: Path, state: dict[str, Any]) -> None:
@@ -62,6 +62,7 @@ def _analyze_node(
     state: dict[str, Any],
     parent_snapshot: list[str],
     call_options: dict[str, Any],
+    method_name: str,
 ) -> dict[str, Any]:
     """分析一个候选；无修改结点直接继承父快照。"""
     node = _base_node(source, parent_snapshot)
@@ -81,7 +82,7 @@ def _analyze_node(
     prior = [state["opinions"][item] for item in parent_snapshot]
     telemetry: dict[str, Any] = {}
     result = analyze_artifact(
-        "HyperAgent", source["node_id"], source["artifact"], prior,
+        method_name, source["node_id"], source["artifact"], prior,
         telemetry=telemetry, **call_options,
     )
     refined = refine_snapshot(
@@ -108,15 +109,22 @@ def run_hyper_analysis(
     timeout: float | None = None,
     client: Any = None,
     on_node: Callable[[dict[str, Any]], None] | None = None,
+    method_name: str = "HyperAgent",
 ) -> dict[str, Any]:
-    """按拓扑顺序分析整棵 HyperAgent 候选树。"""
-    sources = collect_hyperagent_artifacts(experiment_dir)
+    """按拓扑顺序分析 HyperAgent 风格的候选树。"""
+    collectors = {
+        "HyperAgent": collect_hyperagent_artifacts,
+        "HyperDSH": collect_hyperdsh_artifacts,
+    }
+    if method_name not in collectors:
+        raise ValueError(f"不支持的树状分析方法：{method_name}")
+    sources = collectors[method_name](experiment_dir)
     if limit is not None:
         sources = sources[:limit]
     destination = Path(output_path).resolve()
     state: dict[str, Any] = {
         "schema_version": 5,
-        "method": "HyperAgent",
+        "method": method_name,
         "experiment_dir": str(Path(experiment_dir).resolve()),
         "run_id": sources[0]["run_id"] if sources else None,
         "model": model,
@@ -134,7 +142,18 @@ def run_hyper_analysis(
     for source in sources:
         parent_snapshot = _parent_snapshot(source, snapshots)
         try:
-            node = _analyze_node(source, state, parent_snapshot, options)
+            node = _analyze_node(
+                source, state, parent_snapshot, options, method_name,
+            )
+        except AnalysisLLMError as exc:
+            node = _base_node(source, parent_snapshot)
+            node.update({
+                "status": "skipped_analysis_error",
+                "analysis": None,
+                "summary": None,
+                "telemetry": {},
+                "error": str(exc),
+            })
         except Exception as exc:
             node = _base_node(source, parent_snapshot)
             node.update({"status": "failed", "error": str(exc)})
@@ -149,6 +168,9 @@ def run_hyper_analysis(
         _write_state(destination, state)
         if on_node:
             on_node(node)
-    state["status"] = "completed"
+    has_skipped = any(
+        node["status"] == "skipped_analysis_error" for node in state["nodes"]
+    )
+    state["status"] = "completed_with_errors" if has_skipped else "completed"
     _write_state(destination, state)
     return state

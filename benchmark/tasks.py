@@ -12,7 +12,6 @@ from benches.combat import game as combat_game
 from benches.farm import game as farm_game
 from benches.heros_journey import game as hero_game
 from benches.sweepmine import game as sweepmine_game
-from benches.sweepmine_reorganized import game as sweepmine_reorganized_game
 
 from .config import BenchmarkConfig
 
@@ -21,7 +20,6 @@ GAMES = {
     "farm": farm_game,
     "combat": combat_game,
     "sweepmine": sweepmine_game,
-    "sweepmine_reorganized": sweepmine_reorganized_game,
     "heros_journey": hero_game,
 }
 

@@ -19,7 +19,6 @@ from benches.heros_journey.benchmark import HeroJourneyBenchmark
 from benches.heros_journey.task_factory import HeroJourneyDifficulty
 from benches.sweepmine.core import SweepmineCore
 from benches.sweepmine.play import play_feedback
-from benches.sweepmine_reorganized.play import play_feedback as play_sweepmine_reorganized
 
 
 @dataclass(frozen=True)
@@ -59,11 +58,6 @@ def _native_feedback_outcome(
 def evaluate_sweepmine(task: Mapping[str, Any], agent: Any) -> EvaluationOutcome:
     core = SweepmineCore(dict(task))
     return _native_feedback_outcome("sweepmine", task, play_feedback(core, agent))
-
-
-def evaluate_sweepmine_reorganized(task: Mapping[str, Any], agent: Any) -> EvaluationOutcome:
-    feedback = play_sweepmine_reorganized(task, agent)
-    return _native_feedback_outcome("sweepmine_reorganized", task, feedback)
 
 
 def _aggregate_hero_feedback(
@@ -143,7 +137,10 @@ def _aggregate_hero_feedback(
     )
 
 
-def evaluate_hero_journey(task: Mapping[str, Any], agent: Any) -> EvaluationOutcome:
+def evaluate_hero_journey(
+    task: Mapping[str, Any], agent: Any,
+    *, reload_agent: Callable[[], Any] | None = None,
+) -> EvaluationOutcome:
     settings = HeroJourneyDifficulty.from_mapping({
         **task,
         "episode_indices": (task["episode_idx"],),
@@ -162,22 +159,22 @@ def evaluate_hero_journey(task: Mapping[str, Any], agent: Any) -> EvaluationOutc
         )
         for index, seed in enumerate(task["seeds"])
     ]
-    feedback = _aggregate_hero_feedback(task, benchmark.play(episodes, agent))
+    feedback = _aggregate_hero_feedback(
+        task, benchmark.play(episodes, agent, reload_agent=reload_agent)
+    )
     return _native_feedback_outcome("heros_journey", task, feedback)
 
 
 def evaluate_task(
     game: str, task: Mapping[str, Any], *, request: Callable[..., dict[str, Any]] | None = None,
-    agent: Any | None = None,
+    agent: Any | None = None, reload_agent: Callable[[], Any] | None = None,
 ) -> EvaluationOutcome:
-    if game in {"sweepmine", "sweepmine_reorganized", "heros_journey"}:
+    if game in {"sweepmine", "heros_journey"}:
         if agent is None:
             raise TypeError(f"{game} evaluation requires an explicit agent")
         if game == "sweepmine":
             return evaluate_sweepmine(task, agent)
-        if game == "sweepmine_reorganized":
-            return evaluate_sweepmine_reorganized(task, agent)
-        return evaluate_hero_journey(task, agent)
+        return evaluate_hero_journey(task, agent, reload_agent=reload_agent)
     if request is None:
         raise TypeError(f"{game} evaluation requires a request callback")
     return EvaluationOutcome(GAME_MODULES[game].evaluate(task, request))
