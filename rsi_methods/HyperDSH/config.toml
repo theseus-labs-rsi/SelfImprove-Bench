@@ -1,15 +1,19 @@
+# Meta/task default models restored from deepseek-v4-pro to azure/gpt-5.6-sol.
+# API URLs previously set to https://api.deepseek.com are now empty so the
+# environment supplies endpoints. Keep inline credentials and URLs empty;
+# non-empty inline values still override the corresponding environment variables.
+
 [meta_backend.openai]
-# Keep api_key empty to read credentials from the environment. Empty values fall back
-# to the environment variable names below.
+# Credentials: OPENAI_API_KEY; endpoint: OPENAI_BASE_URL.
 api_key = ""
-base_url = "https://api.deepseek.com"
+base_url = ""
 api_key_env = "OPENAI_API_KEY"
 base_url_env = "OPENAI_BASE_URL"
 api_mode = "chat_completions"
 
 [meta_agent]
 backend = "openai"
-model = "deepseek-v4-pro"
+model = "azure/gpt-5.6-sol"
 reasoning_effort = "low"
 max_output_tokens = 65536
 
@@ -24,16 +28,18 @@ signal_retries = 1
 
 [task_agent]
 provider = "deepseek-official"
-model = "deepseek-v4-pro"
+# A benchmark configuration's agent.model overrides this task model only.
+model = "azure/gpt-5.6-sol"
 reasoning_effort = "low"
 max_output_tokens = 65536
 
 [task_provider]
-# Keep api_key empty to read credentials from the environment. The key is injected only
-# into the DSH child process and is not written to its settings or artifacts.
+# Credentials: HUMANLAYA_API_KEY; endpoint: HUMANLAYA_BASE_URL.
+# The key is injected only into the DSH child process and is not written to its
+# settings or artifacts.
 api = "openai-completions"
 api_key = ""
-base_url = "https://api.deepseek.com"
+base_url = ""
 api_key_env = "HUMANLAYA_API_KEY"
 base_url_env = "HUMANLAYA_BASE_URL"
 
