@@ -29,8 +29,6 @@ def calculate_metrics(
     window = min(evolution_window, len(scores))
     first = fmean(scores[:window]) if window else None
     last = fmean(scores[-window:]) if window else None
-    absolute_gain = (last - first) if first is not None and last is not None else None
-    relative_gain = absolute_gain / first if absolute_gain is not None and first not in (None, 0) else None
 
     by_run_id = {record["run_id"]: record for record in evolution_records}
     retention_changes: list[float] = []
@@ -78,12 +76,10 @@ def calculate_metrics(
         for previous, current in zip(scores, scores[1:])
     )
     return {
-        "evolution_gain": {
+        "evolution_score": {
             "window": evolution_window,
             "first_window_average": first,
             "last_window_average": last,
-            "absolute_gain": absolute_gain,
-            "relative_gain": relative_gain,
         },
         "capability_retention": {
             "replay_pair_count": len(pairs),
@@ -100,12 +96,6 @@ def calculate_metrics(
         "evolution_cost": {
             "total_tokens": int(total_tokens),
             "total_seconds": total_seconds,
-            "tokens_per_absolute_gain": (
-                total_tokens / absolute_gain if absolute_gain not in (None, 0) else None
-            ),
-            "seconds_per_absolute_gain": (
-                total_seconds / absolute_gain if absolute_gain not in (None, 0) else None
-            ),
         },
         "stability": {
             "score_variance": pvariance(scores) if scores else None,
@@ -118,7 +108,7 @@ def calculate_metrics(
 
 
 def format_metrics(metrics: dict[str, Any]) -> str:
-    gain = metrics["evolution_gain"]
+    score = metrics["evolution_score"]
     retention = metrics["capability_retention"]
     generalization = metrics["generalization"]
     cost = metrics["evolution_cost"]
@@ -129,10 +119,10 @@ def format_metrics(metrics: dict[str, Any]) -> str:
 
     lines = [
         "RSI metrics",
-        f"  evolution gain: absolute={display(gain['absolute_gain'])}, relative={display(gain['relative_gain'])}",
+        f"  evolution score: first={display(score['first_window_average'])}, last={display(score['last_window_average'])}",
         f"  capability retention: mean_delta={display(retention['average_score_change'])}, delta/round={display(retention['average_change_per_round'])}",
         f"  generalization: mean={display(generalization['overall_average_relative_score'])}",
-        f"  evolution cost: tokens/gain={display(cost['tokens_per_absolute_gain'])}, seconds/gain={display(cost['seconds_per_absolute_gain'])}",
+        f"  evolution cost: total tokens={display(cost['total_tokens'])}, total time (seconds)={display(cost['total_seconds'])}",
         f"  stability: variance={display(stability['score_variance'])}, decline_fraction={display(stability['declining_round_fraction'])}, drop_20pct_round_count={display(stability['drop_20pct_round_count'])}",
     ]
     for group in generalization["groups"]:

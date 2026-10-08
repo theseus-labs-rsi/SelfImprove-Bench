@@ -26,21 +26,20 @@ from typing import Any, Iterable
 
 
 METRICS = (
-    "first_absolute_score", "last_absolute_score", "absolute_gain", "relative_gain",
+    "first_absolute_score", "last_absolute_score",
     "replay_score_difference", "replay_difference_per_gap",
     "holdout_same_domain_same_difficulty", "holdout_same_domain_higher_difficulty",
-    "holdout_cross_domain", "tokens_per_absolute_gain", "time_per_absolute_gain",
+    "holdout_cross_domain", "token_total", "time_total_seconds",
     "score_variance", "declining_round_fraction",
     "drop_20pct_round_count",
 )
 CHINESE_COLUMNS = {
     "first_absolute_score": "首轮绝对分数", "last_absolute_score": "末轮绝对分数",
-    "absolute_gain": "（末轮-首轮）", "relative_gain": "（末轮-首轮）/首轮",
     "replay_score_difference": "重放得分差异", "replay_difference_per_gap": "重放分差/间隔",
     "holdout_same_domain_same_difficulty": "域内同难度上的留出评测",
     "holdout_same_domain_higher_difficulty": "域内难度提高的留出评测",
-    "holdout_cross_domain": "跨域任务评测", "tokens_per_absolute_gain": "Token/绝对增益",
-    "time_per_absolute_gain": "Time/绝对增益", "score_variance": "得分方差",
+    "holdout_cross_domain": "跨域任务评测", "token_total": "Total tokens",
+    "time_total_seconds": "Total time (seconds)", "score_variance": "得分方差",
     "declining_round_fraction": "得分下降轮次占比",
     "drop_20pct_round_count": "回退至少20%的轮次数",
 }
@@ -125,11 +124,7 @@ def _evolution(row: dict[str, Any], scores: list[float]) -> None:
         _reason(row, "no non-replay training scores")
         return
     first, last = scores[0], scores[-1]
-    gain = last - first
-    row.update(first_absolute_score=first, last_absolute_score=last, absolute_gain=gain)
-    row["relative_gain"] = gain / first if first else None
-    if not first:
-        _reason(row, "first score is zero")
+    row.update(first_absolute_score=first, last_absolute_score=last)
     row["score_variance"] = statistics.pvariance(scores) if scores else None
     declines = sum(current < previous for previous, current in zip(scores, scores[1:]))
     row["declining_round_fraction"] = declines / (len(scores) - 1) if len(scores) > 1 else 0.0
@@ -176,7 +171,6 @@ def _holdout_new(row: dict[str, Any], config: dict[str, Any], records: list[dict
 def _cost(row: dict[str, Any], training: list[dict[str, Any]]) -> None:
     tokens = _costs(training, "total_tokens")
     seconds = _costs(training, "total_seconds")
-    gain = row.get("absolute_gain")
     if tokens is not None:
         row["token_scope"] = "measured"
         row["token_total"] = tokens
@@ -186,11 +180,6 @@ def _cost(row: dict[str, Any], training: list[dict[str, Any]]) -> None:
         row["time_source"] = "recorded"
         row["time_confidence"] = "high"
         row["time_total_seconds"] = seconds
-    if _num(gain) is not None and gain > 0:
-        row["tokens_per_absolute_gain"] = tokens / gain if tokens is not None else None
-        row["time_per_absolute_gain"] = seconds / gain if seconds is not None else None
-    else:
-        _reason(row, "non-positive absolute gain; cost per gain is null")
 
 
 def parse_unified(path: Path) -> list[dict[str, Any]]:
@@ -305,7 +294,6 @@ def _legacy_repeat(repeat_dir: Path, run_root: Path) -> dict[str, Any]:
     if tokens is not None:
         row["token_scope"] = "partial"
         row["token_total"] = tokens
-        row["_legacy_tokens"] = tokens
     else:
         _reason(row, "legacy held_in total_tokens missing")
     row["_legacy_observed_time"] = None
@@ -363,14 +351,7 @@ def parse_legacy(path: Path, overrides: dict[str, Any] | None = None) -> list[di
                 _reason(row, "no valid peer repeat for time imputation")
         seconds = row.get("_legacy_observed_time")
         row["time_total_seconds"] = seconds
-        gain = _num(row.get("absolute_gain"))
-        tokens = row.pop("_legacy_tokens", None)
         row.pop("_needs_peer_time", None)
-        if gain is not None and gain > 0:
-            row["tokens_per_absolute_gain"] = tokens / gain if tokens is not None else None
-            row["time_per_absolute_gain"] = seconds / gain if seconds is not None else None
-        else:
-            _reason(row, "non-positive absolute gain; cost per gain is null")
         row.pop("_legacy_observed_time", None)
     return rows
 
@@ -412,14 +393,14 @@ def aggregate(inputs: list[str], overrides: dict[str, Any] | None = None) -> tup
             values = [_num(row.get(name)) for row in members]
             values = [value for value in values if value is not None]
             item[name] = {"mean": _mean(values), "non_null_n": len(values)}
-        time_values = [_num(row.get("time_per_absolute_gain")) for row in members]
+        time_values = [_num(row.get("time_total_seconds")) for row in members]
         time_values = [value for value in time_values if value is not None]
         time_sources = sorted({row["time_source"] for row in members if row.get("time_source")})
         imputed_count = sum(bool(row.get("time_imputed")) for row in members)
         time_metric: dict[str, Any] = {"mean": _mean(time_values), "non_null_n": len(time_values)}
         if not time_values:
-            time_metric["reason"] = "no valid positive-gain time observation"
-        item["time_per_absolute_gain"] = time_metric
+            time_metric["reason"] = "no valid total time observation"
+        item["time_total_seconds"] = time_metric
         item["time_sources"] = time_sources
         item["time_imputed_repeat_count"] = imputed_count
         confidences = {row.get("time_confidence") for row in members if row.get("time_confidence")}
