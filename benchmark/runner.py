@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from copy import deepcopy
+from dataclasses import replace
 import time
 from pathlib import Path
 from typing import Any, Mapping
@@ -20,6 +21,11 @@ from .tasks import GAMES, PlannedTask, TaskManifest, build_manifest
 
 
 RSI_METHODS = frozenset({"ace", "baseline", "hyperagents", "hyperdsh", "self_harness", "ahe"})
+
+
+def _trains_task(config: BenchmarkConfig, task: PlannedTask) -> bool:
+    """普通训练允许进化，回放由独立开关控制；holdout 不进化。"""
+    return task.phase == "train" and (not task.replay or config.replay.train)
 
 
 def _write_json(path: Path, value: Any) -> None:
@@ -101,10 +107,10 @@ class AgentController:
         if self.session is None:
             self.active_agent = None
             return
-        if task.phase == "train" and not task.replay:
+        if _trains_task(self.config, task):
             self.active_agent = self.session.begin_task(task.run_id)
         else:
-            # Replay and holdout are read-only evaluations of committed state.
+            # 未启用训练的回放与 holdout 只评估已提交版本。
             final_agent = self.session.adaptor.load()
             self.active_agent = final_agent
 
@@ -141,8 +147,7 @@ class AgentController:
         if (
             self.session is None
             or self.bridge is None
-            or task.phase != "train"
-            or task.replay
+            or not _trains_task(self.config, task)
         ):
             raise RuntimeError("FeedbackResult requires an RSI training task")
         steps = []
@@ -190,10 +195,12 @@ class AgentController:
         if (
             self.session is None
             or self.bridge is None
-            or task.phase != "train"
-            or task.replay
+            or not _trains_task(self.config, task)
         ):
             return None
+        # replay 复用原任务内容，但 refine 必须绑定本次运行身份。
+        if feedback is not None and feedback.task_id != task.run_id:
+            feedback = replace(feedback, task_id=task.run_id)
         return self.session.refine(
             feedback if feedback is not None else self.make_feedback(task, record), task_index
         )
@@ -411,14 +418,13 @@ def _run_one(
     selection_summary: dict[str, Any] | None = None
     candidate_validation_tokens = 0
     candidate_validation_seconds = 0.0
-    if began and result["status"] == "skipped" and task.phase == "train" and not task.replay:
+    if began and result["status"] == "skipped" and _trains_task(controller.config, task):
         controller.session.skip_task()
         selection_summary = {"status": "skipped", "reason": result["skip_reason"]}
     if (
         began
         and result["status"] != "skipped"
-        and task.phase == "train"
-        and not task.replay
+        and _trains_task(controller.config, task)
         and controller.session is not None
         and not _is_fatal_method_error(controller.config, result)
     ):
@@ -617,7 +623,7 @@ def _run_target_benchmark(
         _write_json(output_dir / "task_manifest.json", manifest.as_dict())
         _persist_tasks(output_dir, manifest)
 
-    refinement_count = sum(not task.replay for task in manifest.training)
+    refinement_count = sum(_trains_task(config, task) for task in manifest.training)
     controller = AgentController(
         config, output_dir, refinement_count,
         resume_from=source_dir if target_dir is not None else None,
@@ -663,7 +669,7 @@ def _run_target_benchmark(
 def _finish_benchmark(config, output_dir, manifest, controller,
                       training_records, holdout_records, extra_summary=None):
     """Keep the existing metric contract for both recovery modes."""
-    refinement_count = sum(not task.replay for task in manifest.training)
+    refinement_count = sum(_trains_task(config, task) for task in manifest.training)
     metrics = calculate_metrics(
         training_records,
         holdout_records,
@@ -765,7 +771,7 @@ def _clear_committed_marker(output_dir):
 def _archive_interrupted(output_dir, controller, task, ordinal):
     """Preserve uncommitted evidence and mark its possible cost explicitly."""
     paths = [_run_path(output_dir, task.phase, ordinal, task), output_dir / "inflight.json"]
-    if task.phase == "train" and not task.replay:
+    if _trains_task(controller.config, task):
         session = controller.session
         paths.append(session.artifact_dir / f"task_{ordinal:04d}_{rsi_session._safe_name(task.run_id)}")
         if session.method == "ahe":
@@ -799,7 +805,7 @@ def _prepare_interrupted(output_dir, controller, task, ordinal, previous):
             # Keep durable browser/model receipts, but never repeat paid evolution.
             refine_path = controller.session.artifact_dir / (
                 f"task_{ordinal:04d}_{rsi_session._safe_name(task.run_id)}")
-            if task.phase == "train" and not task.replay and refine_path.exists():
+            if _trains_task(controller.config, task) and refine_path.exists():
                 raise RuntimeError("Evolution refinement was interrupted; no automatic paid retry")
             return
     _archive_interrupted(output_dir, controller, task, ordinal)
@@ -810,7 +816,7 @@ def _commit_checkpoint(output_dir, manifest, controller, task, index, record, pr
                   "ordinal": index, "run_id": task.run_id,
                   "record_digest": resume_state.digest(record),
                   "parent_digest": resume_state.digest(previous),
-                  "refined": task.phase == "train" and not task.replay,
+                  "refined": _trains_task(controller.config, task),
                   "state": resume_state.export(controller.session)}
     resume_state.atomic_json(_checkpoint_path(output_dir, task.phase, index), checkpoint)
     (output_dir / "inflight.json").unlink(missing_ok=True)
@@ -827,13 +833,13 @@ def _run_checkpoint_task(config, output_dir, manifest, controller, task, index, 
         })
     record = _run_one(task, controller=controller, ordinal=index, output_dir=output_dir)
     stable = record["status"] in {"ok", "skipped"}
-    if task.phase == "train" and not task.replay:
+    if _trains_task(controller.config, task):
         stable = stable and (record.get("selection") or {}).get("status") in {
             "committed", "completed", "unchanged", "skipped"}
     if cursor["committable"] and stable:
         cursor["previous"] = _commit_checkpoint(
             output_dir, manifest, controller, task, index, record, cursor["previous"])
-        if task.phase == "train" and not task.replay:
+        if _trains_task(controller.config, task):
             cursor["new_train_runs"] += 1
     elif not stable:
         cursor["committable"] = False
@@ -868,7 +874,7 @@ def _run_checkpoint_benchmark(config, output_dir, *, resume, max_new_train_runs)
         _write_json(output_dir / "task_manifest.json", manifest.as_dict())
         _persist_tasks(output_dir, manifest)
         initial = None
-    controller = AgentController(config, output_dir, sum(not t.replay for t in manifest.training),
+    controller = AgentController(config, output_dir, sum(_trains_task(config, t) for t in manifest.training),
         batch_id=initial["batch_id"] if resume else None, resume=resume)
     return _run_checkpoint_controller(config, output_dir, manifest, controller,
                                       initial, resume, max_new_train_runs)

@@ -417,14 +417,9 @@ class HyperAgentsAdaptor:
             accepted, reason = False, "candidate_has_no_change"
         elif candidate_status != "ok":
             accepted, reason = False, "candidate_status_not_ok"
-        elif selection_mode == "online":
-            accepted, reason = True, "changed_candidate_execution_valid"
-        elif parent_score is None or candidate_score is None:
-            accepted, reason = False, "selection_score_missing"
-        elif candidate_score < parent_score:
-            accepted, reason = False, "selection_score_regressed"
         else:
-            accepted, reason = True, "changed_candidate_score_not_below_parent"
+            # 有修改且执行正常即可提交，分数只保留用于统计。
+            accepted, reason = True, "changed_candidate_execution_valid"
         selected_candidate_id = candidate.candidate_id if accepted else None
         report = HyperAgentsSelectionReport(
             refinement_id=batch.refinement_id,

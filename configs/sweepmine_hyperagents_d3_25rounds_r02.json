@@ -1,6 +1,5 @@
 {
   "seed": 20260923,
-  "online_evolution": true,
   "schedule": [
     {"game": "sweepmine", "difficulty": 3, "count": 20, "replay": true}
   ],
@@ -12,13 +11,13 @@
   "evolution_window": 3,
   "holdout_seed": 20261023,
   "holdout_tasks_per_difficulty": 20,
-  "replay": {"every": 5, "lag": 3},
+  "replay": {"every": 5, "lag": 3, "train": true},
   "agent": {
     "provider": "hyperagents",
     "timeout": 600,
     "max_attempts": 1,
     "show_output": false
   },
-  "output_dir": "../outputs/formal/r4/hyperagents_sweepmine",
+  "output_dir": "../outputs/formal/r5/hyperagents_sweepmine",
   "continue_on_error": false
 }

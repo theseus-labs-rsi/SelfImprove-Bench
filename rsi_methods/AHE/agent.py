@@ -2,7 +2,9 @@
 
 The copied harness is fixed when this object is built.  A dedicated process
 keeps candidate-specific ``tools`` imports separate, while retaining one
-NexAU Agent across calls to ``act`` on this benchmark task.
+NexAU Agent across calls to ``act`` within an episode. Hero seeds and Sweepmine
+restarts reset that runtime without discarding the task's audit records.
+Sweepmine's complete-state prompts replace prior conversational turns.
 """
 
 from __future__ import annotations
@@ -29,10 +31,10 @@ from benchmark.token_ledger import nexau_usage_snapshot
 class AHEAgent:
     """Execute one harness snapshot and retain traces for ``refine()``.
 
-    The child process starts with this object.  It loads ``AgentConfig`` and
-    constructs the NexAU Agent once, so repeated ``act`` calls use the same
-    harness and sandbox.  A later ``build()`` creates a new object for a new
-    candidate or selected generation.
+    Each child process loads ``AgentConfig`` and constructs one NexAU Agent.
+    Repeated ``act`` calls within an episode use the same harness and sandbox.
+    A later ``build()`` creates a new object for a new candidate or selected
+    generation.
     """
 
     def __init__(
@@ -99,6 +101,15 @@ class AHEAgent:
         self._unreconciled_failed_attempts = False
         self._start_worker()
 
+    def reset_episode(self) -> None:
+        """Isolate a new seed/board while retaining this task's traces and ledger."""
+        self.close()
+        self.sandbox_dir = self.artifact_dir / f"episode_{uuid4().hex}" / "sandbox"
+        self.sandbox_dir.mkdir(parents=True)
+        # The fresh child has a new trace ID; attempt IDs and prior traces persist.
+        self._last_usage_snapshot = None
+        self._start_worker()
+
     def snapshot_session(self) -> dict:
         """Read the child NexAU conversation without any inference call.
 
@@ -150,12 +161,18 @@ class AHEAgent:
             raise RuntimeError(f"AHE step traces missing on disk: {missing[:3]}")
         self.trace_paths = resolved
 
+    def act_with_full_context(self, prompt: str) -> BackendResponse:
+        """Use a complete-state prompt without replaying prior NexAU turns."""
+        return self.act(prompt, replace_history=True)
+
     def act(
         self,
         prompt: str,
         image_paths: Sequence[str | Path] | None = None,
+        *,
+        replace_history: bool = False,
     ) -> BackendResponse:
-        """Run one turn; the newest trace includes this Agent's prior turns.
+        """Run one turn, retaining conversation unless the prompt replaces it.
 
         Pass screenshots as Responses API input_image items, not stringified
         multimodal content; the agent's upstream harness remains unmodified.
@@ -177,11 +194,13 @@ class AHEAgent:
             shutil.copy2(path, target)
             archived.append(str(target.resolve()))
         (call_dir / "request.json").write_text(
-            json.dumps({"prompt": prompt, "image_paths": archived, "source_image_paths": paths},
+            json.dumps({"prompt": prompt, "image_paths": archived, "source_image_paths": paths,
+                        "replace_history": replace_history},
                        ensure_ascii=False), encoding="utf-8",
         )
         # The model and the archived request refer to the same durable bytes.
-        self._connection.send({"op": "act", "prompt": prompt, "image_paths": archived, "call_dir": str(call_dir)})
+        self._connection.send({"op": "act", "prompt": prompt, "image_paths": archived,
+                               "call_dir": str(call_dir), "replace_history": replace_history})
         try:
             result = self._receive(self.timeout_seconds)
         except BaseException as exc:
@@ -421,7 +440,13 @@ class AHEAgent:
                 # accumulate full prompts within one task. Bound that history
                 # while retaining the eight latest complete multimodal turns;
                 # each original step trace remains on disk for evolution/audit.
-                if request.get("image_paths"):
+                if request.get("replace_history"):
+                    removed = clear_prior_conversation(agent)
+                    (Path(request["call_dir"]) / "history_compaction.json").write_text(
+                        json.dumps({"removed_messages": removed, "keep_recent_turns": 0}),
+                        encoding="utf-8",
+                    )
+                elif request.get("image_paths"):
                     removed = compact_prior_game_turns(agent)
                     if removed:
                         (Path(request["call_dir"]) / "history_compaction.json").write_text(
@@ -451,6 +476,17 @@ class AHEAgent:
                     "status_code": getattr(exc, "status_code", None),
                 })
 
+
+
+def clear_prior_conversation(agent: object) -> int:
+    """Replace completed turns; disk traces and cumulative usage stay intact."""
+    history = list(agent.history)
+    retained = [message for message in history
+                if str(getattr(message.role, "value", message.role)).lower() == "system"]
+    agent.history.replace_all(retained)
+    # Persist removal so NexAU cannot restore old turns from session storage.
+    agent.history.flush()
+    return len(history) - len(retained)
 
 
 def dump_nexau_history(agent: object) -> list[dict]:

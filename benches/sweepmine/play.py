@@ -101,6 +101,10 @@ def play_feedback(task: SweepmineCore, agent: Any) -> FeedbackResult:
     while task.status == SweepmineState.ONGOING:
         prompt = build_turn_prompt(static, history, render_board(task.inspect()))
         try:
+            if trajectory and trajectory[-1].environment_response["event"] == "restart":
+                reset_episode = getattr(agent, "reset_episode", None)
+                if callable(reset_episode):
+                    reset_episode()
             response_text, agent_call = _call_agent(agent, prompt)
         except Exception as exc:
             return build_error_feedback(task, task_snapshot, trajectory, exc)
@@ -203,7 +207,11 @@ def extract_action(response_text: str) -> str:
 
 def _call_agent(agent: Any, prompt: str) -> tuple[str, AgentCallRecord | None]:
     """Call the common act interface, with legacy play support."""
-    if hasattr(agent, "act"):
+    full_context_act = getattr(agent, "act_with_full_context", None)
+    # This prompt already contains all actions on the current board.
+    if callable(full_context_act):
+        response = full_context_act(prompt)
+    elif hasattr(agent, "act"):
         response = agent.act(prompt)
     elif hasattr(agent, "play"):
         response = agent.play(prompt)

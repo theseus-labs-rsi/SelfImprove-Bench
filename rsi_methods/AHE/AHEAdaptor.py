@@ -105,6 +105,9 @@ class AHEAdaptor:
             "code_agent_limits": dict(self.code_agent_limits),
             "evolve_agent_limits": dict(self.evolve_agent_limits),
             "task_isolation": True,
+            "hero_episode_isolation": True,
+            "sweepmine_restart_isolation": True,
+            "sweepmine_full_context_turns": True,
             "screenshots": True,
         }
 

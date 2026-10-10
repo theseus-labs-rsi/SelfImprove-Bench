@@ -43,6 +43,7 @@ class ScheduleItem:
 class ReplayConfig:
     every: int = 0
     lag: int = 0
+    train: bool = False
 
     @property
     def enabled(self) -> bool:
@@ -86,6 +87,9 @@ class BenchmarkConfig:
 
     def as_dict(self) -> dict[str, Any]:
         value = asdict(self)
+        # 默认关闭时保留历史配置快照与恢复哈希。
+        if not self.replay.train:
+            value["replay"].pop("train")
         if self.agent.reasoning_effort is None:
             value["agent"].pop("reasoning_effort")
         return value
@@ -155,6 +159,7 @@ def config_from_mapping(value: dict[str, Any]) -> BenchmarkConfig:
         raise ValueError("replay must be an object")
     every = replay_raw.get("every", 0)
     lag = replay_raw.get("lag", 0)
+    replay_train = _boolean(replay_raw.get("train", False), "replay.train")
     for raw, label in ((every, "replay.every"), (lag, "replay.lag")):
         if not isinstance(raw, int) or isinstance(raw, bool) or raw < 0:
             raise ValueError(f"{label} must be a non-negative integer")
@@ -177,8 +182,7 @@ def config_from_mapping(value: dict[str, Any]) -> BenchmarkConfig:
     provider = str(agent_raw.get("provider", "codex")).strip().lower()
     if provider not in SUPPORTED_PROVIDERS:
         raise ValueError(f"agent.provider must be one of: {', '.join(SUPPORTED_PROVIDERS)}")
-    if not schedule_raw and provider != "baseline":
-        raise ValueError("schedule must be non-empty unless agent.provider is baseline")
+    # An empty schedule evaluates the initialized agent without training/refinement.
     holdout_manifest = value.get("holdout_manifest")
     if holdout_manifest is not None:
         if not isinstance(holdout_manifest, str) or not holdout_manifest.strip():
@@ -272,7 +276,7 @@ def config_from_mapping(value: dict[str, Any]) -> BenchmarkConfig:
         seed=seed,
         schedule=schedule,
         holdout=holdout,
-        replay=ReplayConfig(every=every, lag=lag),
+        replay=ReplayConfig(every=every, lag=lag, train=replay_train),
         agent=AgentConfig(
             provider=provider,
             backend=backend,

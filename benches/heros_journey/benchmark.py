@@ -162,11 +162,15 @@ class HeroJourneyBenchmark:
             outcomes = []
             active_agent = agent
             for index, task in enumerate(task_list):
+                reset_episode = getattr(active_agent, "reset_episode", None)
+                if index and callable(reset_episode):
+                    reset_episode()
                 outcome = self._play_safely(
                     task, active_agent, timeout_as_zero=reload_agent is not None
                 )
                 outcomes.append(outcome)
                 if (reload_agent is not None and index + 1 < len(task_list)
+                        and not callable(reset_episode)
                         and outcome[0].evaluation.execution_status == ExecutionStatus.TIMEOUT):
                     active_agent = reload_agent()
         else:

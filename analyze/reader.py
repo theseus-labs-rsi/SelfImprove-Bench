@@ -433,6 +433,27 @@ def _order_hyper_nodes(
     return ordered
 
 
+def _ahe_scores(
+    run_dir: Path, iteration: str, variant_dir: Path,
+    report: dict[str, Any] | None, experiment_dir: Path,
+) -> dict[str, Any]:
+    """缺少选择报告时，只从同轮输入结果补读可确认的父代分数。"""
+    scores = _score_fields(report, variant_dir.name)
+    if report is None:
+        baseline = run_dir / "state" / "runs" / iteration / "input" / "benchmark"
+        results = sorted(baseline.glob("*/*/result.json"))
+        if len(results) == 1:
+            record = _read_json_object(results[0])
+            scores = _score_fields({"parent_score": record.get("score")})
+    scores = _evaluation_scores(variant_dir, experiment_dir, scores)
+    if report is None and scores["current_score"] is None:
+        warnings.warn(
+            f"AHE 候选缺少评分记录，当前分数保留为空：{iteration}:{variant_dir.name}",
+            RuntimeWarning, stacklevel=2,
+        )
+    return scores
+
+
 def collect_ahe_artifacts(
     experiment_dir: str | Path,
 ) -> list[dict[str, Any]]:
@@ -468,8 +489,8 @@ def collect_ahe_artifacts(
             raise ValueError(f"AHE 评分结果不唯一：{iteration_dir.name}")
         nodes.append({
             "node_id": node_id,
-            **_evaluation_scores(variant_dir, Path(experiment_dir).resolve(),
-                                 _score_fields(matching[0] if matching else None, variant_dir.name)),
+            **_ahe_scores(run_dirs[0], iteration_dir.name, variant_dir,
+                          matching[0] if matching else None, Path(experiment_dir).resolve()),
             "parent_id": parent_id,
             "iteration": iteration_dir.name,
             "variant": variant_dir.name,
