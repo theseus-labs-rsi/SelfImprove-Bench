@@ -17,8 +17,6 @@ game_rules: |
   - Move around and jump to navigate the terrain.
   - Aim at different targeting blocks and get close to them to mine them.
   - The benchmark starts with an empty hotbar/inventory. Newly mined items fill hotbar slots as they are collected.
-  - The game state reports the currently aimed block as targeted_block_exists, targeted_block_type, targeted_block_distance, and break_progress.
-  - Use mine_target only when targeted_block_exists is true and the targeted_block_type matches the requested resource or an explicitly useful setup block.
   - For material-specific tasks, do not treat related surface blocks as equivalent: grass is not dirt, cobblestone is not stone, and leaves are not wood logs.
 
 game_roles:
@@ -28,7 +26,6 @@ game_roles:
         You control the player character.
         Prioritize efficient nearby resource collection by moving to blocks and mining them.
         Track your held item carefully: the benchmark starts with an empty hotbar/inventory, and newly collected resources may appear in slots 1-9.
-        Before mining, use the observed targeted block fields to verify the target exists, is close enough, and matches the task material. If the target is wrong or missing, adjust camera angle, distance, or position before mining.
         You cannot craft any tools in this game.
       computer_use_controls_section: |
         ACTION SPACE (ONLY LEGAL ACTIONS):
