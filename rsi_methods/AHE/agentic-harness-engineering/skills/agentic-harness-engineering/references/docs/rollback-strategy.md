@@ -1,38 +1,39 @@
-# 回滚策略 — Harness Change Rollback
+# Rollback Strategy — Harness Change Rollback
 
-> 对应 AHE 演化循环中的 Verify 步骤：当修改的预测被证伪时，如何安全回滚。
-
----
-
-## 什么时候需要回滚
-
-根据 Change Manifest 中 `verification.verdict` 的取值：
-
-| Verdict | 含义 | 动作 |
-|---------|------|------|
-| **keep** | 所有预测正确，修改有效 | 保留修改，无需回滚 |
-| **revert** | 修改无效或导致回归 | **立即回滚** |
-| **partial** | 部分预测正确，部分错误 | 回滚出问题的部分，保留有效的部分 |
-
-### 触发 revert 的具体条件
-
-满足以下任意一条时，verdict 应为 revert：
-
-1. **预期修复的任务未修复** — `expected_fixes` 中的所有任务本轮仍然 fail
-2. **观察到回归** — `at_risk_regressions` 中的任务本轮 fail（原本是 pass 的）
-3. **新引入的失败** — 不在预期范围内但新出现的 fail 任务达到 2+ 个
-4. **严重度 P0 的回归** — 即使只有 1 个 P0 任务回归，也应 revert
+> Corresponds to the Verify step of the AHE evolution loop: how to roll back safely when a
+> change's prediction is falsified.
 
 ---
 
-## 回滚方式
+## When a rollback is needed
 
-### 方式 1：git revert（推荐）
+Based on the value of `verification.verdict` in the Change Manifest:
 
-如果 Harness 文件在版本控制中：
+| Verdict | Meaning | Action |
+|---------|---------|--------|
+| **keep** | All predictions correct, the change worked | Keep the change, no rollback needed |
+| **revert** | The change was ineffective or caused a regression | **Roll back immediately** |
+| **partial** | Some predictions correct, some wrong | Roll back the problematic parts, keep the effective ones |
+
+### Concrete conditions that trigger revert
+
+The verdict should be revert when any of the following holds:
+
+1. **An expected fix did not land** — every task in `expected_fixes` still fails this round
+2. **A regression was observed** — a task in `at_risk_regressions` fails this round (it previously passed)
+3. **Newly introduced failures** — 2+ newly failing tasks that were outside the expected scope
+4. **A P0-severity regression** — even a single P0 regression should trigger a revert
+
+---
+
+## Rollback methods
+
+### Method 1: git revert (recommended)
+
+If the Harness files are under version control:
 
 ```bash
-# 查看修改涉及的文件
+# List the files touched by the change
 cat manifests/change_20260521_103000.json | python3 -c "
 import sys, json
 m = json.load(sys.stdin)
@@ -40,40 +41,40 @@ for c in m['changes']:
     print(c['file_path'])
 "
 
-# 对每个修改的文件执行 git revert
+# Run git revert for each changed file
 git revert <commit-hash> --no-edit
 
-# 或针对特定文件
+# Or target a specific file
 git checkout HEAD~1 -- tool_descriptions/search.tool.yaml
 ```
 
-### 方式 2：文件恢复
+### Method 2: file restore
 
-如果没有 git，直接从备份恢复：
+If there is no git, restore directly from a backup:
 
 ```bash
-# 如果有 pre-update backup
+# If there is a pre-update backup
 cp .hermes/backups/pre-update/tool_descriptions/search.tool.yaml \
    tool_descriptions/search.tool.yaml
 ```
 
-### 方式 3：按 partial 回滚
+### Method 3: partial rollback
 
-如果 verdict 为 partial，只回滚失败的部分：
+If the verdict is partial, roll back only the failing parts:
 
-| 情况 | 操作 |
-|------|------|
-| 部分修改有效、部分无效 | 只 revert 无效的 change entry |
-| 同文件多修改混在一起 | 手动编辑还原有问题的代码段 |
-| 依赖链断裂 | 如果 B 依赖 A 的修改，但 A 被 revert，B 也需要连带 revert |
+| Situation | Action |
+|-----------|--------|
+| Some changes effective, some not | Revert only the ineffective change entries |
+| Several changes mixed in one file | Manually edit back the problematic code section |
+| Broken dependency chain | If B depends on A's change but A is reverted, B must be reverted too |
 
 ---
 
-## 回滚后流程
+## After a rollback
 
-### 1. 记录回滚 Change Manifest
+### 1. Record a rollback Change Manifest
 
-回滚本身也是一次 Harness 修改，应同样生成 Change Manifest：
+A rollback is itself a Harness change and should also generate a Change Manifest:
 
 ```json
 {
@@ -101,35 +102,35 @@ cp .hermes/backups/pre-update/tool_descriptions/search.tool.yaml \
 }
 ```
 
-### 2. 更新 Harness 状态
+### 2. Update the Harness state
 
-- 如果使用版本控制：`git push` 推送 revert commit
-- 如果使用 change manifest 跟踪：将原始 manifest 的 verification.verdict 更新为 "reverted"
-- 记录事故日志
+- If using version control: `git push` the revert commit
+- If tracking via change manifests: update the original manifest's verification.verdict to "reverted"
+- Record an incident log
 
-### 3. 重新分析
+### 3. Re-analyze
 
-回滚后不应立即做下一次修改。应先回答：
+Do not immediately make the next change after a rollback. First answer:
 
-- **为什么预测错了？** — failure_evidence 是否不够准确？root_cause 是否没找对？
-- **是否需要换一个组件层面解决问题？** — 如果 tool_descriptions 修不好，是否应该在 system_rules 中加约束？或者在 middleware 中做自动补全？
-
----
-
-## 防止无效回滚
-
-| 不要做什么 | 为什么 |
-|-----------|--------|
-| 没有分析根因就直接 revert | 同样的失败会在下一轮重现 |
-| 因为 1 个 P2 回归就 revert 全部修改 | 可能把有效的修复也丢了；优先 partial |
-| 回滚后不更新 manifest | 丢失演化历史，无法归因 |
-| 回滚后不更新 `at_risk_regressions` 预测 | 下次同样的风险还会再犯 |
+- **Why was the prediction wrong?** — was failure_evidence not accurate enough? was the root_cause misidentified?
+- **Should the problem be solved at a different component level?** — if tool_descriptions cannot fix it, should a constraint be added in system_rules, or should middleware do automatic completion?
 
 ---
 
-## 最佳实践
+## Preventing ineffective rollbacks
 
-1. **每次修改只改一个组件** — partial revert 更容易
-2. **保持 git 提交粒度细** — 每个 change 对应一个 commit，revert 可以精确到单文件
-3. **预填 at_risk_regressions** — 哪怕"不确定会不会回归"也要写，空列表意味着"我确定没有风险"——这几乎从不是真的
-4. **回滚后不要立即重试** — 先问"为什么预测错了"，再考虑新的修改策略
+| Don't do this | Why |
+|---------------|-----|
+| Revert immediately without analyzing the root cause | The same failure will recur next round |
+| Revert all changes because of 1 P2 regression | You may lose effective fixes; prefer partial |
+| Forget to update the manifest after rolling back | You lose the evolution history and cannot attribute |
+| Forget to update the `at_risk_regressions` prediction after rolling back | The same risk will be repeated next time |
+
+---
+
+## Best practices
+
+1. **Change only one component per edit** — partial revert is easier
+2. **Keep git commits fine-grained** — one commit per change so revert can target a single file precisely
+3. **Pre-fill at_risk_regressions** — write it even when "unsure whether it will regress"; an empty list means "I am certain there is no risk" — which is almost never true
+4. **Do not retry immediately after a rollback** — first ask "why was the prediction wrong", then consider a new change strategy

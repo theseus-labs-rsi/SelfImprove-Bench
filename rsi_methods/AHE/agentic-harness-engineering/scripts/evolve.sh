@@ -6,40 +6,40 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 usage() {
     cat <<'EOF'
-用法: ./scripts/evolve.sh [选项] <config_file>
+Usage: ./scripts/evolve.sh [options] <config_file>
 
-在 tmux 后台 session 中启动 Agentic Harness Engineering 进化实验。
+Start an Agentic Harness Engineering evolution experiment in a background tmux session.
 
-参数:
-  config_file              配置文件路径 (相对于 Agentic Harness Engineering/ 或绝对路径)
+Arguments:
+  config_file              config file path (relative to Agentic Harness Engineering/ or absolute)
 
-选项:
-  --experiment NAME        恢复已有实验 (experiments/ 下的目录名)
-  --start-iteration N      从第 N 轮开始 (默认 1)
-  --skip-eval              跳过评测，直接用已有结果
-  --session NAME           自定义 tmux session 名称
-  --batch                  批量模式：启动 configs/experiments/ 下所有实验
-  --attach                 启动后自动 attach 到 tmux session
-  -h, --help               显示帮助
+Options:
+  --experiment NAME        resume an existing experiment (directory name under experiments/)
+  --start-iteration N      start from round N (default 1)
+  --skip-eval              skip evaluation and use existing results directly
+  --session NAME           custom tmux session name
+  --batch                  batch mode: start every experiment under configs/experiments/
+  --attach                 automatically attach to the tmux session after launch
+  -h, --help               show help
 
-示例:
-  # 启动单个实验
+Examples:
+  # Start a single experiment
   ./scripts/evolve.sh configs/experiments/exp-simple-code-gpt54.yaml
 
-  # 恢复中断的实验，从第 16 轮继续
+  # Resume an interrupted experiment from round 16
   ./scripts/evolve.sh --experiment 2026-03-13__18-02-54__gpt54 --start-iteration 16 configs/experiments/exp-simple-code-gpt54.yaml
 
-  # 批量启动所有实验
+  # Start all experiments in batch
   ./scripts/evolve.sh --batch
 
-  # 启动后自动 attach
+  # Attach automatically after launch
   ./scripts/evolve.sh --attach configs/experiments/exp-simple-code-gpt54.yaml
 
-管理 tmux session:
-  tmux ls                          # 查看所有 session
-  tmux attach -t <session>         # 进入 session
-  Ctrl-b d                         # 从 session 中 detach (回到后台)
-  tmux kill-session -t <session>   # 终止 session
+Managing tmux sessions:
+  tmux ls                          # list all sessions
+  tmux attach -t <session>         # enter a session
+  Ctrl-b d                         # detach from the session (return to background)
+  tmux kill-session -t <session>   # terminate a session
 EOF
 }
 
@@ -68,22 +68,22 @@ while [[ $# -gt 0 ]]; do
         -h|--help)
             usage; exit 0 ;;
         -*)
-            echo "未知选项: $1"; usage; exit 1 ;;
+            echo "Unknown option: $1"; usage; exit 1 ;;
         *)
             CONFIG_FILE="$1"; shift ;;
     esac
 done
 
 if ! command -v tmux &>/dev/null; then
-    echo "错误: tmux 未安装。请先运行: brew install tmux"
+    echo "Error: tmux is not installed. Run: brew install tmux"
     exit 1
 fi
 
-# --- 批量模式 ---
+# --- Batch mode ---
 if $BATCH_MODE; then
     CONFIGS_DIR="$PROJECT_ROOT/configs/experiments"
     if [[ ! -d "$CONFIGS_DIR" ]]; then
-        echo "错误: 找不到配置目录 $CONFIGS_DIR"
+        echo "Error: config directory not found: $CONFIGS_DIR"
         exit 1
     fi
 
@@ -94,26 +94,26 @@ if $BATCH_MODE; then
         sess="ahe-${name}-${ts}"
 
         if tmux has-session -t "$sess" 2>/dev/null; then
-            echo "[跳过] session '$sess' 已存在"
+            echo "[skip] session '$sess' already exists"
             continue
         fi
 
         cmd="export PATH="$HOME/.local/bin:$PATH" && cd '$PROJECT_ROOT' && uv run python evolve.py --config '$cfg'"
         tmux new-session -d -s "$sess" "$cmd"
-        echo "[启动] $name -> tmux session '$sess'"
+        echo "[start] $name -> tmux session '$sess'"
         ((count++))
     done
 
     echo ""
-    echo "已启动 $count 个实验。"
-    echo "查看: tmux ls"
-    echo "进入: tmux attach -t <session>"
+    echo "Started $count experiments."
+    echo "List:   tmux ls"
+    echo "Enter:  tmux attach -t <session>"
     exit 0
 fi
 
-# --- 单实验模式 ---
+# --- Single-experiment mode ---
 if [[ -z "$CONFIG_FILE" ]]; then
-    echo "错误: 请指定配置文件"
+    echo "Error: specify a config file"
     usage
     exit 1
 fi
@@ -127,7 +127,7 @@ if [[ ! "$CONFIG_FILE" = /* ]]; then
 fi
 
 if [[ ! -f "$CONFIG_FILE" ]]; then
-    echo "错误: 配置文件不存在: $CONFIG_FILE"
+    echo "Error: config file does not exist: $CONFIG_FILE"
     exit 1
 fi
 
@@ -138,9 +138,9 @@ if [[ -z "$SESSION_NAME" ]]; then
 fi
 
 if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
-    echo "tmux session '$SESSION_NAME' 已存在。"
-    echo "  进入: tmux attach -t $SESSION_NAME"
-    echo "  终止: tmux kill-session -t $SESSION_NAME"
+    echo "tmux session '$SESSION_NAME' already exists."
+    echo "  enter: tmux attach -t $SESSION_NAME"
+    echo "  terminate: tmux kill-session -t $SESSION_NAME"
     exit 1
 fi
 
@@ -156,23 +156,23 @@ if [[ -n "$SKIP_EVAL" ]]; then
     CMD="$CMD $SKIP_EVAL"
 fi
 
-# 在命令末尾加 shell 保持 session，方便查看最终输出
-CMD="$CMD; echo ''; echo '=== 实验结束 ==='; echo '按 Enter 关闭此 session'; read"
+# Keep the session alive by appending a shell, so the final output can be inspected
+CMD="$CMD; echo ''; echo '=== experiment finished ==='; echo 'Press Enter to close this session'; read"
 
 tmux new-session -d -s "$SESSION_NAME" "$CMD"
 
 echo "============================================"
-echo "  Agentic Harness Engineering 实验已在 tmux 后台启动"
+echo "  Agentic Harness Engineering experiment started in a background tmux session"
 echo "============================================"
 echo "  Session:  $SESSION_NAME"
 echo "  Config:   $(basename "$CONFIG_FILE")"
-[[ -n "$EXPERIMENT" ]] && echo "  恢复实验: $EXPERIMENT"
-[[ -n "$START_ITER" ]] && echo "  起始轮次: $START_ITER"
+[[ -n "$EXPERIMENT" ]] && echo "  resuming experiment: $EXPERIMENT"
+[[ -n "$START_ITER" ]] && echo "  starting round: $START_ITER"
 echo ""
-echo "  进入 session:  tmux attach -t $SESSION_NAME"
-echo "  Detach 回后台: Ctrl-b d"
-echo "  查看所有:      tmux ls"
-echo "  终止实验:      tmux kill-session -t $SESSION_NAME"
+echo "  enter session:  tmux attach -t $SESSION_NAME"
+echo "  detach to background: Ctrl-b d"
+echo "  list all:       tmux ls"
+echo "  terminate:      tmux kill-session -t $SESSION_NAME"
 echo "============================================"
 
 if $AUTO_ATTACH; then

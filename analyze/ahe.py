@@ -1,4 +1,4 @@
-"""按 AHE iteration 顺序分析候选 workspace，并保存逐结点精炼快照。"""
+"""Analyze AHE candidates against their actual retained parent snapshots."""
 
 import json
 from collections.abc import Callable
@@ -11,16 +11,18 @@ from .reader import collect_ahe_artifacts
 
 
 def _write_state(path: Path, state: dict[str, Any]) -> None:
-    """在每个 iteration 结束后保存可检查的中间状态。"""
+    """Save an inspectable intermediate state after each iteration finishes."""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def _base_node(source: dict[str, Any], snapshot_ids: list[str]) -> dict[str, Any]:
-    """创建 AHE 结点共有字段。"""
+    """Create the fields shared by every AHE node."""
     return {
         "node_id": source["node_id"],
         "parent_id": source["parent_id"],
+        "accepted": source["accepted"],
+        "selection_status": source["selection_status"],
         "iteration": source["iteration"],
         "variant": source["variant"],
         "artifact_dir": source["artifact_dir"],
@@ -37,7 +39,7 @@ def _analyze_node(
     parent_snapshot: list[str],
     call_options: dict[str, Any],
 ) -> dict[str, Any]:
-    """分析一轮 AHE 概述与 workspace 增量差异。"""
+    """Analyze one round of the AHE summary and the workspace incremental diff."""
     node = _base_node(source, parent_snapshot)
     telemetry: dict[str, Any] = {}
     prior = [state["opinions"][item] for item in parent_snapshot]
@@ -70,13 +72,13 @@ def run_ahe_analysis(
     client: Any = None,
     on_node: Callable[[dict[str, Any]], None] | None = None,
 ) -> dict[str, Any]:
-    """顺序分析 AHE 单 variant iteration 链。"""
+    """Analyze all proposals while inheriting only accepted candidate snapshots."""
     sources = collect_ahe_artifacts(experiment_dir)
     if limit is not None:
         sources = sources[:limit]
     destination = Path(output_path).resolve()
     state: dict[str, Any] = {
-        "schema_version": 6,
+        "schema_version": 7,
         "method": "AHE",
         "experiment_dir": str(Path(experiment_dir).resolve()),
         "run_id": sources[0]["run_id"] if sources else None,
@@ -86,13 +88,15 @@ def run_ahe_analysis(
         "nodes": [],
         "final_snapshot_opinion_ids": [],
     }
-    snapshot_ids: list[str] = []
+    snapshots: dict[str, list[str]] = {}
     options = {
         "model": model, "api_key": api_key, "base_url": base_url,
         "timeout": timeout, "client": client,
     }
 
     for source in sources:
+        parent_id = source["parent_id"]
+        snapshot_ids = snapshots[parent_id] if parent_id is not None else []
         node = _base_node(source, snapshot_ids)
         try:
             node = _analyze_node(source, state, snapshot_ids, options)
@@ -103,8 +107,9 @@ def run_ahe_analysis(
             _write_state(destination, state)
             raise
         state["nodes"].append(node)
-        snapshot_ids = node["snapshot_opinion_ids"]
-        state["final_snapshot_opinion_ids"] = list(snapshot_ids)
+        snapshots[source["node_id"]] = node["snapshot_opinion_ids"]
+        if source["accepted"]:
+            state["final_snapshot_opinion_ids"] = list(node["snapshot_opinion_ids"])
         _write_state(destination, state)
         if on_node:
             on_node(node)

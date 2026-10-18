@@ -1,3 +1,3 @@
-# SOUL.md — 身份宣言
+# SOUL.md — identity statement
 
-最小化 Harness 演示 workspace。
+Minimal Harness demo workspace.

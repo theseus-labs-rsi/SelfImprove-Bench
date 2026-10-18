@@ -7,12 +7,9 @@
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)
 [![PyPI](https://img.shields.io/pypi/v/herosjourney.svg)](https://pypi.org/project/herosjourney/)
 [![PyPI - Downloads](https://img.shields.io/pypi/dm/herosjourney.svg)](https://pypi.org/project/herosjourney/)
-[![arXiv](https://img.shields.io/badge/arXiv-2606.02556-b31b1b.svg)](https://arxiv.org/abs/2606.02556)
 
-🔗 [**Code**](https://github.com/asherz720/HerosJourney) &nbsp;|&nbsp;
-📄 [**Paper**](https://arxiv.org/abs/2606.02556) &nbsp;|&nbsp;
 📦 [**PyPI**](https://pypi.org/project/herosjourney/) &nbsp;|&nbsp;
-📐 [**Architecture**](https://github.com/asherz720/HerosJourney/blob/main/docs/ARCHITECTURE.md)
+📐 [**Architecture**](docs/ARCHITECTURE.md)
 
 ## 🔔 Overview
 
@@ -161,20 +158,16 @@ result = run_single_episode(..., model_fn=my_model_fn, episode_mode="idea")
 
 ## 📖 Citation
 
-If you use Hero's Journey in your research, please cite:
+If you use Hero's Journey in your research, please cite the accompanying paper:
 
 ```bibtex
-@misc{zheng2026herosjourneytestingcomplex,
+@misc{herosjourney,
       title={HERO'S JOURNEY: Testing Complex Rule Induction with Text Games},
-      author={Anshun Asher Zheng and Kanishka Misra and David I. Beaver and Junyi Jessy Li},
+      author={Anonymous},
       year={2026},
-      eprint={2606.02556},
-      archivePrefix={arXiv},
-      primaryClass={cs.CL},
-      url={https://arxiv.org/abs/2606.02556},
 }
 ```
 
 ## 📄 License
 
-This project is released under the [MIT License](https://github.com/asherz720/HerosJourney/blob/main/LICENSE).
+This project is released under the [MIT License](LICENSE).

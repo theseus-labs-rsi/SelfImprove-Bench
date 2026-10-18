@@ -1,10 +1,10 @@
 """
 Explore-Agent Runner
 
-并行运行两个 sub-agent（源码探索 + Web 调研），
-将蒸馏后的知识写入 skill 文件，供 evolve agent 使用。
+Run two sub-agents in parallel (source exploration + web research),
+write the distilled knowledge into skill files for the evolve agent.
 
-主要入口：run_explore_agent(config, exp_dir)
+Main entry point: run_explore_agent(config, exp_dir)
 """
 
 import copy
@@ -41,7 +41,7 @@ _HISTORY_FLUSH_INTERVAL_SEC = 30
 
 
 def _dump_agent_to_disk(agent: "Agent | None", output_dir: Path) -> None:  # noqa: F821
-    """将 agent 的 history 和 tracer 保存到磁盘。"""
+    """Persist the agent history and tracer to disk."""
     if agent is None:
         return
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -55,7 +55,7 @@ def _dump_agent_to_disk(agent: "Agent | None", output_dir: Path) -> None:  # noq
             json.dump(history_messages, f, indent=2, ensure_ascii=False)
         os.replace(tmp_path, str(history_path))
     except Exception as e:
-        sys.stderr.write(f"[explore-agent] flush history 失败: {e}\n")
+        sys.stderr.write(f"[explore-agent] failed to flush history: {e}\n")
 
     try:
         from nexau.archs.tracer.adapters.in_memory import InMemoryTracer
@@ -69,11 +69,11 @@ def _dump_agent_to_disk(agent: "Agent | None", output_dir: Path) -> None:  # noq
                 os.replace(tmp_path, str(tracer_path))
                 break
     except Exception as e:
-        sys.stderr.write(f"[explore-agent] flush tracer 失败: {e}\n")
+        sys.stderr.write(f"[explore-agent] failed to flush tracer: {e}\n")
 
 
 def _periodic_flush(agent_ref: list, output_dir: Path, stop_event: threading.Event) -> None:
-    """后台线程：定期将 history 和 tracer flush 到磁盘。"""
+    """Background thread: periodically flush history and tracer to disk."""
     while not stop_event.wait(_HISTORY_FLUSH_INTERVAL_SEC):
         agent = agent_ref[0] if agent_ref else None
         if agent is not None:
@@ -81,7 +81,7 @@ def _periodic_flush(agent_ref: list, output_dir: Path, stop_event: threading.Eve
 
 
 def _deep_merge(base: dict, overlay: dict) -> dict:
-    """深度合并两个 dict，overlay 覆盖 base。"""
+    """Deep-merge two dicts, with overlay overriding base."""
     result = copy.deepcopy(base)
     for key, value in overlay.items():
         if key in result and isinstance(result[key], dict) and isinstance(value, dict):
@@ -92,12 +92,12 @@ def _deep_merge(base: dict, overlay: dict) -> dict:
 
 
 def prepare_code_sources(config: dict) -> dict[str, Path]:
-    """准备源码目录，返回 {name: local_path} 映射。
+    """Prepare source directories and return a {name: local_path} mapping.
 
-    获取优先级：
-    1. local_fallback（本地已有仓库，如 ../nexau）
-    2. .code_sources/ 缓存（之前已 clone）
-    3. git clone 到 .code_sources/（首次使用）
+    Resolution priority:
+    1. local_fallback (an existing local repo, e.g. ../nexau)
+    2. .code_sources/ cache (previously cloned)
+    3. git clone into .code_sources/ (first use)
     """
     sources = config["explore_agent"]["code_sources"]
     paths = {}
@@ -109,9 +109,9 @@ def prepare_code_sources(config: dict) -> dict[str, Path]:
                 path = (AUTO_DIR / path).resolve()
             if path.exists():
                 paths[name] = path
-                print(f"[explore-agent] 使用本地路径 {name} → {path}")
+                print(f"[explore-agent] using local path {name} → {path}")
             else:
-                print(f"[explore-agent] ⚠️ 本地路径不存在: {path}")
+                print(f"[explore-agent] ⚠️ local path does not exist: {path}")
 
         elif src_cfg["type"] == "git":
             local_fallback = src_cfg.get("local_fallback")
@@ -119,14 +119,14 @@ def prepare_code_sources(config: dict) -> dict[str, Path]:
                 fallback_path = (AUTO_DIR / local_fallback).resolve()
                 if fallback_path.exists():
                     paths[name] = fallback_path
-                    print(f"[explore-agent] 使用本地 fallback {name} → {fallback_path}")
+                    print(f"[explore-agent] using local fallback {name} → {fallback_path}")
                     continue
 
             ref = src_cfg.get("ref", "main")
             clone_dir = CODE_SOURCES_DIR / f"{name}@{ref}"
             if not clone_dir.exists():
                 CODE_SOURCES_DIR.mkdir(parents=True, exist_ok=True)
-                print(f"[explore-agent] 正在 clone {name}@{ref}...")
+                print(f"[explore-agent] cloning {name}@{ref}...")
                 subprocess.run(
                     [
                         "git", "clone", "--depth", "1",
@@ -137,9 +137,9 @@ def prepare_code_sources(config: dict) -> dict[str, Path]:
                     capture_output=True,
                     text=True,
                 )
-                print(f"[explore-agent] 已 clone {name}@{ref} → {clone_dir}")
+                print(f"[explore-agent] cloned {name}@{ref} → {clone_dir}")
             else:
-                print(f"[explore-agent] 使用缓存 {name}@{ref} → {clone_dir}")
+                print(f"[explore-agent] using cache {name}@{ref} → {clone_dir}")
             paths[name] = clone_dir
 
     return paths
@@ -149,24 +149,24 @@ def _build_source_agent_query(
     nexau_path: Path,
     output_skill_dir: Path,
 ) -> str:
-    """构建源码探索 agent 的初始 query。"""
+    """Build the initial query for the source-exploration agent."""
     return "\n".join([
-        "开始执行 NexAU 框架源码探索任务。",
+        "Start the NexAU framework source exploration task.",
         "",
-        "## 源码位置（只读）",
-        f"- NexAU 框架: `{nexau_path}`",
+        "## Source location (read-only)",
+        f"- NexAU framework: `{nexau_path}`",
         "",
-        "## 输出位置",
-        f"- Skill 输出目录: `{output_skill_dir}/`",
+        "## Output location",
+        f"- Skill output directory: `{output_skill_dir}/`",
         "",
-        "## 你的交付物",
+        "## Your deliverables",
         "",
         "1. `nexau-framework-internals/SKILL.md`",
         "",
-        "## 执行指令",
-        "按照系统提示词的指引，探索 NexAU 框架源码并写入 skill 文件。",
-        "用 read_file（带 offset/limit）而不是 run_shell_command 读文件。",
-        "完成后调用 complete_task。",
+        "## Instructions",
+        "Following the system prompt, explore the NexAU framework source and write the skill files.",
+        "Use read_file (with offset/limit) rather than run_shell_command to read files.",
+        "Call complete_task when done.",
     ])
 
 
@@ -174,38 +174,38 @@ def _build_web_agent_query(
     output_skill_dir: Path,
     web_sources: list[dict],
 ) -> str:
-    """构建 Web 调研 agent 的初始 query。"""
+    """Build the initial query for the web-research agent."""
     lines = [
-        "开始执行 SOTA 调研任务。",
+        "Start the SOTA research task.",
         "",
-        "## 输出位置",
-        f"- Skill 输出目录: `{output_skill_dir}/`",
+        "## Output location",
+        f"- Skill output directory: `{output_skill_dir}/`",
         "",
-        "## 你的交付物",
+        "## Your deliverables",
         "",
-        "1. `coding-agent-sota-research/SKILL.md` — 架构、benchmark、技术、ablation",
+        "1. `coding-agent-sota-research/SKILL.md` -- architecture, benchmarks, techniques, ablations",
         "",
     ]
 
     if web_sources:
-        lines.append("## 必须阅读的 Web 页面")
+        lines.append("## Required web pages")
         for ws in web_sources:
             lines.append(f"- **{ws['url']}** — {ws.get('focus', '')}")
         lines.append("")
 
     lines.extend([
-        "## 执行指令",
-        "1. 先用 WebFetch 读取上面列出的所有 URL",
-        "2. 读完后立即 write_file 写出 skill 文件初版",
-        "3. 然后用 WebSearch 进行自主深度调研（15-20 次搜索）",
-        "4. 用新发现更新 skill 文件",
-        "5. 调用 complete_task 完成",
+        "## Instructions",
+        "1. First use WebFetch to read every URL listed above",
+        "2. Right after reading, use write_file to produce a first draft of the skill file",
+        "3. Then use WebSearch for autonomous deep research (15-20 searches)",
+        "4. Update the skill file with the new findings",
+        "5. Call complete_task to finish",
         "",
-        "⚠️ 关键规则：",
-        "- 先写初版再扩展，不要等到调研完才写",
-        "- 记录精确数据和引用 URL",
-        "- coding-agent-sota-research 目标 400-800 行",
-        "- 架构/middleware/工具/ablation 等内容均写入 coding-agent-sota-research",
+        "⚠️ Key rules:",
+        "- Write the first draft before expanding; do not wait until research is complete",
+        "- Record exact figures and cited URLs",
+        "- Target 400-800 lines for coding-agent-sota-research",
+        "- Write architecture/middleware/tools/ablations and similar content into coding-agent-sota-research",
     ])
 
     return "\n".join(lines)
@@ -215,11 +215,11 @@ def _prepare_agent_config(
     base_config_path: Path,
     agent_patch: dict,
 ) -> Path:
-    """读取 base agent yaml，应用 patch，写入同目录临时文件并返回。
+    """Read the base agent yaml, apply the patch, and write a temp file in the same directory.
 
-    使用 tempfile 生成唯一文件名，避免并发实验写同一文件的竞争。
-    临时文件与 base 同目录，确保 yaml 内的相对路径仍能正确解析。
-    如果没有 patch，直接返回 base_config_path（调用方通过比较判断是否需清理）。
+    Use tempfile to generate a unique name and avoid concurrent experiments racing on the same file.
+    The temp file sits next to the base so relative paths inside the yaml still resolve.
+    If there is no patch, return base_config_path directly (the caller compares to decide whether cleanup is needed).
     """
     if not agent_patch:
         return base_config_path
@@ -245,9 +245,9 @@ def _run_single_agent(
     context: dict,
     output_dir: Path,
 ) -> bool:
-    """运行单个 explore-agent sub-agent。在独立线程中调用，不修改 sys.stdout。
+    """Run a single explore-agent sub-agent. Called from its own thread; does not modify sys.stdout.
 
-    返回 True 表示 agent 正常完成（不一定产出所有 skill）。
+    Returning True means the agent completed normally (not necessarily producing every skill).
     """
     output_dir.mkdir(parents=True, exist_ok=True)
     log_file_path = output_dir / "explore_agent.log"
@@ -271,7 +271,7 @@ def _run_single_agent(
             except (ValueError, OSError):
                 pass
 
-        _log(f"启动 agent (config={config_path})")
+        _log(f"starting agent (config={config_path})")
 
         agent = Agent.from_yaml(config_path=config_path)
         agent_ref[0] = agent
@@ -284,11 +284,11 @@ def _run_single_agent(
         flush_thread.start()
 
         agent.run(message=query, context=context)
-        _log("agent 运行完成")
+        _log("agent run complete")
         return True
 
     except Exception as e:
-        sys.stderr.write(f"[{agent_name}] ❌ Agent 运行异常: {e}\n")
+        sys.stderr.write(f"[{agent_name}] ❌ agent raised an exception: {e}\n")
         return False
 
     finally:
@@ -301,12 +301,12 @@ def _run_single_agent(
 
 
 def run_explore_agent(config: dict, exp_dir: Path) -> bool:
-    """并行运行两个 explore-agent sub-agent，将产出的 skill 写入 exp_dir/skills/。
+    """Run two explore-agent sub-agents in parallel and write the produced skills to exp_dir/skills/.
 
-    - agent_source: 扫描 NexAU 框架源码 → nexau-framework-internals
-    - agent_web:    Web 调研 SOTA coding agent 架构  → coding-agent-sota-research
+    - agent_source: scan the NexAU framework source -> nexau-framework-internals
+    - agent_web:    web research on SOTA coding-agent architectures -> coding-agent-sota-research
 
-    返回 True 表示成功产出所有 skill，False 表示失败或部分产出。
+    Return True if all skills were produced successfully, False on failure or partial production.
     """
     from concurrent.futures import ThreadPoolExecutor
 
@@ -323,11 +323,11 @@ def run_explore_agent(config: dict, exp_dir: Path) -> bool:
     try:
         code_paths = prepare_code_sources(config)
     except subprocess.CalledProcessError as e:
-        print(f"[explore-agent] ❌ 源码准备失败: {e}")
+        print(f"[explore-agent] ❌ source preparation failed: {e}")
         return False
 
     if "nexau" not in code_paths:
-        print("[explore-agent] ⚠️ 缺少 NexAU 源码，跳过 explore-agent")
+        print("[explore-agent] ⚠️ missing NexAU source; skipping explore-agent")
         return False
 
     ml_agent_patch = config.get("explore_agent_patch", {})
@@ -365,7 +365,7 @@ def run_explore_agent(config: dict, exp_dir: Path) -> bool:
     source_output_dir = exp_dir / "explore_agent_output" / "source"
     web_output_dir = exp_dir / "explore_agent_output" / "web"
 
-    print(f"[explore-agent] 🚀 并行启动 2 个 sub-agent:")
+    print(f"[explore-agent] 🚀 launching 2 sub-agents in parallel:")
     print(f"  agent_source → Skills: {SOURCE_AGENT_SKILLS}")
     print(f"  agent_web    → Skills: {WEB_AGENT_SKILLS}")
     print(f"  source workspace: {source_output_dir}")
@@ -393,16 +393,16 @@ def run_explore_agent(config: dict, exp_dir: Path) -> bool:
     produced = [s for s in ML_SKILL_NAMES if (skills_dir / s / "SKILL.md").exists()]
     success = len(produced) == len(ML_SKILL_NAMES)
 
-    print(f"\n[explore-agent] === 并行执行完成 ({elapsed:.0f}s) ===")
+    print(f"\n[explore-agent] === parallel execution complete ({elapsed:.0f}s) ===")
     print(f"  agent_source: {'✅' if source_ok else '❌'}")
     print(f"  agent_web:    {'✅' if web_ok else '❌'}")
 
     if success:
-        print(f"[explore-agent] ✅ 全部 {len(ML_SKILL_NAMES)} 个 skill 已生成")
+        print(f"[explore-agent] ✅ all {len(ML_SKILL_NAMES)} skills were produced")
     else:
         missing_skills = [s for s in ML_SKILL_NAMES if s not in produced]
-        print(f"[explore-agent] ⚠️ 已生成 {len(produced)}/{len(ML_SKILL_NAMES)} 个 skill")
-        print(f"[explore-agent] 缺失: {missing_skills}")
+        print(f"[explore-agent] ⚠️ produced {len(produced)}/{len(ML_SKILL_NAMES)} skills")
+        print(f"[explore-agent] missing: {missing_skills}")
 
     _save_explore_agent_log(exp_dir, code_paths, produced, elapsed, success)
 
@@ -416,7 +416,7 @@ def _save_explore_agent_log(
     elapsed: float,
     success: bool,
 ) -> None:
-    """保存 explore-agent 执行日志。"""
+    """Save the explore-agent execution log."""
     log = {
         "timestamp": datetime.now().isoformat(),
         "elapsed_seconds": round(elapsed, 1),
@@ -431,11 +431,11 @@ def _save_explore_agent_log(
 
 
 def register_explore_agent_skills(exp_dir: Path) -> None:
-    """将 explore-agent 产出的 skill 注册到实验副本的 evolve_agent.yaml，
-    并在实验副本的 evolve_prompt.md 追加 skill 引导。"""
+    """Register the skills produced by explore-agent into the experiment copy of evolve_agent.yaml,
+    and append skill guidance to the experiment copy of evolve_prompt.md."""
     evolve_yaml_path = exp_dir / "evolve_agent" / "evolve_agent.yaml"
     if not evolve_yaml_path.exists():
-        print("[explore-agent] ⚠️ evolve_agent.yaml 不存在，跳过注册")
+        print("[explore-agent] ⚠️ evolve_agent.yaml does not exist; skipping registration")
         return
 
     with open(evolve_yaml_path, encoding="utf-8") as f:
@@ -452,7 +452,7 @@ def register_explore_agent_skills(exp_dir: Path) -> None:
             registered.append(skill_name)
 
     if not registered:
-        print("[explore-agent] 没有新 skill 需要注册")
+        print("[explore-agent] no new skill to register")
         return
 
     evolve_config["skills"] = existing_skills
@@ -460,27 +460,27 @@ def register_explore_agent_skills(exp_dir: Path) -> None:
     with open(evolve_yaml_path, "w", encoding="utf-8") as f:
         yaml.dump(evolve_config, f, default_flow_style=False, allow_unicode=True)
 
-    print(f"[explore-agent] 已注册 {len(registered)} 个 skill 到 evolve_agent.yaml: {registered}")
+    print(f"[explore-agent] registered {len(registered)} skills into evolve_agent.yaml: {registered}")
 
     prompt_path = exp_dir / "evolve_agent" / "evolve_prompt.md"
-    _ML_PROMPT_MARKER = "### Explore-Agent Skills（自动生成）"
+    _ML_PROMPT_MARKER = "### Explore-Agent Skills (auto-generated)"
     if prompt_path.exists():
         existing_content = prompt_path.read_text(encoding="utf-8")
         if _ML_PROMPT_MARKER in existing_content:
-            print("[explore-agent] evolve_prompt.md 已包含 skill 引导，跳过追加")
+            print("[explore-agent] evolve_prompt.md already contains skill guidance; skipping append")
             return
 
         ml_skill_guide = f"""
 
 {_ML_PROMPT_MARKER}
 
-以下 skill 由 explore-agent 自动生成，是你的 **核心知识来源**。可通过 LoadSkill 加载：
+The following skills are auto-generated by explore-agent and are your **core knowledge source**. Load them via LoadSkill:
 
-| Skill | 覆盖范围 | 何时使用 |
+| Skill | Coverage | When to use |
 |-------|---------|---------|
-| `nexau-framework-internals` | NexAU 框架全面参考：config schema、组件创建模式（middleware/tool/skill/sub-agent）、executor 循环精确序列、hook 边界行为、token 计算方式、sub-agent 生命周期、未文档化的 gotchas | 创建/修改任何框架组件时，以及遇到非预期运行时行为时 |
-| `coding-agent-sota-research` | 顶尖 coding agent 架构模式、设计原则、精确 benchmark 分数、实际 prompt 文本、middleware 代码、ablation 结果、负面实验结果、gap analysis 框架 | 决策时需要具体数值/代码参考、或需要架构设计指导时 |
+| `nexau-framework-internals` | Comprehensive reference for the NexAU framework: config schema, component creation patterns (middleware/tool/skill/sub-agent), exact executor loop sequence, hook boundary behavior, token accounting, sub-agent lifecycle, and undocumented gotchas | When creating or modifying any framework component, and when encountering unexpected runtime behavior |
+| `coding-agent-sota-research` | State-of-the-art coding-agent architecture patterns, design principles, exact benchmark scores, real prompt text, middleware code, ablation results, negative experimental results, and a gap-analysis framework | When a decision needs concrete figures or code references, or when architecture design guidance is required |
 """
         with open(prompt_path, "a", encoding="utf-8") as f:
             f.write(ml_skill_guide)
-        print("[explore-agent] 已追加 skill 引导到 evolve_prompt.md 副本")
+        print("[explore-agent] appended skill guidance to the evolve_prompt.md copy")

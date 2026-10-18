@@ -24,7 +24,7 @@ def test_check_json_schema(capsys, tmp_path, monkeypatch):
     trace = FIX / "openai_messages_sample.json"
     fake = RunnerResult(
         mode="check",
-        issues=[{"issue_type": "工具错误", "summary": "s", "evidence": "e", "message_index": 1}],
+        issues=[{"issue_type": "tool_error", "summary": "s", "evidence": "e", "message_index": 1}],
         response="overall ok",
         iterations=5,
     )
@@ -35,7 +35,7 @@ def test_check_json_schema(capsys, tmp_path, monkeypatch):
     assert out["status"] == "success"
     assert out["command"] == "check"
     assert out["issues_count"] == 1
-    assert out["issues"][0]["issue_type"] == "工具错误"
+    assert out["issues"][0]["issue_type"] == "tool_error"
     assert "response" in out
 
 

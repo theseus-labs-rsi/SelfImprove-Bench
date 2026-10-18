@@ -1,0 +1,46 @@
+{
+  "seed": 20260915,
+  "schedule": [
+    {
+      "game": "combat",
+      "difficulty": 3,
+      "count": 20,
+      "replay": true
+    }
+  ],
+  "holdout": [
+    {
+      "game": "combat",
+      "difficulty": 3,
+      "count": 20
+    },
+    {
+      "game": "combat",
+      "difficulty": 5,
+      "count": 20
+    },
+    {
+      "game": "farm",
+      "difficulty": 3,
+      "count": 20
+    }
+  ],
+  "replay": {
+    "every": 5,
+    "lag": 3
+  },
+  "agent": {
+    "provider": "ace",
+    "backend": "codex",
+    "model": null,
+    "timeout": 1800.0,
+    "max_attempts": 3,
+    "show_output": false,
+    "reasoning_effort": "low"
+  },
+  "evolution_window": 3,
+  "output_dir": "outputs/main/combat/ace",
+  "continue_on_error": true,
+  "holdout_seed": 100,
+  "holdout_tasks_per_difficulty": 20
+}

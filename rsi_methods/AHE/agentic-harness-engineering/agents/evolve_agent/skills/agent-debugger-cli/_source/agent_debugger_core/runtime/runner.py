@@ -14,7 +14,7 @@ from agent_debugger_core.runtime.bootstrap import ensure_tools_importable
 RUNTIME_DIR = Path(__file__).parent
 AGENT_CONFIG_PATH = RUNTIME_DIR / "agent_config.yaml"
 
-ALLOWED_ISSUE_TYPES = {"工具错误", "幻觉", "循环", "不合规", "截断"}
+ALLOWED_ISSUE_TYPES = {"tool_error", "hallucination", "loop", "non_compliance", "truncation"}
 BUDGET_MARKER = "[Note: Maximum iteration limit reached]"
 
 

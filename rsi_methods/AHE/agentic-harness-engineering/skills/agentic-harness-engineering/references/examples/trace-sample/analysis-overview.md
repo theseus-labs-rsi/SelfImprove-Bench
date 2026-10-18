@@ -10,16 +10,16 @@
 
 | Failure Pattern | Count | % of Failures | Most Affected Component |
 |----------------|-------|---------------|------------------------|
-| 搜索结果截断 | 2 | 50% | tool_descriptions |
-| 工具参数错误 | 1 | 25% | tool_descriptions |
-| 上下文溢出 | 1 | 25% | middleware |
+| Search result truncation | 2 | 50% | tool_descriptions |
+| Tool parameter error | 1 | 25% | tool_descriptions |
+| Context overflow | 1 | 25% | middleware |
 
 ## Root Cause Distribution
 
 | Component | Failure Count | % | Recommended Action |
 |-----------|--------------|---|-------------------|
-| Tool Descriptions | 3 | 75% | 补齐 search 工具分页参数；修复 file_write 路径编码说明 |
-| Middleware | 1 | 25% | 添加 long_tool_output 中间件 |
+| Tool Descriptions | 3 | 75% | Add search tool pagination parameters; fix the file_write path encoding description |
+| Middleware | 1 | 25% | Add a long_tool_output middleware |
 
 ## Detail Reports
 
@@ -30,9 +30,9 @@
 
 ## Recommended Priority
 
-1. **T-042 / T-071 fix** — search 工具补充分页参数 → 预期修复 2 个失败
-2. **T-057 fix** — file_write 补充路径编码说明 → 预期修复 1 个失败
-3. **T-063 fix** — 添加 long_tool_output middleware → 预期修复 1 个失败
+1. **T-042 / T-071 fix** — add pagination parameters to the search tool -> expected to fix 2 failures
+2. **T-057 fix** — add the path encoding description to file_write -> expected to fix 1 failure
+3. **T-063 fix** — add the long_tool_output middleware -> expected to fix 1 failure
 
 ## Change Manifest
 

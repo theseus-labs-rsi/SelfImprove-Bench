@@ -670,8 +670,8 @@ def read_file(
         else:  # text files
             content = handler.read_text(path)
 
-        # 如果读取的文件是纯文本，就额外多展示一些
-        # 相反，如果是结构里面的字符串，截更短（因为结构里面有很多字符串）
+        # If the file being read is plain text, show a bit more of it
+        # Conversely, if it is a string inside a structure, truncate more (a structure holds many strings)
         text_payload: str | None = None
         length = 0
         if isinstance(content, str):

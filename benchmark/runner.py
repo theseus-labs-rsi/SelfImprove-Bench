@@ -15,7 +15,7 @@ from .client import load_rsi_integration, request_json
 
 from .config import BenchmarkConfig
 from .game_adapters import EvaluationOutcome, evaluate_task
-from .metrics import calculate_metrics, format_metrics
+from .metrics import calculate_metrics, format_metrics, post_refinement_score
 from .tasks import GAMES, PlannedTask, TaskManifest, build_manifest
 
 
@@ -227,7 +227,7 @@ def _error_result(task: PlannedTask, exc: Exception) -> dict[str, Any]:
         "difficulty": task.difficulty, "relative_score": None, "raw_score": None,
         "reference_score": task.task.get("reference_profit", task.task.get("reference_score")),
         "success": False, "error_type": "timeout" if is_timeout else type(exc).__name__,
-        "error": f"无响应：{error_text}" if is_timeout else error_text,
+        "error": f"No response: {error_text}" if is_timeout else error_text,
         "agent_output": None, "simulation": None, "interactions": [], "llm_metrics": {},
     }
     if task.game == "heros_journey":
@@ -495,6 +495,8 @@ def _run_one(
         "refinement_tokens": refinement_tokens,
         "total_tokens": _token_total(result.get("llm_metrics", {})) + refinement_tokens + candidate_validation_tokens,
     }
+    if task.phase == "train" and not task.replay:
+        record["post_refinement_score"] = post_refinement_score(record)
     resume_state.atomic_json(output_dir / "runs" / task.phase / f"{ordinal:04d}_{task.run_id}.json", record)
     score = record.get("relative_score")
     score_text = f"{score:.6f}" if isinstance(score, (int, float)) else "N/A"

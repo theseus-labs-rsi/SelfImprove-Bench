@@ -453,4 +453,4 @@ The `finance/` directory contains a complete working example of a custom task im
 
 ---
 
-For more examples and updates, check the [main README](README.md) and [arXiv paper](https://arxiv.org/abs/2510.04618).
+For more examples and updates, check the [main README](README.md).

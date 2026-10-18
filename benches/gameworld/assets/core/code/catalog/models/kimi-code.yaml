@@ -10,7 +10,7 @@ output_format: |
 model: "kimi-k3"
 kimi_bin: "/usr/local/bin/kimi"
 provider_type: "openai"
-endpoint: "https://free-router.opendatalab.com/v1"
+endpoint: "https://api.example.invalid/v1"
 max_context_size: 262144
 capabilities: "thinking,tool_use"
 disable_telemetry: true

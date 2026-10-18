@@ -1,4 +1,4 @@
-"""analyze 包的命令行入口。"""
+"""Command-line entry point for the analyze package."""
 
 import argparse
 import json
@@ -11,46 +11,46 @@ from .hyper import run_hyper_analysis
 
 
 def _positive_int(value: str) -> int:
-    """解析大于零的结点数量。"""
+    """Parse a node count that must be greater than zero."""
     number = int(value)
     if number <= 0:
-        raise argparse.ArgumentTypeError("必须大于 0")
+        raise argparse.ArgumentTypeError("must be greater than 0")
     return number
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    """创建方法级子命令。"""
-    parser = argparse.ArgumentParser(description="分析 RSI 方法的改进产物")
+    """Create the method-level subcommands."""
+    parser = argparse.ArgumentParser(description="Analyze the improvement artifacts of an RSI method")
     commands = parser.add_subparsers(dest="command", required=True)
-    ace = commands.add_parser("ace", help="顺序分析 ACE 任务")
-    ace.add_argument("experiment_dir", help="ACE 实验目录")
-    ace.add_argument("--output", default="ace_analysis.json", help="追踪状态输出路径")
-    ace.add_argument("--model", default=os.getenv("OPENAI_MODEL"), help="模型名称")
-    ace.add_argument("--limit", type=_positive_int, help="仅分析前 N 个结点")
-    ace.add_argument("--timeout", type=float, help="单次 API 请求超时秒数")
-    hyper = commands.add_parser("hyper", help="按父子树分析 HyperAgent 候选")
-    hyper.add_argument("experiment_dir", help="HyperAgent 实验目录")
-    hyper.add_argument("--output", default="hyper_analysis.json", help="追踪状态输出路径")
-    hyper.add_argument("--model", default=os.getenv("OPENAI_MODEL"), help="模型名称")
-    hyper.add_argument("--limit", type=_positive_int, help="仅分析拓扑序前 N 个结点")
-    hyper.add_argument("--timeout", type=float, help="单次 API 请求超时秒数")
-    hyperdsh = commands.add_parser("hyperdsh", help="按父子树分析 HyperDSH 候选")
-    hyperdsh.add_argument("experiment_dir", help="HyperDSH 实验目录")
-    hyperdsh.add_argument("--output", default="hyperdsh_analysis.json", help="追踪状态输出路径")
-    hyperdsh.add_argument("--model", default=os.getenv("OPENAI_MODEL"), help="模型名称")
-    hyperdsh.add_argument("--limit", type=_positive_int, help="仅分析拓扑序前 N 个结点")
-    hyperdsh.add_argument("--timeout", type=float, help="单次 API 请求超时秒数")
-    ahe = commands.add_parser("ahe", help="顺序分析 AHE iteration")
-    ahe.add_argument("experiment_dir", help="AHE 实验目录")
-    ahe.add_argument("--output", default="ahe_analysis.json", help="追踪状态输出路径")
-    ahe.add_argument("--model", default=os.getenv("OPENAI_MODEL"), help="模型名称")
-    ahe.add_argument("--limit", type=_positive_int, help="仅分析前 N 个 iteration")
-    ahe.add_argument("--timeout", type=float, help="单次 API 请求超时秒数")
+    ace = commands.add_parser("ace", help="Analyze ACE tasks in order")
+    ace.add_argument("experiment_dir", help="ACE experiment directory")
+    ace.add_argument("--output", default="ace_analysis.json", help="Output path for the trace state")
+    ace.add_argument("--model", default=os.getenv("OPENAI_MODEL"), help="Model name")
+    ace.add_argument("--limit", type=_positive_int, help="Analyze only the first N nodes")
+    ace.add_argument("--timeout", type=float, help="Timeout in seconds for a single API request")
+    hyper = commands.add_parser("hyper", help="Analyze HyperAgent candidates by parent-child tree")
+    hyper.add_argument("experiment_dir", help="HyperAgent experiment directory")
+    hyper.add_argument("--output", default="hyper_analysis.json", help="Output path for the trace state")
+    hyper.add_argument("--model", default=os.getenv("OPENAI_MODEL"), help="Model name")
+    hyper.add_argument("--limit", type=_positive_int, help="Analyze only the first N nodes in topological order")
+    hyper.add_argument("--timeout", type=float, help="Timeout in seconds for a single API request")
+    hyperdsh = commands.add_parser("hyperdsh", help="Analyze HyperDSH candidates by parent-child tree")
+    hyperdsh.add_argument("experiment_dir", help="HyperDSH experiment directory")
+    hyperdsh.add_argument("--output", default="hyperdsh_analysis.json", help="Output path for the trace state")
+    hyperdsh.add_argument("--model", default=os.getenv("OPENAI_MODEL"), help="Model name")
+    hyperdsh.add_argument("--limit", type=_positive_int, help="Analyze only the first N nodes in topological order")
+    hyperdsh.add_argument("--timeout", type=float, help="Timeout in seconds for a single API request")
+    ahe = commands.add_parser("ahe", help="Analyze AHE iterations in order")
+    ahe.add_argument("experiment_dir", help="AHE experiment directory")
+    ahe.add_argument("--output", default="ahe_analysis.json", help="Output path for the trace state")
+    ahe.add_argument("--model", default=os.getenv("OPENAI_MODEL"), help="Model name")
+    ahe.add_argument("--limit", type=_positive_int, help="Analyze only the first N iterations")
+    ahe.add_argument("--timeout", type=float, help="Timeout in seconds for a single API request")
     return parser
 
 
 def _print_node(node: dict[str, Any]) -> None:
-    """输出单轮状态和四个统计维度。"""
+    """Print the single-round state and the four statistic dimensions."""
     print(
         f"[{node['node_id']}] parent_score={node.get('parent_score')} "
         f"current_score={node.get('current_score')} score_delta={node.get('score_delta')}"
@@ -66,11 +66,11 @@ def _print_node(node: dict[str, Any]) -> None:
 
 
 def main() -> None:
-    """解析参数并调用相应方法的控制循环。"""
+    """Parse arguments and run the control loop of the selected method."""
     args = _build_parser().parse_args()
     if args.command == "ace":
         if not args.model:
-            raise SystemExit("请通过 --model 或 OPENAI_MODEL 指定模型")
+            raise SystemExit("Specify a model via --model or OPENAI_MODEL")
         state = run_ace_analysis(
             args.experiment_dir,
             args.output,
@@ -79,10 +79,16 @@ def main() -> None:
             timeout=args.timeout,
             on_node=_print_node,
         )
-        print(f"完成：{len(state['nodes'])} 个结点，输出到 {args.output}")
+        if state["status"] != "completed":
+            raise SystemExit(
+                f"ACE analysis {state['status']}: "
+                f"{state.get('missing_artifact_count', 0)} missing artifacts; "
+                f"partial results saved to {args.output}"
+            )
+        print(f"Done: {len(state['nodes'])} nodes written to {args.output}")
     elif args.command in {"hyper", "hyperdsh"}:
         if not args.model:
-            raise SystemExit("请通过 --model 或 OPENAI_MODEL 指定模型")
+            raise SystemExit("Specify a model via --model or OPENAI_MODEL")
         method_name = "HyperAgent" if args.command == "hyper" else "HyperDSH"
         state = run_hyper_analysis(
             args.experiment_dir,
@@ -93,10 +99,10 @@ def main() -> None:
             on_node=_print_node,
             method_name=method_name,
         )
-        print(f"完成：{len(state['nodes'])} 个结点，输出到 {args.output}")
+        print(f"Done: {len(state['nodes'])} nodes written to {args.output}")
     elif args.command == "ahe":
         if not args.model:
-            raise SystemExit("请通过 --model 或 OPENAI_MODEL 指定模型")
+            raise SystemExit("Specify a model via --model or OPENAI_MODEL")
         state = run_ahe_analysis(
             args.experiment_dir,
             args.output,
@@ -105,7 +111,7 @@ def main() -> None:
             timeout=args.timeout,
             on_node=_print_node,
         )
-        print(f"完成：{len(state['nodes'])} 个结点，输出到 {args.output}")
+        print(f"Done: {len(state['nodes'])} nodes written to {args.output}")
 
 
 if __name__ == "__main__":

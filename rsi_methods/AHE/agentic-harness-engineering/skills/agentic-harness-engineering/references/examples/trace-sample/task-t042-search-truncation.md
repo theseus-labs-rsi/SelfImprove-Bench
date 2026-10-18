@@ -1,60 +1,62 @@
 # Trace Sample — Task T-042: Search Results Exceed 50
 
-> 真实失败的 trace 示例，用于演示经验可观测性分析流程。
+> A real failing-trace example used to demonstrate the experience-observability analysis
+> workflow.
 
-## 任务描述
+## Task description
 
-用户要求"搜索所有关于 Agent Harness 的中文文章，总结前 10 篇的核心观点"。
+The user asks: "search for all articles about Agent Harness and summarize the key points of
+the first 10."
 
-## 原始 Trace 摘录
+## Raw trace excerpt
 
 ```
-[USER]: 搜索所有关于 Agent Harness 的中文文章，总结前 10 篇的核心观点
+[USER]: search for all articles about Agent Harness and summarize the key points of the first 10
 
-[THOUGHT]: 用户需要搜索中文文章，我使用 search 工具。
-[TOOL: search(query="Agent Harness 中文 文章")]
-[RESULT]: 找到 15 条结果（每页 15 条，共 1 页）
+[THOUGHT]: the user needs me to search for articles, so I use the search tool.
+[TOOL: search(query="Agent Harness articles")]
+[RESULT]: found 15 results (15 per page, 1 page total)
 
-[THOUGHT]: 只有 15 条结果不够，用户要的是"所有"。尝试加更宽泛的关键词。
-[TOOL: search(query="Agent Harness 中文 文章 site:zhihu.com")]
-[RESULT]: 找到 8 条结果
+[THOUGHT]: 15 results is not enough; the user wants "all". Try broader keywords.
+[TOOL: search(query="Agent Harness articles site:example.com")]
+[RESULT]: found 8 results
 
-[THOUGHT]: 还是不够。再试试不同的搜索词。
-[TOOL: search(query="智能体 Harness 工程 中文")]
-[RESULT]: 找到 12 条结果
+[THOUGHT]: still not enough. Try different search terms again.
+[TOOL: search(query="agent harness engineering articles")]
+[RESULT]: found 12 results
 
-...（多次尝试，每次 8-15 条结果，最终只搜到约 50 条）
+... (multiple attempts, 8-15 results each, only about 50 in total)
 ```
 
-## 失败分析
+## Failure analysis
 
-| 维度 | 内容 |
-|------|------|
-| **观察到的错误** | 总结果数约 50 条，无法覆盖"所有"中文文章 |
-| **预期行为** | 搜索工具应支持分页，一次搜索应能返回前 50 条以上结果 |
-| **实际行为** | 每次搜索只返回 15 条，无法翻页 |
+| Dimension | Content |
+|-----------|---------|
+| **Observed error** | About 50 results in total, unable to cover "all" articles |
+| **Expected behavior** | The search tool should support pagination; one search should be able to return 50+ results |
+| **Actual behavior** | Each search returns only 15 results with no way to page |
 
-## 根因
+## Root cause
 
-| 维度 | 内容 |
-|------|------|
-| **涉及组件** | tool_descriptions |
-| **根因** | search 工具的 tool description 未声明 page_size 和 offset 参数。工具实际支持分页，但 LLM 不知道，每次都只用默认参数 |
-| **证据** | trace 显示 agent 从未传入 page_size 或 offset 参数。工具返回值中也没有分页相关的 next_page / total_results 字段提示 |
+| Dimension | Content |
+|-----------|---------|
+| **Affected component** | tool_descriptions |
+| **Root cause** | The search tool description does not declare the page_size and offset parameters. The tool actually supports pagination, but the LLM does not know, so it only ever uses the default parameters |
+| **Evidence** | The trace shows the agent never passes page_size or offset. The tool's return value also has no next_page / total_results field hinting at pagination |
 
-## 修复建议
+## Fix suggestion
 
-在 `tool_descriptions/search.tool.yaml` 的 `input_schema.properties` 中添加：
+Add the following to `input_schema.properties` in `tool_descriptions/search.tool.yaml`:
 
 ```yaml
 page_size:
   type: integer
-  description: 每页返回结果数（默认 15，最大 100）
+  description: number of results per page (default 15, maximum 100)
   default: 15
 offset:
   type: integer
-  description: 结果偏移量，用于分页
+  description: result offset, used for pagination
   default: 0
 ```
 
-同时更新 description 字段说明分页用法。
+Also update the description field to document the pagination usage.

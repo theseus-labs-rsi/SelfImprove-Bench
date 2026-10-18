@@ -27,7 +27,7 @@ SUPPORTED_PROVIDERS = (
 )
 EVOLUTION_WINDOW = 1
 HOLDOUT_TASKS_PER_DIFFICULTY = 5
-# 静态基线（provider="baseline"）可选的执行后端
+# Execution backends available to the static baseline (provider="baseline")
 BACKEND_CHOICES = ("codex", "claude", "dsh")
 
 

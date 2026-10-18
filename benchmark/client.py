@@ -32,8 +32,9 @@ DSH_INSTALL_HELP = (
     "Then set DEEPSEEK_API_KEY and run dsh --version."
 )
 
-# 静态基线（dsh）必须无写入、无工具：沙箱钉成 read-only，并关掉全部 tool-* 插件
-# （取值与插件 id 来自 `dsh --profile headless --dump-config` 的实际组成）
+# The static baseline (dsh) must be write-free and tool-free: pin the sandbox to read-only
+# and disable every tool-* plugin
+# (values and plugin ids come from the real output of `dsh --profile headless --dump-config`)
 DSH_READ_ONLY_TOOL_IDS = (
     "tool-bash",
     "tool-pwsh",
@@ -138,7 +139,7 @@ def extract_json_object(text: str) -> dict[str, Any]:
 
 
 def _timeout_tail(exc: subprocess.TimeoutExpired, limit: int = 500) -> str:
-    """超时异常里子进程的 stdout/stderr 尾部（截断），供错误信息使用。"""
+    """Truncated tail of the subprocess stdout/stderr in a timeout exception, for error messages."""
     parts: list[str] = []
     for name in ("stdout", "stderr"):
         value = getattr(exc, name, None)
@@ -368,7 +369,8 @@ def call_deepseek_harness(
     patch_path = Path(handle.name)
     with handle:
         if read_only:
-            # 静态基线不得改动环境：沙箱只读 + 关闭全部工具（对齐 codex 的 read_only/deny_all、claude 的 --tools=）
+            # The static baseline must not modify the environment: read-only sandbox
+            # plus all tools disabled (matches codex read_only/deny_all and claude --tools=).
             handle.write("- id: sandbox-policy\n  config:\n    mode: read-only\n")
             for tool_id in DSH_READ_ONLY_TOOL_IDS:
                 handle.write(f"- id: {tool_id}\n  disabled: true\n")
@@ -376,7 +378,8 @@ def call_deepseek_harness(
         if model:
             defaults.append(f"    model: {json.dumps(model)}")
         if reasoning_effort:
-            # dsh 适配器只接受 off|low|high|max；写错会在调用时报 UNSUPPORTED_REASONING_EFFORT
+            # The dsh adapter only accepts off|low|high|max; an invalid value raises
+            # UNSUPPORTED_REASONING_EFFORT at call time.
             defaults.append(f"    reasoningEffort: {json.dumps(reasoning_effort)}")
         if defaults:
             handle.write(

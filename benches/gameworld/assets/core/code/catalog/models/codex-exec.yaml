@@ -9,7 +9,7 @@ output_format: |
 
 model: "gpt-5.6-sol"
 reasoning_effort: "medium"
-endpoint: "https://free-router.opendatalab.com/v1"
+endpoint: "https://api.example.invalid/v1"
 enable_memory: true
 codex_bin: "codex"
 sandbox: "read-only"

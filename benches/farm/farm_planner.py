@@ -69,29 +69,29 @@ def load_crops(path: str | Path = DEFAULT_CROP_FILE) -> dict[str, Crop]:
     try:
         raw = json.loads(source.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        raise FarmError(f"无法读取作物数据: {source}") from exc
+        raise FarmError(f"Cannot read crop data: {source}") from exc
     if not isinstance(raw, dict) or not raw:
-        raise FarmError("作物数据必须是非空 JSON 对象")
+        raise FarmError("Crop data must be a non-empty JSON object")
     crops: dict[str, Crop] = {}
     fields = ("name", "seed_price", "maturity_days", "yield_per_harvest", "fruit_price")
     for crop_id, values in raw.items():
         if not isinstance(crop_id, str) or not crop_id or not isinstance(values, dict):
-            raise FarmError("作物 ID 和作物记录必须是对象")
+            raise FarmError("Crop ids and crop records must be objects")
         if any(field not in values for field in fields):
-            raise FarmError(f"作物 {crop_id} 缺少基础字段")
+            raise FarmError(f"Crop {crop_id} is missing required fields")
         if not isinstance(values["name"], str) or not values["name"].strip():
-            raise FarmError(f"作物 {crop_id} 的 name 必须是非空字符串")
+            raise FarmError(f"Crop {crop_id} name must be a non-empty string")
         if not isinstance(values["seed_price"], int) or isinstance(values["seed_price"], bool) or values["seed_price"] <= 0:
-            raise FarmError(f"作物 {crop_id} 的 seed_price 必须是非负整数")
+            raise FarmError(f"Crop {crop_id} seed_price must be a non-negative integer")
         if any(not isinstance(values[field], int) or isinstance(values[field], bool) or values[field] <= 0 for field in fields[2:]):
-            raise FarmError(f"作物 {crop_id} 的数值字段必须是正整数")
+            raise FarmError(f"Crop {crop_id} numeric fields must be positive integers")
         crops[crop_id] = Crop(id=crop_id, **{field: values[field] for field in fields})
     return crops
 
 
 def _positive_int(value: Any, label: str) -> int:
     if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
-        raise FarmError(f"{label} 必须是正整数")
+        raise FarmError(f"{label} must be a positive integer")
     return value
 
 
@@ -112,7 +112,7 @@ def generate_task(
     crops = load_crops(crop_file)
     available_count = difficulty * 2 + 2
     if available_count > len(crops):
-        raise FarmError(f"难度 {difficulty} 需要 {available_count} 种作物，但数据中只有 {len(crops)} 种")
+        raise FarmError(f"Difficulty {difficulty} needs {available_count} crops, but the data only has {len(crops)}")
     rng = random.Random(seed)
     selected = sorted(rng.sample(list(crops), available_count))
     task = {
@@ -307,15 +307,15 @@ def _entries(action: Any, field: str, day: int) -> Iterable[tuple[str, int]]:
     if action is None:
         return ()
     if not isinstance(action, list):
-        raise FarmError(f"第 {day} 天的 {field} 必须是数组")
+        raise FarmError(f"Day {day} {field} must be an array")
     result: list[tuple[str, int]] = []
     for entry in action:
         if not isinstance(entry, dict) or set(entry) != {"crop", "quantity"}:
-            raise FarmError(f"第 {day} 天的 {field} 项必须包含 crop 和 quantity")
+            raise FarmError(f"Day {day} {field} entries must contain crop and quantity")
         crop_id = entry["crop"]
-        quantity = _positive_int(entry["quantity"], f"第 {day} 天 {field} 数量")
+        quantity = _positive_int(entry["quantity"], f"day {day} {field} quantity")
         if not isinstance(crop_id, str):
-            raise FarmError(f"第 {day} 天的作物 ID 必须是字符串")
+            raise FarmError(f"Day {day} crop id must be a string")
         result.append((crop_id, quantity))
     return result
 
@@ -327,7 +327,7 @@ def simulate_plan(
 ) -> dict[str, Any]:
     """Simulate a plan and return profit, balances, and per-day event log."""
     if not isinstance(task, dict) or not isinstance(plan, dict):
-        raise FarmError("task 和 plan 必须是 JSON 对象")
+        raise FarmError("task and plan must be JSON objects")
     # Generated tasks carry a crop snapshot so simulation is reproducible even
     # when the global crop data file changes. Older hand-written tasks may omit
     # it, in which case retain the file-based behavior.
@@ -339,17 +339,17 @@ def simulate_plan(
         duration = _positive_int(task["duration_days"], "duration_days")
         available_values = task["available_crops"]
     except KeyError as exc:
-        raise FarmError(f"任务缺少字段: {exc.args[0]}") from exc
+        raise FarmError(f"Task is missing field: {exc.args[0]}") from exc
     if not isinstance(available_values, list) or not available_values or not all(isinstance(item, str) for item in available_values):
-        raise FarmError("available_crops 必须是非空字符串数组")
+        raise FarmError("available_crops must be a non-empty string array")
     available = set(available_values)
     if not available or not available.issubset(crops):
-        raise FarmError("任务包含未知或空的 available_crops")
+        raise FarmError("Task contains unknown or empty available_crops")
     if plan.get("task_id") not in (None, task.get("task_id")):
-        raise FarmError("plan.task_id 与 task.task_id 不一致")
+        raise FarmError("plan.task_id does not match task.task_id")
     days = plan.get("days", [])
     if not isinstance(days, list):
-        raise FarmError("plan.days 必须是数组")
+        raise FarmError("plan.days must be an array")
 
     money = initial_money
     seed_inventory: dict[str, int] = {}
@@ -361,31 +361,31 @@ def simulate_plan(
     normalized_days: list[tuple[int, dict[str, Any]]] = []
     for day_record in days:
         if not isinstance(day_record, dict) or "day" not in day_record:
-            raise FarmError("每个 days 项必须包含 day")
+            raise FarmError("Every days entry must contain day")
         normalized_days.append((_positive_int(day_record["day"], "day"), day_record))
     for day, day_record in sorted(normalized_days, key=lambda item: item[0]):
         if day > duration or day in seen_days:
-            raise FarmError(f"day 必须在 1..{duration} 且不可重复: {day}")
+            raise FarmError(f"day must be in 1..{duration} and must not repeat: {day}")
         seen_days.add(day)
         events: dict[str, Any] = {"day": day, "bought": [], "planted": [], "harvested": [], "sold": [], "money": money}
 
         for crop_id, quantity in _entries(day_record.get("buy_seeds", []), "buy_seeds", day):
             if crop_id not in available:
-                raise FarmError(f"第 {day} 天不可购买作物: {crop_id}")
+                raise FarmError(f"Cannot buy crop on day {day}: {crop_id}")
             cost = crops[crop_id].seed_price * quantity
             if cost > money:
-                raise FarmError(f"第 {day} 天资金不足，需要 {cost}，仅剩 {money}")
+                raise FarmError(f"Insufficient funds on day {day}: need {cost}, only {money} left")
             money -= cost
             seed_inventory[crop_id] = seed_inventory.get(crop_id, 0) + quantity
             events["bought"].append({"crop": crop_id, "quantity": quantity, "cost": cost})
 
         for crop_id, quantity in _entries(day_record.get("plant", []), "plant", day):
             if crop_id not in available:
-                raise FarmError(f"第 {day} 天不可种植作物: {crop_id}")
+                raise FarmError(f"Cannot plant crop on day {day}: {crop_id}")
             if seed_inventory.get(crop_id, 0) < quantity:
-                raise FarmError(f"第 {day} 天 {crop_id} 种子不足")
+                raise FarmError(f"Not enough {crop_id} seeds on day {day}")
             if len(growing) + quantity > farmland:
-                raise FarmError(f"第 {day} 天农田不足，需要 {quantity}，可用 {farmland - len(growing)}")
+                raise FarmError(f"Not enough farmland on day {day}: need {quantity}, available {farmland - len(growing)}")
             seed_inventory[crop_id] -= quantity
             growing.append({"crop": crop_id, "quantity": quantity, "harvest_day": day + crops[crop_id].maturity_days})
             events["planted"].append({"crop": crop_id, "quantity": quantity})
@@ -394,7 +394,7 @@ def simulate_plan(
             batches = [batch for batch in growing if batch["crop"] == crop_id and batch["harvest_day"] <= day]
             available_plants = sum(batch["quantity"] for batch in batches)
             if available_plants < quantity:
-                raise FarmError(f"第 {day} 天 {crop_id} 尚未有足够成熟作物")
+                raise FarmError(f"Not enough mature {crop_id} crops on day {day}")
             remaining = quantity
             for batch in list(batches):
                 taken = min(remaining, batch["quantity"])
@@ -410,9 +410,9 @@ def simulate_plan(
 
         for crop_id, quantity in _entries(day_record.get("sell", []), "sell", day):
             if crop_id not in available:
-                raise FarmError(f"第 {day} 天不可出售作物: {crop_id}")
+                raise FarmError(f"Cannot sell crop on day {day}: {crop_id}")
             if fruit_inventory.get(crop_id, 0) < quantity:
-                raise FarmError(f"第 {day} 天 {crop_id} 果实不足")
+                raise FarmError(f"Not enough {crop_id} fruit on day {day}")
             revenue = quantity * crops[crop_id].fruit_price
             fruit_inventory[crop_id] -= quantity
             money += revenue
@@ -461,15 +461,15 @@ def _command_simulate(args: argparse.Namespace) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="文本农场运营规划任务生成与模拟器")
-    parser.add_argument("--crop-file", default=str(DEFAULT_CROP_FILE), help="作物基础信息 JSON")
+    parser = argparse.ArgumentParser(description="Text farm operation planning task generator and simulator")
+    parser.add_argument("--crop-file", default=str(DEFAULT_CROP_FILE), help="Crop base information JSON")
     sub = parser.add_subparsers(dest="command", required=True)
-    gen = sub.add_parser("generate", help="生成测试任务")
+    gen = sub.add_parser("generate", help="Generate a test task")
     gen.add_argument("difficulty", type=int)
     gen.add_argument("--seed", type=int)
     gen.add_argument("-o", "--output", default="task.json")
     gen.set_defaults(func=_command_generate)
-    sim = sub.add_parser("simulate", help="模拟 AI 给出的种植计划")
+    sim = sub.add_parser("simulate", help="Simulate the planting plan produced by an AI")
     sim.add_argument("task")
     sim.add_argument("plan")
     sim.add_argument("-o", "--output")

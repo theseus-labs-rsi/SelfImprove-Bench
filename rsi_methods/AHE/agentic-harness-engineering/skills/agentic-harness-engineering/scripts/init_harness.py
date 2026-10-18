@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Harness Init — 从零创建符合 HARNESS.md v1.0 标准的 Agent workspace。
+Harness Init -- create an Agent workspace that conforms to the HARNESS.md v1.0 standard from scratch.
 
-用法:
+Usage:
   python init_harness.py /path/to/new-workspace [--profile hermes|openclaw|codex|generic]
 """
 import os
@@ -17,29 +17,29 @@ TZ = timezone(timedelta(hours=8))
 INITIAL_FILES = {
     "AGENTS.md": """# AGENTS.md
 
-> 遵循 HARNESS.md v1.0
+> Follows HARNESS.md v1.0
 
-## 组件概述
+## Component overview
 - System Rules → AGENTS.md
 - Tool Descriptions → tool_descriptions/
 - Tool Implementations → tools/
 
-## 核心原则
-1. 所有修改必须附带 Change Manifest
-2. 每次修改都是可被证伪的假设
-3. 从最小化状态开始演化
+## Core principles
+1. Every change must include a Change Manifest
+2. Every change is a falsifiable hypothesis
+3. Evolve from a minimal state
 """,
 
-    "SOUL.md": """# SOUL.md — 身份宣言
+    "SOUL.md": """# SOUL.md -- identity statement
 
-本 Agent 遵循 HARNESS.md v1.0 规范。
+This Agent follows the HARNESS.md v1.0 specification.
 """,
 
     "MEMORY.md": """# MEMORY.md
 
-## 初始状态
-- 由 HARNESS.md 初始化工具创建
-- 遵循 HARNESS.md v1.0
+## Initial state
+- Created by the HARNESS.md init tool
+- Follows HARNESS.md v1.0
 """,
 }
 
@@ -74,13 +74,13 @@ PROFILE_EXTRAS = {
 
 INITIAL_EXAMPLES = {
     "tool_descriptions/example.tool.yaml": """name: example_tool
-description: 一个示例工具，展示 HARNESS.md 工具描述格式
+description: An example tool that demonstrates the HARNESS.md tool description format
 input_schema:
   type: object
   properties:
     message:
       type: string
-      description: 输入消息
+      description: Input message
   required: [message]
 """,
     "tools/example_tool.py": """def example_tool(message: str) -> str:
@@ -127,18 +127,18 @@ def init_workspace(path: str, profile: str = "generic"):
         if name == "AGENTS.md":
             content = f"""# AGENTS.md
 
-> 遵循 HARNESS.md v1.0
+> Follows HARNESS.md v1.0
 > Profile: {profile}
 
-## 组件概述
+## Component overview
 - System Rules → AGENTS.md
 - Tool Descriptions → tool_descriptions/
 - Tool Implementations → tools/
 
-## 核心原则
-1. 所有修改必须附带 Change Manifest
-2. 每次修改都是可被证伪的假设
-3. 从最小化状态开始演化
+## Core principles
+1. Every change must include a Change Manifest
+2. Every change is a falsifiable hypothesis
+3. Evolve from a minimal state
 """
         (root / name).write_text(content, encoding="utf-8")
 
@@ -147,7 +147,7 @@ def init_workspace(path: str, profile: str = "generic"):
         full_path.parent.mkdir(parents=True, exist_ok=True)
         full_path.write_text(content, encoding="utf-8")
 
-    # .gitignore — manifests/ 必须 git-tracked（HARNESS.md §合规清单）
+    # .gitignore -- manifests/ must be git-tracked (HARNESS.md compliance checklist)
     (root / ".gitignore").write_text(
         "# HARNESS.md\n__pycache__/\n", encoding="utf-8")
 

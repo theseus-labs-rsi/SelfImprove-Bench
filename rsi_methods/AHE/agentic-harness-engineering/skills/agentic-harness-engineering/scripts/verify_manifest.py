@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Verify Change Manifest — 读取 manifests/ 下的 pending manifest，
-对比评估结果，更新 verification 字段并给出 verdict。
+Verify Change Manifest -- read the pending manifests under manifests/,
+compare against evaluation results, update the verification field, and produce a verdict.
 
-用法:
+Usage:
   python verify_manifest.py --workspace /path/to/workspace
                            [--manifest manifests/change_xxx.json]
                            [--results results.json]
@@ -18,7 +18,7 @@ TZ = timezone(timedelta(hours=8))
 
 
 def load_pending_manifests(root: Path) -> list:
-    """读取所有 pending 状态的 manifest"""
+    """Read all manifests in the pending state"""
     manifests_dir = root / "manifests"
     if not manifests_dir.is_dir():
         return []
@@ -36,11 +36,11 @@ def load_pending_manifests(root: Path) -> list:
 
 
 def evaluate_predictions(changes: list, results: dict) -> dict:
-    """对比 changes 中的预测与 results 中的评估结果（在所有 changes 聚合后全局评估）"""
+    """Compare the predictions in changes with the evaluation results in results (evaluated globally after aggregating all changes)"""
     all_passed = set(results.get("passed", []))
     all_failed = set(results.get("failed", []))
 
-    # 聚合所有 changes 的预测集合
+    # Aggregate the prediction sets of all changes
     all_expected = set()
     all_at_risk = set()
     for change in changes:
@@ -53,26 +53,26 @@ def evaluate_predictions(changes: list, results: dict) -> dict:
     regressions_observed = set()
     false_predictions = set()
 
-    # 预期修复：通过 → verified；失败 → false prediction
+    # Expected fix: pass -> verified; fail -> false prediction
     for task_id in all_expected:
         if task_id in all_passed:
             expected_fixes_verified.add(task_id)
         elif task_id in all_failed:
             false_predictions.add(f"{task_id}: expected pass but failed")
 
-    # 预期之外的通过
+    # Unexpected passes
     for task_id in all_passed:
         if task_id and task_id not in all_expected:
             unexpected_fixes.add(task_id)
 
-    # 风险回归：失败 → observed；通过 → false prediction
+    # At-risk regression: fail -> observed; pass -> false prediction
     for task_id in all_at_risk:
         if task_id in all_failed:
             regressions_observed.add(task_id)
         elif task_id in all_passed:
             false_predictions.add(f"{task_id}: expected regression but passed")
 
-    # 计算 verdict
+    # Compute the verdict
     if regressions_observed:
         verdict = "revert"
     elif false_predictions and not expected_fixes_verified:
@@ -103,7 +103,7 @@ def verify_manifest(root: Path, manifest_path: str = None, results_path: str = N
         print("[WARN] No pending manifests found")
         return
 
-    # 加载评估结果
+    # Load evaluation results
     results = {"passed": [], "failed": []}
     if results_path:
         try:
@@ -123,7 +123,7 @@ def verify_manifest(root: Path, manifest_path: str = None, results_path: str = N
         result = evaluate_predictions(data.get("changes", []), results)
         now = datetime.now(TZ).isoformat()
 
-        # 更新 manifest
+        # Update the manifest
         status_map = {"keep": "verified", "revert": "reverted"}
         data["verification"]["status"] = status_map.get(result["verdict"], "partial")
         data["verification"]["completed_at"] = now
@@ -135,10 +135,10 @@ def verify_manifest(root: Path, manifest_path: str = None, results_path: str = N
         }
         data["verification"]["verdict"] = result["verdict"]
 
-        # 写回文件
+        # Write back to file
         fpath.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
 
-        # 输出摘要
+        # Print a summary
         print(f"  Verdict: {result['verdict'].upper()}")
         if result["expected_fixes_verified"]:
             print(f"  Fixed: {', '.join(result['expected_fixes_verified'])}")

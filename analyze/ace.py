@@ -1,4 +1,4 @@
-"""按 ACE 任务顺序分析产物，并为每个结点保存精炼意见快照。"""
+"""Analyze artifacts in ACE task order and save a refined opinion snapshot per node."""
 
 import json
 from collections.abc import Callable
@@ -10,12 +10,12 @@ from .reader import collect_ace_artifacts, collect_ace_scores
 
 
 def _empty_counts(values: list[str]) -> dict[str, int]:
-    """创建稳定顺序的分类计数字典。"""
+    """Create a classification counter dictionary with a stable order."""
     return {value: 0 for value in values}
 
 
 def summarize_analysis(output: AnalysisOutput) -> dict[str, Any]:
-    """统计本轮全部意见，包括随后会被丢弃的重复项。"""
+    """Count all opinions in this round, including duplicates that will later be dropped."""
     relations = _empty_counts([
         "semantically_new", "contradiction_or_revision", "duplicate",
     ])
@@ -51,7 +51,7 @@ def _count_relations(
     counts: dict[str, int],
     unknown: dict[str, int],
 ) -> None:
-    """分别统计三个并列关系，不要求其总和等于意见数。"""
+    """Count the three parallel relations independently; their sum need not equal the number of opinions."""
     for name in counts:
         value = getattr(opinion, name)
         if value is True:
@@ -67,7 +67,7 @@ def _opinion_record(
     source_index: int,
     replaced_ids: list[str],
 ) -> dict[str, Any]:
-    """生成进入全局意见库的规范化记录。"""
+    """Build the normalized record that enters the global opinion store."""
     return {
         "opinion_id": opinion_id,
         "normalized_opinion": opinion.normalized_opinion,
@@ -87,7 +87,7 @@ def refine_snapshot(
     output: AnalysisOutput,
     node_id: str,
 ) -> dict[str, Any]:
-    """从父快照生成子快照；不修改父快照列表。"""
+    """Build a child snapshot from the parent snapshot; do not modify the parent list."""
     snapshot_ids = list(parent_snapshot_ids)
     created_ids: list[str] = []
     current_ids: dict[int, str] = {}
@@ -123,20 +123,20 @@ def _resolve_replacements(
     opinion: ImprovementOpinion,
     current_ids: dict[int, str],
 ) -> list[str]:
-    """把本轮索引转换成稳定 ID，并与父快照目标合并。"""
+    """Convert this round's indices into stable IDs and merge them with the parent-snapshot targets."""
     targets = list(opinion.replaces_prior_opinion_ids)
     targets.extend(current_ids[index] for index in opinion.replaces_current_opinion_indices)
     return list(dict.fromkeys(targets))
 
 
 def _write_state(path: Path, state: dict[str, Any]) -> None:
-    """在每个结点结束后保存可检查的中间状态。"""
+    """Save an inspectable intermediate state after each node finishes."""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def _base_node(node_id: str, parent_id: str | None, snapshot_ids: list[str]) -> dict[str, Any]:
-    """创建结点共有字段。"""
+    """Create the fields shared by every node."""
     return {
         "node_id": node_id,
         "parent_id": parent_id,
@@ -158,7 +158,7 @@ def run_ace_analysis(
     client: Any = None,
     on_node: Callable[[dict[str, Any]], None] | None = None,
 ) -> dict[str, Any]:
-    """顺序分析 ACE 结点，并在每轮后持久化完整追踪状态。"""
+    """Analyze ACE nodes in order and persist the full trace state after each round."""
     artifacts = collect_ace_artifacts(experiment_dir)
     scores = collect_ace_scores(experiment_dir)
     if limit is not None:
@@ -223,6 +223,8 @@ def run_ace_analysis(
         _write_state(destination, state)
         if on_node:
             on_node(node)
-    state["status"] = "completed"
+    missing = sum(node["status"] == "missing_artifact" for node in state["nodes"])
+    state["missing_artifact_count"] = missing
+    state["status"] = "incomplete" if missing else "completed"
     _write_state(destination, state)
     return state

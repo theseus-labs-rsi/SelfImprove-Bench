@@ -442,7 +442,7 @@ class RSIBatchSession:
         )
 
     def _baseline_backend(self) -> str | None:
-        """benchmark 的 agent.backend；未提供时返回 None，交给 BaselineAdaptor 用默认后端。"""
+        """The benchmark's agent.backend; returns None when unset so BaselineAdaptor uses its default backend."""
         backend = getattr(self.agent_config, "backend", None)
         return str(backend).strip().lower() if backend else None
 

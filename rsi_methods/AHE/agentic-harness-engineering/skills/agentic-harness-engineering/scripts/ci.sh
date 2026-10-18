@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# AHE Repository CI — 自动检查仓库健康状态
-# 运行: bash scripts/ci.sh
-# 退出码: 0=通过, 1=失败
+# AHE Repository CI -- automatically check repository health
+# Run: bash scripts/ci.sh
+# Exit code: 0=pass, 1=fail
 
 set -e
 PASS=0
@@ -12,7 +12,7 @@ green() { echo "✅ $1"; PASS=$((PASS+1)); }
 red() { echo "❌ $1"; FAIL=$((FAIL+1)); }
 header() { echo ""; echo "===== $1 ====="; }
 
-# 1. py_compile — 所有 Python 脚本语法检查
+# 1. py_compile -- syntax check every Python script
 header "1. py_compile"
 ALL_PY_OK=true
 for f in "$ROOT"/scripts/*.py; do
@@ -85,7 +85,7 @@ cd "$ROOT"
 rm -rf "$TMPDIR2"
 [ $GEN_COUNT -gt 0 ] && green "Generate + verify workflow passes" || red "Generate/verify failed"
 
-# 6. verify 后 manifest 仍符合 schema
+# 6. manifest still conforms to the schema after verify
 header "6. Post-verify schema compliance"
 python3 -c "
 import json, os

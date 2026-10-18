@@ -30,7 +30,7 @@ class KimiCodeConfig(BaseClientConfig):
     model_type: str = "generalist"
     kimi_bin: str = "/usr/local/bin/kimi"
     provider_type: str = "openai"
-    endpoint: str | None = "https://free-router.opendatalab.com/v1"
+    endpoint: str | None = "https://api.example.invalid/v1"
     max_context_size: int = 262144
     capabilities: str = "thinking,tool_use"
     disable_telemetry: bool = True
@@ -48,7 +48,7 @@ class KimiCodeAgent(GeneralistAgent):
         self._kimi_bin = str(getattr(config, "kimi_bin", "/usr/local/bin/kimi"))
         self._provider_type = str(getattr(config, "provider_type", "openai"))
         self._base_url = str(
-            getattr(config, "endpoint", None) or "https://free-router.opendatalab.com/v1"
+            getattr(config, "endpoint", None) or "https://api.example.invalid/v1"
         ).rstrip("/")
         self._max_context_size = int(getattr(config, "max_context_size", 262144))
         self._capabilities = str(getattr(config, "capabilities", "thinking,tool_use"))
@@ -185,8 +185,8 @@ class KimiCodeAgent(GeneralistAgent):
             "http 429",
             "rate limit",
             "too many requests",
-            "额度预扣失败",
-            "额度不足",
+            "quota pre-deduction failed",
+            "quota exceeded",
             "insufficient quota",
             "insufficient balance",
             "overloaded",

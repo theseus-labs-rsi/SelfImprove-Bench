@@ -62,7 +62,6 @@ def main():
 
         print("\nTesting Code Agent...")
         user_message = input("Enter your task: ")
-        # user_message = "read /Users/hanzhenhua/nexau/examples/code_agent/image.png and describe the image"
         print(f"\nUser: {user_message}")
         print("\nAgent Response:")
         print("-" * 30)

@@ -42,7 +42,7 @@ def check(kind):
         for issue in new.get("issues") or []:
             for k in ("issue_type", "summary", "evidence", "message_index"):
                 assert k in issue, f"issue missing {k}"
-            assert issue["issue_type"] in ("工具错误", "幻觉", "循环", "不合规", "截断"), f"bad issue_type {issue['issue_type']}"
+            assert issue["issue_type"] in ("tool_error", "hallucination", "loop", "non_compliance", "truncation"), f"bad issue_type {issue['issue_type']}"
     print(f"{kind}: OK")
 check("ask"); check("check")
 

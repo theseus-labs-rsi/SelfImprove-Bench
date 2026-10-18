@@ -1,7 +1,7 @@
 # Shared GameWorld assets
 
 ```text
-core/                         # GameWorld code, games, model profiles and licenses
+core/                         # GameWorld code (modified), Astray + Minecraft, model profiles
 tasks/
   train/
     astray/                   # 20 training maps selected by train_seed
@@ -12,7 +12,9 @@ tasks/
     <other original game IDs>/
 ```
 
-All original game assets and evaluation task YAMLs are retained. Training YAMLs
+Only the `03_astray` and `18_minecraft-clone-glm` game assets are bundled, with
+some modifications relative to GameWorld-Games; see `../README.md` for source,
+citation and the research-only disclaimer. Training YAMLs
 are moved without content changes. The Minecraft overlay's unrelated older
 Astray API is discarded; shared Astray uses the seed-parameterized API/page.
 No `train_seed` means seed 42. Scoring rules and Minecraft core behavior are

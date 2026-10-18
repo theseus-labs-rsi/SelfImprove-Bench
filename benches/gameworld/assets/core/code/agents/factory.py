@@ -48,7 +48,7 @@ _MODEL_CATALOG = {
         "client": "GPT52Agent",
         "config": "GPT52Config",
     },
-    "azure-gpt-5.6-sol": {
+    "gpt-5.6-sol": {
         "module": "gpt_5_2",
         "client": "GPT52Agent",
         "config": "GPT52Config",

@@ -14,17 +14,17 @@
 
 # LLM failover middleware.
 #
-#  RFC-0003: LLM 自动降级中间件
+#  RFC-0003: LLM automatic fallback middleware
 #
-#  当主 LLM provider 调用失败时，自动切换到备用 provider 重试。
-#  通过 middleware 机制实现零侵入，不修改 LLMCaller 核心代码。
+#  When the primary LLM provider call fails, automatically switch to a backup provider and retry.
+#  Implemented as middleware for zero intrusion; the LLMCaller core code is not modified.
 #
-#  # 核心流程
+#  # Core flow
 #
-#  1. wrap_model_call 拦截 LLM 调用
-#  2. 主 provider 失败时，匹配 status_code / exception 类型
-#  3. 创建新的 LLMConfig + Client，传入 modified params
-#  4. 按 fallback_providers 顺序依次尝试
+#  1. wrap_model_call intercepts the LLM call
+#  2. When the primary provider fails, match on status_code / exception type
+#  3. Create a new LLMConfig + Client and pass in modified params
+#  4. Try each entry in fallback_providers order
 
 from __future__ import annotations
 
@@ -53,12 +53,12 @@ logger = logging.getLogger(__name__)
 class FailoverTrigger:
     """Conditions that trigger failover to the next provider.
 
-    RFC-0003: 降级触发条件配置
+    RFC-0003: Fallback trigger condition configuration
     """
 
-    # 1. 匹配 HTTP status codes（如 500, 502, 503, 529）
+    # 1. Match HTTP status codes (e.g. 500, 502, 503, 529)
     status_codes: list[int] = field(default_factory=lambda: [500, 502, 503])
-    # 2. 匹配异常类名（如 "RateLimitError", "InternalServerError"）
+    # 2. Match exception class names (e.g. "RateLimitError", "InternalServerError")
     exception_types: list[str] = field(default_factory=lambda: list[str]())
 
 
@@ -66,11 +66,11 @@ class FailoverTrigger:
 class FallbackProvider:
     """A fallback LLM provider configuration.
 
-    RFC-0003: 备用 provider 配置
+    RFC-0003: Backup provider configuration
     """
 
     name: str
-    # llm_config 字段直接映射到 LLMConfig 构造参数
+    # llm_config fields map directly to LLMConfig constructor arguments
     llm_config: dict[str, str | int | float | bool] = field(default_factory=lambda: dict[str, str | int | float | bool]())
 
 
@@ -78,10 +78,10 @@ class FallbackProvider:
 class CircuitBreakerConfig:
     """Optional circuit breaker to avoid hammering a failing primary.
 
-    RFC-0003: 熔断器配置
+    RFC-0003: Circuit breaker configuration
 
-    当主 provider 连续失败 failure_threshold 次后，在 recovery_timeout_seconds
-    内直接跳过主 provider，直接走 fallback。
+    After the primary provider fails failure_threshold times in a row, for recovery_timeout_seconds
+    skip the primary provider and go straight to the fallback.
     """
 
     failure_threshold: int = 3
@@ -96,12 +96,12 @@ class CircuitBreakerConfig:
 class _CircuitBreaker:
     """Simple circuit breaker for the primary provider.
 
-    RFC-0003: 熔断器实现
+    RFC-0003: Circuit breaker implementation
 
-    状态机: CLOSED → OPEN → HALF_OPEN → CLOSED
-    - CLOSED: 正常调用主 provider
-    - OPEN: 连续失败超过阈值，跳过主 provider
-    - HALF_OPEN: recovery_timeout 后允许一次探测
+    State machine: CLOSED -> OPEN -> HALF_OPEN -> CLOSED
+    - CLOSED: call the primary provider normally
+    - OPEN: consecutive failures exceeded the threshold; skip the primary provider
+    - HALF_OPEN: allow one probe after recovery_timeout
     """
 
     def __init__(self, config: CircuitBreakerConfig) -> None:
@@ -116,7 +116,7 @@ class _CircuitBreaker:
             return False
         elapsed = time.monotonic() - self._opened_at
         if elapsed >= self._recovery_timeout:
-            # HALF_OPEN: 允许一次探测
+            # HALF_OPEN: allow one probe
             return False
         return True
 
@@ -140,11 +140,11 @@ class _CircuitBreaker:
 def _extract_status_code(exc: Exception) -> int | None:
     """Extract HTTP status code from OpenAI/Anthropic SDK exceptions.
 
-    RFC-0003: 从 SDK 异常中提取 HTTP 状态码
+    RFC-0003: Extract the HTTP status code from an SDK exception
 
-    支持 openai.APIStatusError.status_code 和 anthropic.APIStatusError.status_code。
+    Supports openai.APIStatusError.status_code and anthropic.APIStatusError.status_code.
     """
-    # openai >= 1.x 和 anthropic >= 0.18 都有 status_code 属性
+    # Both openai >= 1.x and anthropic >= 0.18 expose a status_code attribute
     if isinstance(exc, openai.APIStatusError):
         return exc.status_code
     if isinstance(exc, anthropic.APIStatusError):
@@ -155,7 +155,7 @@ def _extract_status_code(exc: Exception) -> int | None:
 def _build_client_for_config(config: LLMConfig) -> openai.OpenAI | anthropic.Anthropic:
     """Build an SDK client from LLMConfig.
 
-    RFC-0003: 根据 api_type 创建对应的 SDK client
+    RFC-0003: Create the matching SDK client for the api_type
     """
     client_kwargs = config.to_client_kwargs()
     if config.api_type == "anthropic_chat_completion":
@@ -171,12 +171,12 @@ def _build_client_for_config(config: LLMConfig) -> openai.OpenAI | anthropic.Ant
 class LLMFailoverMiddleware(Middleware):
     """LLM provider failover middleware.
 
-    RFC-0003: LLM 自动降级中间件
+    RFC-0003: LLM automatic fallback middleware
 
-    当主 provider 调用失败且匹配触发条件时，自动按顺序尝试备用 provider。
-    通过 wrap_model_call 拦截，不修改 LLMCaller 核心代码。
+    When the primary provider fails and matches a trigger condition, automatically try the backup providers in order.
+    Intercepted via wrap_model_call; the LLMCaller core code is not modified.
 
-    YAML 配置示例::
+    YAML configuration example::
 
         middlewares:
           - import: nexau.archs.main_sub.execution.middleware.llm_failover:LLMFailoverMiddleware
@@ -207,7 +207,7 @@ class LLMFailoverMiddleware(Middleware):
         trigger: dict[str, list[int] | list[str]] | None = None,
         circuit_breaker: dict[str, int | float] | None = None,
     ) -> None:
-        # 1. 解析触发条件
+        # 1. Parse trigger conditions
         trigger_dict = trigger or {}
         raw_codes = trigger_dict.get("status_codes", [500, 502, 503])
         raw_exc_types = trigger_dict.get("exception_types", [])
@@ -216,7 +216,7 @@ class LLMFailoverMiddleware(Middleware):
             exception_types=[str(t) for t in raw_exc_types],
         )
 
-        # 2. 解析 fallback providers
+        # 2. Parse fallback providers
         self._fallback_providers: list[FallbackProvider] = []
         for entry in fallback_providers:
             name = str(entry.get("name", f"fallback-{len(self._fallback_providers)}"))
@@ -224,7 +224,7 @@ class LLMFailoverMiddleware(Middleware):
             llm_dict = dict(raw_llm) if isinstance(raw_llm, dict) else {}
             self._fallback_providers.append(FallbackProvider(name=name, llm_config=llm_dict))
 
-        # 3. 可选熔断器
+        # 3. Optional circuit breaker
         self._circuit_breaker: _CircuitBreaker | None = None
         if circuit_breaker is not None:
             cb_cfg = CircuitBreakerConfig(
@@ -240,15 +240,15 @@ class LLMFailoverMiddleware(Middleware):
     def wrap_model_call(self, params: ModelCallParams, call_next: ModelCallFn) -> ModelResponse | None:
         """Intercept LLM calls and failover on matching errors.
 
-        RFC-0003: 拦截 LLM 调用，匹配错误后自动降级
+        RFC-0003: Intercept the LLM call and fall back automatically on a matching error
 
-        流程:
-        1. 如果熔断器打开，跳过主 provider
-        2. 尝试主 provider
-        3. 失败且匹配触发条件 → 依次尝试 fallback providers
-        4. 所有 provider 都失败 → 抛出最后一个异常
+        Flow:
+        1. If the circuit breaker is open, skip the primary provider
+        2. Try the primary provider
+        3. On a failure that matches a trigger condition -> try the fallback providers in order
+        4. If every provider fails -> raise the last exception
         """
-        # 1. 判断是否跳过主 provider（熔断器打开时）
+        # 1. Decide whether to skip the primary provider (when the circuit breaker is open)
         skip_primary = self._circuit_breaker is not None and self._circuit_breaker.should_skip_primary()
 
         last_exc: Exception | None = None
@@ -270,7 +270,7 @@ class LLMFailoverMiddleware(Middleware):
                     type(exc).__name__,
                 )
 
-        # 2. 依次尝试 fallback providers
+        # 2. Try the fallback providers in order
         for i, provider in enumerate(self._fallback_providers):
             try:
                 fallback_params = self._apply_fallback(params, provider)
@@ -292,7 +292,7 @@ class LLMFailoverMiddleware(Middleware):
                     type(exc).__name__,
                 )
 
-        # 不应该到这里，但防御性处理
+        # Should not reach here, but handle defensively
         if last_exc is not None:
             raise last_exc
         raise RuntimeError("LLM failover: Primary provider was skipped and no fallback providers were available.")
@@ -304,18 +304,18 @@ class LLMFailoverMiddleware(Middleware):
     def _should_failover(self, exc: Exception) -> bool:
         """Check if exception matches failover trigger conditions.
 
-        RFC-0003: 判断异常是否匹配降级触发条件
+        RFC-0003: Decide whether an exception matches a fallback trigger condition
 
-        匹配逻辑（OR）：
-        - status_code 在 trigger.status_codes 中
-        - 异常类名在 trigger.exception_types 中
+        Match logic (OR):
+        - status_code is in trigger.status_codes
+        - the exception class name is in trigger.exception_types
         """
-        # 检查 status code
+        # Check the status code
         status = _extract_status_code(exc)
         if status is not None and status in self._trigger.status_codes:
             return True
 
-        # 检查异常类名
+        # Check the exception class name
         exc_type_name = type(exc).__name__
         if exc_type_name in self._trigger.exception_types:
             return True
@@ -325,35 +325,35 @@ class LLMFailoverMiddleware(Middleware):
     def _apply_fallback(self, params: ModelCallParams, provider: FallbackProvider) -> ModelCallParams:
         """Create new ModelCallParams with fallback provider config.
 
-        RFC-0003: 创建使用备用 provider 的新 params
+        RFC-0003: Create new params that use a backup provider
 
-        不修改原始 params，而是创建副本并替换 llm_config 和 client。
-        未在 fallback 中指定的字段继承自主 provider。
+        Do not modify the original params; create a copy and replace llm_config and client.
+        Fields not specified in the fallback are inherited from the primary provider.
         """
-        # 1. 基于主 config 创建副本
+        # 1. Create a copy based on the primary config
         original_config = params.llm_config
         if isinstance(original_config, LLMConfig):
             new_config = original_config.copy()
         else:
             new_config = LLMConfig()
 
-        # 2. 覆盖 fallback 指定的字段
+        # 2. Override the fields specified by the fallback
         for key, value in provider.llm_config.items():
             new_config.set_param(key, value)
 
-        # 3. 创建新 client
+        # 3. Create the new client
         new_client = _build_client_for_config(new_config)
 
-        # 4. 创建新的 api_params
+        # 4. Create the new api_params
         new_api_params = new_config.to_openai_params()
-        # 保留原始 params 中的非 config 字段（如 tools, stop 等）
+        # Keep non-config fields from the original params (such as tools, stop, etc.)
         for key in ("tools", "tool_choice", "stop"):
             if key in params.api_params and key not in new_api_params:
                 new_api_params[key] = params.api_params[key]
         if params.max_tokens is not None:
             new_api_params["max_tokens"] = params.max_tokens
 
-        # 5. 构建新 params（浅拷贝不可变字段，替换可变字段）
+        # 5. Build new params (shallow-copy immutable fields, replace mutable ones)
         new_params = copy.copy(params)
         new_params.llm_config = new_config
         new_params.openai_client = new_client

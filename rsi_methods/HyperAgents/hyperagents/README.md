@@ -9,9 +9,6 @@
 
 <p>
 <a href="LICENSE.md"><img src="https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg?style=for-the-badge" alt="License: CC BY-NC-SA 4.0"></a>
-<a href="https://arxiv.org/abs/2603.19461"><img src="https://img.shields.io/badge/arXiv-2603.19461-b31b1b.svg?style=for-the-badge&logo=arxiv" alt="arXiv"></a>
-<a href="https://ai.meta.com/research/publications/hyperagents/"><img src="https://img.shields.io/badge/-Blog-%238D6748?style=for-the-badge&logo=Website&logoColor=white"></a>
-<a href="https://x.com/jennyzhangzt/status/2036099935083618487"><img src="https://img.shields.io/badge/twitter-%230077B5.svg?&style=for-the-badge&logo=twitter&logoColor=white&color=00acee"></a>
 </p>
 
 ---
@@ -66,10 +63,6 @@ By default, outputs will be saved in `outputs/` directory.
 - `task_agent.py` main implementation of the task agent
 - `generate_loop.py` entry point for running the algorithm
 
-## Logs from Experiments
-
-The experiment logs can be downloaded here: https://drive.google.com/drive/folders/164fKQWgLM18foOzSnpv0F_I3TNpX8u8-?usp=sharing
-
 ## Safety Consideration
 > [!WARNING]  
 > This repository involves executing untrusted, model-generated code. We strongly advise users to be aware of the associated safety risks. While it is highly unlikely that such code will perform overtly malicious actions under our current settings and with the models we use, it may still behave destructively due to limitations in model capability or alignment. By using this repository, you acknowledge and accept these risks.
@@ -77,14 +70,9 @@ The experiment logs can be downloaded here: https://drive.google.com/drive/folde
 ## Citing
 If you find this project useful, please consider citing:
 ```bibtex
-@misc{zhang2026hyperagents,
+@misc{hyperagents,
       title={Hyperagents}, 
-      author={Jenny Zhang and Bingchen Zhao and Wannan Yang and Jakob Foerster and Jeff Clune and Minqi Jiang and Sam Devlin and Tatiana Shavrina},
+      author={Anonymous},
       year={2026},
-      eprint={2603.19461},
-      archivePrefix={arXiv},
-      primaryClass={cs.AI},
-      url={https://arxiv.org/abs/2603.19461}, 
 }
 ```
-

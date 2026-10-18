@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from math import isfinite
 from statistics import fmean, pvariance
 from typing import Any
 
@@ -15,6 +16,44 @@ def _score(record: dict[str, Any]) -> float:
 def _total(record: dict[str, Any], field: str) -> float:
     value = record.get(field)
     return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else 0.0
+
+
+def post_refinement_score(record: dict[str, Any]) -> float | None:
+    """Recover the score of the harness actually retained after same-task selection."""
+    if "post_refinement_score" in record:
+        value = record["post_refinement_score"]
+        return (
+            float(value) if isinstance(value, (int, float))
+            and not isinstance(value, bool) and isfinite(value) else None
+        )
+    selection = record.get("selection")
+    if selection is None:
+        return _score(record) if "refinement" in record and record["refinement"] is None else None
+    if not isinstance(selection, dict):
+        return None
+    status = selection.get("status")
+    if status in {"unchanged", "skipped"}:
+        return _score(record)
+    if status not in {"committed", "completed"}:
+        return None
+    candidate_id = selection.get("committed_candidate_id")
+    stages = selection.get("stages")
+    if not candidate_id or not isinstance(stages, list) or not stages:
+        return None
+    final_stage = stages[-1]
+    if not isinstance(final_stage, dict) or final_stage.get("committed_candidate_id") != candidate_id:
+        return None
+    evaluations = final_stage.get("evaluations")
+    if not isinstance(evaluations, list):
+        return None
+    matches = [item for item in evaluations if isinstance(item, dict) and item.get("candidate_id") == candidate_id]
+    if len(matches) != 1 or matches[0].get("status") != "ok":
+        return None
+    value = matches[0].get("relative_score")
+    return (
+        float(value) if isinstance(value, (int, float))
+        and not isinstance(value, bool) and isfinite(value) else None
+    )
 
 
 def calculate_metrics(
@@ -36,12 +75,21 @@ def calculate_metrics(
     retention_changes: list[float] = []
     normalized_changes: list[float] = []
     pairs: list[dict[str, Any]] = []
+    unavailable_pairs: list[dict[str, Any]] = []
     for replay in replay_records:
         original = by_run_id.get(replay.get("replay_of"))
         gap = replay.get("replay_gap")
         if original is None or not isinstance(gap, int) or gap <= 0:
             continue
-        change = _score(replay) - _score(original)
+        baseline = post_refinement_score(original)
+        if baseline is None:
+            unavailable_pairs.append({
+                "original_run_id": original["run_id"],
+                "replay_run_id": replay["run_id"],
+                "reason": "post_refinement_score_unavailable",
+            })
+            continue
+        change = _score(replay) - baseline
         retention_changes.append(change)
         normalized_changes.append(change / gap)
         pairs.append(
@@ -49,6 +97,8 @@ def calculate_metrics(
                 "original_run_id": original["run_id"],
                 "replay_run_id": replay["run_id"],
                 "gap": gap,
+                "baseline_score": baseline,
+                "replay_score": _score(replay),
                 "score_change": change,
                 "change_per_round": change / gap,
             }
@@ -90,6 +140,9 @@ def calculate_metrics(
             "average_score_change": fmean(retention_changes) if retention_changes else None,
             "average_change_per_round": fmean(normalized_changes) if normalized_changes else None,
             "pairs": pairs,
+            "baseline": "post_refinement",
+            "unavailable_pair_count": len(unavailable_pairs),
+            "unavailable_pairs": unavailable_pairs,
         },
         "generalization": {
             "overall_average_relative_score": (

@@ -13,7 +13,7 @@
   "crop_catalog": {
     "blue_jazz": {
       "id": "blue_jazz",
-      "name": "蓝爵",
+      "name": "Blue Jazz",
       "seed_price": 30,
       "maturity_days": 7,
       "yield_per_harvest": 2,
@@ -21,7 +21,7 @@
     },
     "carrot": {
       "id": "carrot",
-      "name": "胡萝卜",
+      "name": "Carrot",
       "seed_price": 20,
       "maturity_days": 3,
       "yield_per_harvest": 1,
@@ -29,7 +29,7 @@
     },
     "tulip": {
       "id": "tulip",
-      "name": "郁金香",
+      "name": "Tulip",
       "seed_price": 20,
       "maturity_days": 6,
       "yield_per_harvest": 2,
@@ -37,7 +37,7 @@
     },
     "unmilled_rice": {
       "id": "unmilled_rice",
-      "name": "未碾米",
+      "name": "Unmilled Rice",
       "seed_price": 40,
       "maturity_days": 8,
       "yield_per_harvest": 10,

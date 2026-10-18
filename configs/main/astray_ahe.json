@@ -1,0 +1,167 @@
+{
+  "seed": 20260923,
+  "schedule": [
+    {
+      "game": "gameworld",
+      "difficulty": 1,
+      "count": 20,
+      "replay": true
+    }
+  ],
+  "holdout": [
+    {
+      "game": "gameworld",
+      "difficulty": 1,
+      "count": 10
+    }
+  ],
+  "holdout_tasks_per_difficulty": 10,
+  "evolution_window": 1,
+  "agent": {
+    "provider": "ahe",
+    "reasoning_effort": "low",
+    "timeout": 600,
+    "max_attempts": 1
+  },
+  "game_options": {
+    "gameworld": {
+      "framework": "ahe",
+      "model_spec": "gpt-5.6-sol",
+      "max_steps": 100,
+      "reasoning_effort": "low",
+      "resumable_steps": false,
+      "ahe_refinement_every": 1,
+      "train": [
+        {
+          "game": "03_astray",
+          "task": "03_t01"
+        },
+        {
+          "game": "03_astray",
+          "task": "03_t02"
+        },
+        {
+          "game": "03_astray",
+          "task": "03_t03"
+        },
+        {
+          "game": "03_astray",
+          "task": "03_t04"
+        },
+        {
+          "game": "03_astray",
+          "task": "03_t05"
+        },
+        {
+          "game": "03_astray",
+          "task": "03_t06"
+        },
+        {
+          "game": "03_astray",
+          "task": "03_t07"
+        },
+        {
+          "game": "03_astray",
+          "task": "03_t08"
+        },
+        {
+          "game": "03_astray",
+          "task": "03_t09"
+        },
+        {
+          "game": "03_astray",
+          "task": "03_t10"
+        },
+        {
+          "game": "03_astray",
+          "task": "03_t11"
+        },
+        {
+          "game": "03_astray",
+          "task": "03_t12"
+        },
+        {
+          "game": "03_astray",
+          "task": "03_t13"
+        },
+        {
+          "game": "03_astray",
+          "task": "03_t14"
+        },
+        {
+          "game": "03_astray",
+          "task": "03_t15"
+        },
+        {
+          "game": "03_astray",
+          "task": "03_t16"
+        },
+        {
+          "game": "03_astray",
+          "task": "03_t17"
+        },
+        {
+          "game": "03_astray",
+          "task": "03_t18"
+        },
+        {
+          "game": "03_astray",
+          "task": "03_t19"
+        },
+        {
+          "game": "03_astray",
+          "task": "03_t20"
+        }
+      ],
+      "holdout": [
+        {
+          "game": "03_astray",
+          "task": "03_01"
+        },
+        {
+          "game": "03_astray",
+          "task": "03_02"
+        },
+        {
+          "game": "03_astray",
+          "task": "03_03"
+        },
+        {
+          "game": "03_astray",
+          "task": "03_04"
+        },
+        {
+          "game": "03_astray",
+          "task": "03_05"
+        },
+        {
+          "game": "18_minecraft-clone-glm",
+          "task": "18_01"
+        },
+        {
+          "game": "18_minecraft-clone-glm",
+          "task": "18_02"
+        },
+        {
+          "game": "18_minecraft-clone-glm",
+          "task": "18_03"
+        },
+        {
+          "game": "18_minecraft-clone-glm",
+          "task": "18_04"
+        },
+        {
+          "game": "18_minecraft-clone-glm",
+          "task": "18_05"
+        }
+      ]
+    }
+  },
+  "output_dir": "outputs/main/astray/ahe",
+  "continue_on_error": false,
+  "holdout_seed": 100,
+  "replay": {
+    "every": 5,
+    "lag": 3
+  }
+}

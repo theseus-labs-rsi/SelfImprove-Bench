@@ -487,22 +487,6 @@ def apply_diffs_container(container, patch_files, repo_name=REPO_NAME, verbose=T
         log_container_output(exec_result, verbose=verbose)
         commit_hash = exec_result.output.decode("utf-8").strip()
 
-    # # Install requirements again in case of any changes
-    # container.exec_run(
-    #     cmd=[
-    #         "/bin/bash",
-    #         "-lc",
-    #         "HTTPS_PROXY=http://fwdproxy:8080 "
-    #         "HTTP_PROXY=http://fwdproxy:8080 "
-    #         "FTP_PROXY=http://fwdproxy:8080 "
-    #         "https_proxy=http://fwdproxy:8080 "
-    #         "http_proxy=http://fwdproxy:8080 "
-    #         "ftp_proxy=http://fwdproxy:8080 "
-    #         "http_no_proxy='.facebook.com,.tfbnw.net,.fb.com' "
-    #         f"python -m pip install -r '/{REPO_NAME}/requirements.txt'",
-    #     ],
-    #     workdir="/",
-    # )
     # log_container_output(exec_result)
 
     return commit_hash
@@ -567,7 +551,8 @@ def select_parent(archive, output_dir, domains, method="best"):
         )
         return random.choices(commits, weights=probabilities)[0]
 
-    # Select the best compiled node with probability proportional to score and inversely proportional to number of children
+    # Select the best compiled node with probability proportional to its score and
+    # inversely proportional to its number of children.
     elif method == "score_child_prop":
         commits = list(candidates.keys())
         scores = [candidates[commit] for commit in commits]

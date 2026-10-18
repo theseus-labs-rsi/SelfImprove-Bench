@@ -15,7 +15,7 @@
   "crop_catalog": {
     "cauliflower": {
       "id": "cauliflower",
-      "name": "花椰菜",
+      "name": "Cauliflower",
       "seed_price": 80,
       "maturity_days": 12,
       "yield_per_harvest": 1,
@@ -23,7 +23,7 @@
     },
     "green_bean": {
       "id": "green_bean",
-      "name": "青豆",
+      "name": "Green Bean",
       "seed_price": 200,
       "maturity_days": 10,
       "yield_per_harvest": 8,
@@ -31,7 +31,7 @@
     },
     "kale": {
       "id": "kale",
-      "name": "甘蓝菜",
+      "name": "Kale",
       "seed_price": 70,
       "maturity_days": 6,
       "yield_per_harvest": 1,
@@ -39,7 +39,7 @@
     },
     "rhubarb": {
       "id": "rhubarb",
-      "name": "大黄",
+      "name": "Rhubarb",
       "seed_price": 100,
       "maturity_days": 13,
       "yield_per_harvest": 1,
@@ -47,7 +47,7 @@
     },
     "tulip": {
       "id": "tulip",
-      "name": "郁金香",
+      "name": "Tulip",
       "seed_price": 20,
       "maturity_days": 6,
       "yield_per_harvest": 2,
@@ -55,7 +55,7 @@
     },
     "unmilled_rice": {
       "id": "unmilled_rice",
-      "name": "未碾米",
+      "name": "Unmilled Rice",
       "seed_price": 40,
       "maturity_days": 8,
       "yield_per_harvest": 10,

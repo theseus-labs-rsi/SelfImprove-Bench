@@ -222,7 +222,7 @@ Default stdout is a Markdown report that includes trace metadata, `issues_count`
 
 ## Issues
 
-### 1. 工具错误
+### 1. Tool error
 - Message Index: `7`
 
 **Summary**
@@ -246,7 +246,7 @@ JSON mode includes the full issue list:
   "issues_count": 2,
   "issues": [
     {
-      "issue_type": "工具错误",
+      "issue_type": "tool_error",
       "summary": "The agent called the wrong tool.",
       "evidence": "Message 7 calls weather instead of search.",
       "message_index": 7

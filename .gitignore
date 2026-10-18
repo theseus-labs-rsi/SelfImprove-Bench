@@ -1,5 +1,4 @@
 # --- runtime / experiment outputs ---
-# 忽略所有层级的运行产物目录（hyperagents run 输出、batch 产物等）
 outputs/
 outputs_*/
 **/outputs/
@@ -39,3 +38,7 @@ benches/heros_journey/HerosJourney/herosjourney/core/rules/generated_override.js
 benches/heros_journey/HerosJourney/herosjourney/core/tasks/override_*_task.json
 benches/heros_journey/HerosJourney/herosjourney/core/tasks/generated_override.py
 benches/heros_journey/HerosJourney/herosjourney/core/tasks/generated_override_task.json
+
+# --- benchmark outputs (regenerate; not shipped) ---
+benches/*/results/
+benchmark_results/

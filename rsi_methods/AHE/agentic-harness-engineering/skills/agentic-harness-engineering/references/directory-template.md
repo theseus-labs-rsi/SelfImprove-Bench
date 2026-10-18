@@ -1,46 +1,49 @@
 # HARNESS.md Directory Template
 
-以下是一个符合 HARNESS.md v1.0 标准的起始目录结构。用于初始化新 Agent workspace。
+The following is a starting directory structure that complies with the HARNESS.md v1.0
+standard, used to initialize a new Agent workspace.
 
-> ⚠️ 注意：模板创建的目录结构可与 `validate_harness.py` 配合使用。
-> 运行 `python init_harness.py my-agent` 可自动生成完整可用的 workspace。
+> ⚠️ Note: the directory structure created by the template works together with
+> `validate_harness.py`.
+> Running `python init_harness.py my-agent` automatically generates a complete, usable
+> workspace.
 
 ```
 <project-root>/
 │
-├── AGENTS.md                   # [System Rules] 核心行为规则（必填）
-├── SOUL.md                     # [System Rules] 身份宣言（推荐）
+├── AGENTS.md                   # [System Rules] core behavior rules (required)
+├── SOUL.md                     # [System Rules] identity statement (recommended)
 │
-├── MEMORY.md                   # [Long-Term Memory] 长期稳定事实（推荐）
+├── MEMORY.md                   # [Long-Term Memory] long-lived stable facts (recommended)
 │
-├── tool_descriptions/          # [Tool Descriptions]（必填，至少一个工具）
-│   └── example.tool.yaml       # 示例工具描述
+├── tool_descriptions/          # [Tool Descriptions] (required, at least one tool)
+│   └── example.tool.yaml       # example tool description
 │
-├── tools/                      # [Tool Implementations]（必填，至少一个工具）
-│   └── example_tool.py         # 示例工具实现
+├── tools/                      # [Tool Implementations] (required, at least one tool)
+│   └── example_tool.py         # example tool implementation
 │
-├── middleware/                 # [Middleware]（可选）
+├── middleware/                 # [Middleware] (optional)
 │
-├── skills/                     # [Skills]（可选）
+├── skills/                     # [Skills] (optional)
 │
-├── sub_agents/                 # [Sub-Agents]（可选）
+├── sub_agents/                 # [Sub-Agents] (optional)
 │
-├── manifests/                  # Change Manifest 存储目录（推荐）
+├── manifests/                  # Change Manifest storage directory (recommended)
 │
-├── agent.yaml                  # [Registry] 组件注册中心（视框架而定）
+├── agent.yaml                  # [Registry] component registry (framework-dependent)
 │
 └── .gitignore
 ```
 
-### 最小可运行文件示例
+### Minimal runnable file examples
 
 #### AGENTS.md
 ```markdown
 # AGENTS.md
 
-> 遵循 HARNESS.md v1.0
+> Follows HARNESS.md v1.0
 
-## 组件概述
+## Component overview
 - System Rules → AGENTS.md + SOUL.md
 - Tool Descriptions → tool_descriptions/
 - Tool Implementations → tools/
@@ -50,13 +53,13 @@
 #### tool_descriptions/example.tool.yaml
 ```yaml
 name: example_tool
-description: 一个示例工具
+description: An example tool
 input_schema:
   type: object
   properties:
     message:
       type: string
-      description: 输入消息
+      description: Input message
   required: [message]
 ```
 

@@ -35,12 +35,12 @@ def _scripted(sequence):
 def test_check_mode_happy_path(tmp_path, monkeypatch):
     _prep_env(tmp_path, monkeypatch)
     payload = {"mode": "check",
-               "issues": [{"issue_type": "工具错误", "summary": "s", "evidence": "e", "message_index": 3}],
+               "issues": [{"issue_type": "tool_error", "summary": "s", "evidence": "e", "message_index": 3}],
                "response": "r"}
     with patch("agent_debugger_core.runtime.runner._build_agent", return_value=_scripted([payload])):
         result = run_agent(trace_paths=[Path("/f")], mode="check")
     assert result.mode == "check"
-    assert result.issues[0]["issue_type"] == "工具错误"
+    assert result.issues[0]["issue_type"] == "tool_error"
     assert result.response == "r"
 
 

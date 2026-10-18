@@ -1,4 +1,4 @@
-"""读取并组织各 RSI method 的原始改进产物。"""
+"""Load and organize the raw improvement artifacts of each RSI method."""
 
 import difflib
 import filecmp
@@ -9,31 +9,31 @@ from pathlib import Path
 from typing import Any
 
 
-# ===== 辅助方法 =====
+# ===== Helpers =====
 
 def _read_utf8_text(path: str | Path) -> str:
-    """读取 UTF-8 文本，并为编码错误补充文件位置。"""
+    """Read UTF-8 text and include the file location on encoding errors."""
     source = Path(path)
     try:
         return source.read_text(encoding="utf-8")
     except UnicodeDecodeError as exc:
-        raise ValueError(f"无法按 UTF-8 读取文件：{source}") from exc
+        raise ValueError(f"Cannot read file as UTF-8: {source}") from exc
 
 
 def _read_json_object(path: str | Path) -> dict[str, Any]:
-    """读取 JSON 对象，并拒绝不符合预期的顶层类型。"""
+    """Read a JSON object and reject unexpected top-level types."""
     source = Path(path)
     try:
         content = json.loads(_read_utf8_text(source))
     except json.JSONDecodeError as exc:
-        raise ValueError(f"无效 JSON：{source}") from exc
+        raise ValueError(f"Invalid JSON: {source}") from exc
     if not isinstance(content, dict):
-        raise ValueError(f"JSON 顶层必须是对象：{source}")
+        raise ValueError(f"JSON top level must be an object: {source}")
     return content
 
 
 def _workspace_files(root: Path) -> dict[Path, Path]:
-    """列出 workspace 文件，排除候选自带的 Git 元数据。"""
+    """List workspace files, excluding Git metadata bundled with candidates."""
     return {
         path.relative_to(root): path
         for path in root.rglob("*")
@@ -44,19 +44,19 @@ def _workspace_files(root: Path) -> dict[Path, Path]:
 
 
 def _read_workspace_text(path: Path | None) -> str:
-    """读取 workspace 文件；缺失路径表示新增或删除文件。"""
+    """Read a workspace file; a missing path indicates an added or deleted file."""
     return "" if path is None else _read_utf8_text(path)
 
 
 def _read_ahe_workspace_diff(candidate: Path) -> str:
-    """比较同轮基线与 AHE 候选 workspace，不依赖 Git 历史。"""
+    """Compare the same-round baseline and AHE candidate workspace without relying on Git history."""
     iteration = candidate.parent.name
     state = candidate.parents[2]
     baseline = state / "runs" / iteration / "input" / "workspace"
     evolved = candidate / "workspace"
     for root in (baseline, evolved):
         if not root.is_dir():
-            raise FileNotFoundError(f"AHE workspace 不存在：{root}")
+            raise FileNotFoundError(f"AHE workspace does not exist: {root}")
 
     old_files = _workspace_files(baseline)
     new_files = _workspace_files(evolved)
@@ -82,14 +82,14 @@ def _read_ahe_workspace_diff(candidate: Path) -> str:
     return "".join(chunks)
 
 
-# ===== 单个产物读取方法 =====
+# ===== Single-artifact readers =====
 
 def read_ace_operations(path: str | Path) -> list[dict[str, Any]]:
-    """从指定的 ACE JSONL 文件读取原始操作记录。"""
+    """Read the raw operation records from the given ACE JSONL file."""
     source = Path(path)
     records: list[dict[str, Any]] = []
 
-    # 逐行解析，不改写或归一化记录中的字段。
+    # Parse line by line without rewriting or normalizing record fields.
     with source.open("r", encoding="utf-8") as stream:
         for line_number, line in enumerate(stream, start=1):
             if not line.strip():
@@ -106,34 +106,34 @@ def read_ace_operations(path: str | Path) -> list[dict[str, Any]]:
 
 
 def _read_ace_curator_operations(task_dir: Path) -> list[dict[str, Any]] | None:
-    """从 trace task 的 curator 响应读取本轮操作；缺失文件返回 None。"""
+    """Read this round's operations from the trace task's curator response; return None if the file is missing."""
     sources = sorted(task_dir.glob("curator_refine_*.json"))
     if not sources:
         return None
     if len(sources) != 1:
-        raise ValueError(f"ACE curator 响应文件不唯一：{task_dir}")
+        raise ValueError(f"ACE curator response file is not unique: {task_dir}")
 
     record = _read_json_object(sources[0])
     response = record.get("response")
     if not isinstance(response, str):
-        raise ValueError(f"ACE curator response 必须是字符串：{sources[0]}")
+        raise ValueError(f"ACE curator response must be a string: {sources[0]}")
     try:
         content = json.loads(response)
     except json.JSONDecodeError as exc:
-        raise ValueError(f"ACE curator response 不是有效 JSON：{sources[0]}") from exc
+        raise ValueError(f"ACE curator response is not valid JSON: {sources[0]}") from exc
     operations = content.get("operations") if isinstance(content, dict) else None
     if not isinstance(operations, list) or not all(isinstance(item, dict) for item in operations):
-        raise ValueError(f"ACE curator operations 必须是对象列表：{sources[0]}")
+        raise ValueError(f"ACE curator operations must be a list of objects: {sources[0]}")
     return operations
 
 
 def read_hyperagent_patch(path: str | Path) -> str:
-    """从指定的 HyperAgent model_patch.diff 读取原始补丁。"""
+    """Read the raw patch from the given HyperAgent model_patch.diff."""
     return _read_utf8_text(path)
 
 
 def read_ahe_candidate(candidate_dir: str | Path) -> dict[str, str]:
-    """读取指定 AHE 候选的概述和 workspace 详细差异。"""
+    """Read the summary and detailed workspace diff of the given AHE candidate."""
     candidate = Path(candidate_dir)
     return {
         "evolve_result": _read_utf8_text(candidate / "evolve_result.json"),
@@ -141,12 +141,12 @@ def read_ahe_candidate(candidate_dir: str | Path) -> dict[str, str]:
     }
 
 
-# ===== 方法级组织方法 =====
+# ===== Method-level organizers =====
 
 def _score_fields(
     report: dict[str, Any] | None, candidate_id: str | None = None,
 ) -> dict[str, Any]:
-    """读取实际父代与候选评分；缺失或非有限数值保留为空。"""
+    """Read the actual parent and candidate scores; keep missing or non-finite values empty."""
     report = report or {}
     parent = report.get("parent_score")
     scores = report.get("candidate_scores", {})
@@ -165,7 +165,7 @@ def _score_fields(
 
 
 def collect_ace_scores(experiment_dir: str | Path) -> dict[str, dict[str, Any]]:
-    """按 task 读取逐轮选择结果，不改变 ACE 产物读取接口。"""
+    """Read per-round selection results by task without changing the ACE artifact reading interface."""
     root = Path(experiment_dir).resolve()
     tasks = root.glob("task_*") if (root / "batch_manifest.json").is_file() else root.glob("rsi/ace/*/task_*")
     return {task.name: _score_fields(_read_hyper_selection(task)) for task in tasks if task.is_dir()}
@@ -174,7 +174,7 @@ def collect_ace_scores(experiment_dir: str | Path) -> dict[str, dict[str, Any]]:
 def _evaluation_scores(
     candidate_dir: Path, root: Path, fallback: dict[str, Any],
 ) -> dict[str, Any]:
-    """优先读取候选 result，并按 parent_run_id 匹配同轮父代结果。"""
+    """Prefer the candidate result and match the same-round parent result by parent_run_id."""
     path = candidate_dir / "evaluation" / "result.json"
     if not path.is_file():
         return fallback
@@ -185,7 +185,7 @@ def _evaluation_scores(
     if isinstance(run_id, str):
         matches = [path for path in (root / "runs" / "train").glob("*.json") if path.stem.partition("_")[2] == run_id]
         if len(matches) > 1:
-            raise ValueError(f"父代评估结果不唯一：{run_id}")
+            raise ValueError(f"Parent evaluation result is not unique: {run_id}")
         if matches:
             record = _read_json_object(matches[0])
             parent = record.get("relative_score") if record.get("status") == "ok" else None
@@ -194,12 +194,12 @@ def _evaluation_scores(
 def collect_ace_artifacts(
     experiment_dir: str | Path,
 ) -> list[tuple[str, list[dict[str, Any]] | None]]:
-    """从 ACE 实验目录读取各 task 的原始改进记录。"""
+    """Read the raw improvement records of each task from the ACE experiment directory."""
     source_root = Path(experiment_dir).resolve()
     if (source_root / "batch_manifest.json").is_file():
         task_dirs = sorted(path for path in source_root.iterdir() if _is_task_dir(path))
         if not task_dirs:
-            raise FileNotFoundError(f"ACE trace task 目录不存在：{source_root}")
+            raise FileNotFoundError(f"ACE trace task directory does not exist: {source_root}")
         return [
             (task_dir.name, _read_ace_curator_operations(task_dir))
             for task_dir in task_dirs
@@ -207,24 +207,30 @@ def collect_ace_artifacts(
 
     ace_root = source_root / "rsi" / "ace"
     if not ace_root.is_dir():
-        raise FileNotFoundError(f"ACE 运行目录不存在：{ace_root}")
+        raise FileNotFoundError(f"ACE run directory does not exist: {ace_root}")
 
     run_dirs = sorted(path for path in ace_root.iterdir() if path.is_dir())
     if len(run_dirs) != 1:
         names = [path.name for path in run_dirs]
-        raise ValueError(f"ACE 运行目录应当唯一，实际找到 {len(run_dirs)} 个：{names}")
+        raise ValueError(f"ACE run directory must be unique, found {len(run_dirs)}: {names}")
 
     task_dirs = sorted(
         path for path in run_dirs[0].iterdir()
         if path.is_dir() and path.name.startswith("task_")
     )
     if not task_dirs:
-        raise FileNotFoundError(f"ACE task 目录不存在：{run_dirs[0]}")
+        raise FileNotFoundError(f"ACE task directory does not exist: {run_dirs[0]}")
 
     artifacts: list[tuple[str, list[dict[str, Any]] | None]] = []
     for task_dir in task_dirs:
-        source = task_dir / "candidates" / "curator_operations_diff.jsonl"
-        content = read_ace_operations(source) if source.is_file() else None
+        candidates = task_dir / "candidates"
+        sources = sorted(candidates.glob("*/curator_operations_diff.jsonl"))
+        legacy = candidates / "curator_operations_diff.jsonl"
+        if legacy.is_file():
+            sources.append(legacy)
+        if len(sources) > 1:
+            raise ValueError(f"ACE operations file is not unique: {task_dir}")
+        content = read_ace_operations(sources[0]) if sources else None
         artifacts.append((task_dir.name, content))
     return artifacts
 
@@ -232,7 +238,7 @@ def collect_ace_artifacts(
 def collect_hyperagent_artifacts(
     experiment_dir: str | Path,
 ) -> list[dict[str, Any]]:
-    """读取唯一有效 HyperAgent run，并按显式 parent_id 排序候选。"""
+    """Read the single valid HyperAgent run and order candidates by explicit parent_id."""
     return _collect_hyper_tree_artifacts(
         experiment_dir, method_dir="hyperagents", method_name="HyperAgent",
     )
@@ -241,7 +247,7 @@ def collect_hyperagent_artifacts(
 def collect_hyperdsh_artifacts(
     experiment_dir: str | Path,
 ) -> list[dict[str, Any]]:
-    """读取唯一有效 HyperDSH run，并按显式 parent_id 排序候选。"""
+    """Read the single valid HyperDSH run and order candidates by explicit parent_id."""
     return _collect_hyper_tree_artifacts(
         experiment_dir, method_dir="hyperdsh", method_name="HyperDSH",
     )
@@ -253,19 +259,19 @@ def _collect_hyper_tree_artifacts(
     method_dir: str,
     method_name: str,
 ) -> list[dict[str, Any]]:
-    """按方法目录读取 HyperAgent 风格的候选树。"""
+    """Read a HyperAgent-style candidate tree from a method directory."""
     source_root = Path(experiment_dir).resolve()
     if (source_root / "batch_manifest.json").is_file():
         return _read_hyper_trace_batch(source_root, method_name)
 
     root = source_root / "rsi" / method_dir
     if not root.is_dir():
-        raise FileNotFoundError(f"{method_name} 运行目录不存在：{root}")
+        raise FileNotFoundError(f"{method_name} run directory does not exist: {root}")
 
     run_dirs = [path for path in root.iterdir() if _has_hyper_tasks(path)]
     if len(run_dirs) != 1:
         names = [path.name for path in run_dirs]
-        raise ValueError(f"{method_name} 有效 run 应当唯一，实际找到 {len(run_dirs)} 个：{names}")
+        raise ValueError(f"{method_name} must have a unique valid run, found {len(run_dirs)}: {names}")
 
     nodes: list[dict[str, Any]] = []
     task_dirs = sorted(path for path in run_dirs[0].iterdir() if _is_task_dir(path))
@@ -275,21 +281,21 @@ def _collect_hyper_tree_artifacts(
 
 
 def _read_hyper_trace_batch(root: Path, method_name: str) -> list[dict[str, Any]]:
-    """从已选定单候选的 HyperAgent trace batch 重建父子链。"""
+    """Rebuild the parent-child chain from a HyperAgent trace batch with a single selected candidate."""
     manifest = _read_json_object(root / "batch_manifest.json")
     run_id = manifest.get("batch_id")
     if not isinstance(run_id, str):
-        raise ValueError(f"{method_name} batch 缺少 batch_id：{root}")
+        raise ValueError(f"{method_name} batch is missing batch_id: {root}")
 
     nodes: list[dict[str, Any]] = []
     for task_dir in sorted(path for path in root.iterdir() if _is_task_dir(path)):
         report = _read_json_object(task_dir / "refinement_report.json")
         metadata = report.get("metadata")
         if not isinstance(metadata, dict):
-            raise ValueError(f"HyperAgent refinement metadata 无效：{task_dir}")
+            raise ValueError(f"Invalid HyperAgent refinement metadata: {task_dir}")
         nodes.append(_build_hyper_trace_node(task_dir, run_id, report, metadata))
     if not nodes:
-        raise FileNotFoundError(f"{method_name} trace task 目录不存在：{root}")
+        raise FileNotFoundError(f"{method_name} trace task directory does not exist: {root}")
     return _order_hyper_nodes(nodes, method_name)
 
 
@@ -299,13 +305,13 @@ def _build_hyper_trace_node(
     report: dict[str, Any],
     metadata: dict[str, Any],
 ) -> dict[str, Any]:
-    """把单候选 task 报告转换为统一 HyperAgent 结点。"""
+    """Convert a single-candidate task report into a unified HyperAgent node."""
     candidate_id = report.get("candidate_id")
     raw_parent = metadata.get("parent_genid")
     if not isinstance(candidate_id, str):
-        raise ValueError(f"HyperAgent trace 缺少 candidate_id：{task_dir}")
+        raise ValueError(f"HyperAgent trace is missing candidate_id: {task_dir}")
     if raw_parent not in (None, "initial") and not isinstance(raw_parent, str):
-        raise ValueError(f"HyperAgent trace parent_genid 无效：{candidate_id}")
+        raise ValueError(f"Invalid HyperAgent trace parent_genid: {candidate_id}")
 
     patch_path = task_dir / "agent_output" / "model_patch.diff"
     accepted = metadata.get("refine_successful")
@@ -325,12 +331,12 @@ def _build_hyper_trace_node(
 
 
 def _is_task_dir(path: Path) -> bool:
-    """判断目录是否为方法生成的 task 目录。"""
+    """Return whether a directory is a method-generated task directory."""
     return path.is_dir() and path.name.startswith("task_")
 
 
 def _has_hyper_tasks(path: Path) -> bool:
-    """空 run 不参与唯一性判断。"""
+    """Empty runs are excluded from the uniqueness check."""
     return path.is_dir() and any(_is_task_dir(child) for child in path.iterdir())
 
 
@@ -339,11 +345,11 @@ def _read_hyper_task(
     run_id: str,
     method_name: str,
 ) -> list[dict[str, Any]]:
-    """读取一个 task 中的全部候选及其选择状态。"""
+    """Read all candidates and their selection state within one task."""
     batch_path = task_dir / "candidate_batch.json"
     if not batch_path.is_file():
         warnings.warn(
-            f"跳过缺少 candidate_batch.json 的 {method_name} task：{task_dir}",
+            f"Skipping {method_name} task missing candidate_batch.json: {task_dir}",
             RuntimeWarning,
             stacklevel=2,
         )
@@ -351,7 +357,7 @@ def _read_hyper_task(
     batch = _read_json_object(batch_path)
     candidates = batch.get("candidates")
     if not isinstance(candidates, list):
-        raise ValueError(f"HyperAgent candidates 必须是列表：{batch_path}")
+        raise ValueError(f"HyperAgent candidates must be a list: {batch_path}")
 
     selection = _read_hyper_selection(task_dir)
     return [
@@ -361,10 +367,10 @@ def _read_hyper_task(
 
 
 def _read_hyper_selection(task_dir: Path) -> dict[str, Any] | None:
-    """读取 task 的候选选择结果；缺失时保留未知状态。"""
+    """Read the task's candidate selection result; leave the state unknown when missing."""
     paths = sorted(task_dir.glob("selection_stage_*/selection.json"))
     if len(paths) > 1:
-        raise ValueError(f"HyperAgent selection 文件不唯一：{task_dir}")
+        raise ValueError(f"HyperAgent selection file is not unique: {task_dir}")
     return _read_json_object(paths[0]) if paths else None
 
 
@@ -374,14 +380,14 @@ def _build_hyper_node(
     candidate: Any,
     selection: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    """使用本地目录重建候选路径，避免依赖元数据中的旧绝对路径。"""
+    """Rebuild candidate paths from local directories to avoid stale absolute paths in metadata."""
     if not isinstance(candidate, dict) or not isinstance(candidate.get("candidate_id"), str):
-        raise ValueError(f"HyperAgent candidate 缺少 candidate_id：{task_dir}")
+        raise ValueError(f"HyperAgent candidate is missing candidate_id: {task_dir}")
     candidate_id = candidate["candidate_id"]
     raw_parent = candidate.get("parent_id")
     parent_id = None if raw_parent in (None, "initial") else raw_parent
     if parent_id is not None and not isinstance(parent_id, str):
-        raise ValueError(f"HyperAgent parent_id 无效：{candidate_id}")
+        raise ValueError(f"Invalid HyperAgent parent_id: {candidate_id}")
 
     patch_path = task_dir / "candidates" / candidate_id / "agent_output" / "model_patch.diff"
     selected_id = selection.get("selected_candidate_id") if selection else None
@@ -406,24 +412,24 @@ def _order_hyper_nodes(
     nodes: list[dict[str, Any]],
     method_name: str = "HyperAgent",
 ) -> list[dict[str, Any]]:
-    """按 parent_id 拓扑排序，同时检查重复、缺失父结点和环。"""
+    """Topologically sort by parent_id while checking for duplicates, missing parents, and cycles."""
     by_id = {node["node_id"]: node for node in nodes}
     if len(by_id) != len(nodes):
-        raise ValueError(f"{method_name} 包含重复 candidate_id")
+        raise ValueError(f"{method_name} contains duplicate candidate_id")
     ordered: list[dict[str, Any]] = []
     states: dict[str, int] = {}
 
     def visit(node_id: str) -> None:
         state = states.get(node_id, 0)
         if state == 1:
-            raise ValueError(f"{method_name} parent_id 形成环：{node_id}")
+            raise ValueError(f"{method_name} parent_id forms a cycle: {node_id}")
         if state == 2:
             return
         states[node_id] = 1
         parent_id = by_id[node_id]["parent_id"]
         if parent_id is not None:
             if parent_id not in by_id:
-                raise ValueError(f"{method_name} 父结点不存在：{node_id} -> {parent_id}")
+                raise ValueError(f"{method_name} parent node does not exist: {node_id} -> {parent_id}")
             visit(parent_id)
         states[node_id] = 2
         ordered.append(by_id[node_id])
@@ -436,15 +442,15 @@ def _order_hyper_nodes(
 def collect_ahe_artifacts(
     experiment_dir: str | Path,
 ) -> list[dict[str, Any]]:
-    """读取唯一有效 AHE run，并按 iteration 顺序组织单 variant 链。"""
+    """Read AHE candidates and follow the harness retained by each selection."""
     root = Path(experiment_dir).resolve() / "rsi" / "ahe"
     if not root.is_dir():
-        raise FileNotFoundError(f"AHE 运行目录不存在：{root}")
+        raise FileNotFoundError(f"AHE run directory does not exist: {root}")
 
     run_dirs = [path for path in root.iterdir() if _has_ahe_candidates(path)]
     if len(run_dirs) != 1:
         names = [path.name for path in run_dirs]
-        raise ValueError(f"AHE 有效 run 应当唯一，实际找到 {len(run_dirs)} 个：{names}")
+        raise ValueError(f"AHE must have a unique valid run, found {len(run_dirs)}: {names}")
 
     candidates_root = run_dirs[0] / "state" / "candidates"
     iteration_dirs = sorted(
@@ -452,7 +458,7 @@ def collect_ahe_artifacts(
         if path.is_dir() and path.name.startswith("iteration_")
     )
     if not iteration_dirs:
-        raise FileNotFoundError(f"AHE iteration 目录不存在：{candidates_root}")
+        raise FileNotFoundError(f"AHE iteration directory does not exist: {candidates_root}")
 
     nodes: list[dict[str, Any]] = []
     parent_id: str | None = None
@@ -464,31 +470,47 @@ def collect_ahe_artifacts(
         variant_dir = _single_ahe_variant(iteration_dir)
         node_id = f"{iteration_dir.name}:{variant_dir.name}"
         matching = reports.get(iteration_dir.name, [])
+        if not matching:
+            raise ValueError(
+                f"AHE selection result is missing; cannot reconstruct retained parents: {iteration_dir.name}"
+            )
         if len(matching) > 1:
-            raise ValueError(f"AHE 评分结果不唯一：{iteration_dir.name}")
+            raise ValueError(f"AHE score result is not unique: {iteration_dir.name}")
+        report = matching[0]
+        status = report.get("status")
+        committed_id = report.get("committed_candidate_id")
+        if status == "committed" and committed_id == variant_dir.name:
+            accepted = True
+        elif status == "unchanged" and committed_id is None:
+            accepted = False
+        else:
+            raise ValueError(f"Invalid AHE selection result: {iteration_dir.name}")
         nodes.append({
             "node_id": node_id,
             **_evaluation_scores(variant_dir, Path(experiment_dir).resolve(),
-                                 _score_fields(matching[0] if matching else None, variant_dir.name)),
+                                 _score_fields(report, variant_dir.name)),
             "parent_id": parent_id,
+            "accepted": accepted,
+            "selection_status": status,
             "iteration": iteration_dir.name,
             "variant": variant_dir.name,
             "run_id": run_dirs[0].name,
             "artifact_dir": str(variant_dir),
             "artifact": read_ahe_candidate(variant_dir),
         })
-        parent_id = node_id
+        if accepted:
+            parent_id = node_id
     return nodes
 
 
 def _has_ahe_candidates(path: Path) -> bool:
-    """判断 run 是否包含 AHE candidates 目录。"""
+    """Return whether the run contains an AHE candidates directory."""
     candidates = path / "state" / "candidates"
     return candidates.is_dir() and any(candidates.iterdir())
 
 
 def _single_ahe_variant(iteration_dir: Path) -> Path:
-    """当前缺少选择元数据，因此只接受唯一 variant。"""
+    """Require the single-variant layout used by the published AHE configurations."""
     variants = sorted(
         path for path in iteration_dir.iterdir()
         if path.is_dir() and path.name.startswith("variant_")
@@ -496,6 +518,6 @@ def _single_ahe_variant(iteration_dir: Path) -> Path:
     if len(variants) != 1:
         names = [path.name for path in variants]
         raise ValueError(
-            f"AHE iteration 缺少唯一 variant，无法确定父子链：{iteration_dir} -> {names}"
+            f"AHE iteration is missing a unique variant; cannot determine the parent-child chain: {iteration_dir} -> {names}"
         )
     return variants[0]

@@ -17,7 +17,7 @@
   "crop_catalog": {
     "blue_jazz": {
       "id": "blue_jazz",
-      "name": "蓝爵",
+      "name": "Blue Jazz",
       "seed_price": 30,
       "maturity_days": 7,
       "yield_per_harvest": 2,
@@ -25,7 +25,7 @@
     },
     "carrot": {
       "id": "carrot",
-      "name": "胡萝卜",
+      "name": "Carrot",
       "seed_price": 20,
       "maturity_days": 3,
       "yield_per_harvest": 1,
@@ -33,7 +33,7 @@
     },
     "cauliflower": {
       "id": "cauliflower",
-      "name": "花椰菜",
+      "name": "Cauliflower",
       "seed_price": 80,
       "maturity_days": 12,
       "yield_per_harvest": 1,
@@ -41,7 +41,7 @@
     },
     "garlic": {
       "id": "garlic",
-      "name": "蒜",
+      "name": "Garlic",
       "seed_price": 40,
       "maturity_days": 4,
       "yield_per_harvest": 1,
@@ -49,7 +49,7 @@
     },
     "kale": {
       "id": "kale",
-      "name": "甘蓝菜",
+      "name": "Kale",
       "seed_price": 70,
       "maturity_days": 6,
       "yield_per_harvest": 1,
@@ -57,7 +57,7 @@
     },
     "rhubarb": {
       "id": "rhubarb",
-      "name": "大黄",
+      "name": "Rhubarb",
       "seed_price": 100,
       "maturity_days": 13,
       "yield_per_harvest": 1,
@@ -65,7 +65,7 @@
     },
     "strawberry": {
       "id": "strawberry",
-      "name": "草莓",
+      "name": "Strawberry",
       "seed_price": 300,
       "maturity_days": 8,
       "yield_per_harvest": 5,
@@ -73,7 +73,7 @@
     },
     "tulip": {
       "id": "tulip",
-      "name": "郁金香",
+      "name": "Tulip",
       "seed_price": 20,
       "maturity_days": 6,
       "yield_per_harvest": 2,

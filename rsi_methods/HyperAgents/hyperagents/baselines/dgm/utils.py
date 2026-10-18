@@ -1,4 +1,4 @@
-# Code adapted from https://github.com/jennyzzt/dgm/blob/main/prompts/self_improvement_prompt.py
+# Code adapted from the DGM project (self_improvement_prompt.py)
 
 import json
 import os

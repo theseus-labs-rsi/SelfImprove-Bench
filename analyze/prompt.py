@@ -1,4 +1,4 @@
-"""构造改进产物分析所需的 LLM 提示词。"""
+"""Build the LLM prompt used to analyze improvement artifacts."""
 
 import json
 from typing import Any
@@ -104,7 +104,7 @@ Output structure:
 
 
 def _serialize(value: Any) -> str:
-    """保留纯文本；其他 reader 结果转成便于 LLM 阅读的 JSON。"""
+    """Keep plain text as-is; convert other reader results into LLM-friendly JSON."""
     if isinstance(value, str):
         return value
     return json.dumps(value, ensure_ascii=False, indent=2)
@@ -116,7 +116,7 @@ def build_analysis_prompt(
     artifacts: Any,
     prior_opinions: Any = None,
 ) -> str:
-    """将分析规则、历史意见和本轮原始产物拼接为一次 LLM 输入。"""
+    """Assemble the analysis rules, prior opinions, and this round's raw artifact into one LLM input."""
     history = [] if prior_opinions is None else prior_opinions
     return "\n\n".join(
         [

@@ -1,1 +1,1 @@
-"""RSI 改进产物分析模块。"""
+"""Analysis module for RSI improvement artifacts."""

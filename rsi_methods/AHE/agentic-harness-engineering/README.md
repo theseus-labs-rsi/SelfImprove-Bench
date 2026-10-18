@@ -3,9 +3,6 @@
 <div align="left">
 
 <p align="left">
-  <a href="https://arxiv.org/abs/2604.25850"><img alt="Paper" src="https://img.shields.io/badge/Paper-arXiv-b31b1b.svg?logo=arxiv&logoColor=white"></a>
-  <a href="agentic_harness_engineering.pdf"><img alt="PDF" src="https://img.shields.io/badge/PDF-Download-ec1c24.svg?logo=adobeacrobatreader&logoColor=white"></a>
-  <a href="https://dawning-road.github.io/blog/agentic-harness-engineering"><img alt="Blog" src="https://img.shields.io/badge/Blog-Dawning_Road-ff7e1b.svg?logo=readthedocs&logoColor=white"></a>
   <img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-yellow.svg">
   <img alt="Python" src="https://img.shields.io/badge/python-%E2%89%A53.13-blue.svg">
   <img alt="Managed with uv" src="https://img.shields.io/badge/managed_with-uv-261230?logo=python&logoColor=white">
@@ -17,17 +14,10 @@
   <img src="assets/figures/banner.jpg" alt="Agentic Harness Engineering" width="100%">
 </p>
 
-<p align="left">
-  English | <a href="README_zh.md">简体中文</a>
-</p>
-
 ---
 
 ## 📰 News
 
-- **[2026-05-14]** 🏆 AHE (on GPT-5.5) ranked **#3** on the [Terminal-Bench 2.0 leaderboard](https://www.tbench.ai/leaderboard/terminal-bench/2.0) with **84.7%** — ranking as of 2026-05-15
-- **[2026-04-30]** ✍️ Blog post on Dawning Road (English & Chinese) — a more detailed account of the exploration behind AHE: [Agentic Harness Engineering](https://dawning-road.github.io/blog/agentic-harness-engineering)
-- **[2026-04-28]** 📄 Paper released on arXiv: [Agentic Harness Engineering: Observability-Driven Automatic Evolution of Coding-Agent Harnesses](https://arxiv.org/abs/2604.25850)
 - **[2026-04]** 🎉 Framework released
 
 ---
@@ -72,7 +62,7 @@ sudo apt install -y tmux
 ### 1. Clone + install dependencies
 
 ```bash
-git clone https://github.com/Curry09/agentic-harness-engineering.git
+  git clone https://github.com/OWNER/agentic-harness-engineering.git
 cd agentic-harness-engineering
 uv sync
 ```
@@ -132,7 +122,7 @@ uv run python scripts/build_templates.py --dataset-dir /path/to/dataset task_a t
 
 The dataset directory must contain one subdir per task with a `task.toml` declaring `[environment].docker_image` (or an `environment/Dockerfile` fallback). Each task's template alias is `<task_name>` with `.` replaced by `-`.
 
-The default packages baked into each template come from `scripts/build_templates.py:DEFAULT_NEXAU_PACKAGES` (a public NexAU + the in-sandbox `NexAU-harbor` variant, intentionally distinct from the host-side `harbor-LJH` in `pyproject.toml`). Override with one or more `--nexau-package <git-or-pip-spec>` flags if you need a different revision in the sandbox.
+The default packages baked into each template come from `scripts/build_templates.py:DEFAULT_NEXAU_PACKAGES` (a public NexAU + the in-sandbox `NexAU-harbor` variant, intentionally distinct from the host-side `harbor` fork in `pyproject.toml`). Override with one or more `--nexau-package <git-or-pip-spec>` flags if you need a different revision in the sandbox.
 
 If your tasks pull from a private Docker registry, also export `DOCKER_REGISTRY_USERNAME` and `DOCKER_REGISTRY_PASSWORD` before invoking the script.
 
@@ -320,13 +310,3 @@ A thin wrapper around `uv run python evolve.py` + tmux.
 ## License
 
 MIT
-
----
-
-## Star History
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=china-qijizhifeng/agentic-harness-engineering&type=Date&theme=dark" />
-  <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=china-qijizhifeng/agentic-harness-engineering&type=Date" />
-  <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=china-qijizhifeng/agentic-harness-engineering&type=Date" />
-</picture>

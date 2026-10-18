@@ -13,7 +13,7 @@
   "crop_catalog": {
     "blue_jazz": {
       "id": "blue_jazz",
-      "name": "蓝爵",
+      "name": "Blue Jazz",
       "seed_price": 30,
       "maturity_days": 7,
       "yield_per_harvest": 2,
@@ -21,7 +21,7 @@
     },
     "coffee_bean": {
       "id": "coffee_bean",
-      "name": "咖啡豆",
+      "name": "Coffee Bean",
       "seed_price": 450,
       "maturity_days": 10,
       "yield_per_harvest": 20,
@@ -29,7 +29,7 @@
     },
     "potato": {
       "id": "potato",
-      "name": "土豆",
+      "name": "Potato",
       "seed_price": 50,
       "maturity_days": 6,
       "yield_per_harvest": 5,
@@ -37,7 +37,7 @@
     },
     "unmilled_rice": {
       "id": "unmilled_rice",
-      "name": "未碾米",
+      "name": "Unmilled Rice",
       "seed_price": 40,
       "maturity_days": 8,
       "yield_per_harvest": 10,

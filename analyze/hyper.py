@@ -1,4 +1,4 @@
-"""按 HyperAgent 父子树分析补丁，并为每个候选保存精炼快照。"""
+"""Analyze patches along the HyperAgent parent-child tree and save a refined snapshot per candidate."""
 
 import json
 from collections.abc import Callable
@@ -11,13 +11,13 @@ from .reader import collect_hyperagent_artifacts, collect_hyperdsh_artifacts
 
 
 def _write_state(path: Path, state: dict[str, Any]) -> None:
-    """在每个候选结束后保存可检查的树状态。"""
+    """Save an inspectable tree state after each candidate finishes."""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def _base_node(source: dict[str, Any], snapshot_ids: list[str]) -> dict[str, Any]:
-    """创建 HyperAgent 结点共有字段。"""
+    """Create the fields shared by every HyperAgent node."""
     return {
         "node_id": source["node_id"],
         "parent_id": source["parent_id"],
@@ -34,7 +34,7 @@ def _base_node(source: dict[str, Any], snapshot_ids: list[str]) -> dict[str, Any
 
 
 def _update_leaves(state: dict[str, Any]) -> None:
-    """记录当前已处理树中的叶结点。"""
+    """Record the leaf nodes of the currently processed tree."""
     parent_ids = {
         node["parent_id"] for node in state["nodes"]
         if node["parent_id"] is not None
@@ -49,12 +49,12 @@ def _parent_snapshot(
     source: dict[str, Any],
     snapshots: dict[str, list[str]],
 ) -> list[str]:
-    """根结点从空快照开始，其他结点严格继承显式父结点。"""
+    """The root starts from an empty snapshot; other nodes strictly inherit from their explicit parent."""
     parent_id = source["parent_id"]
     if parent_id is None:
         return []
     if parent_id not in snapshots:
-        raise ValueError(f"父结点尚未处理：{source['node_id']} -> {parent_id}")
+        raise ValueError(f"Parent node not processed yet: {source['node_id']} -> {parent_id}")
     return list(snapshots[parent_id])
 
 
@@ -65,7 +65,7 @@ def _analyze_node(
     call_options: dict[str, Any],
     method_name: str,
 ) -> dict[str, Any]:
-    """分析一个候选；无修改结点直接继承父快照。"""
+    """Analyze one candidate; a node with no change directly inherits the parent snapshot."""
     node = _base_node(source, parent_snapshot)
     if not source["changed"]:
         node.update({
@@ -112,13 +112,13 @@ def run_hyper_analysis(
     on_node: Callable[[dict[str, Any]], None] | None = None,
     method_name: str = "HyperAgent",
 ) -> dict[str, Any]:
-    """按拓扑顺序分析 HyperAgent 风格的候选树。"""
+    """Analyze a HyperAgent-style candidate tree in topological order."""
     collectors = {
         "HyperAgent": collect_hyperagent_artifacts,
         "HyperDSH": collect_hyperdsh_artifacts,
     }
     if method_name not in collectors:
-        raise ValueError(f"不支持的树状分析方法：{method_name}")
+        raise ValueError(f"Unsupported tree analysis method: {method_name}")
     sources = collectors[method_name](experiment_dir)
     if limit is not None:
         sources = sources[:limit]

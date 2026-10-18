@@ -12,5 +12,5 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# code_agent_simple：不在包根聚合导入，避免拉取未随仓库提供的 file_tools / session_tools 等。
-# 工具通过 YAML 中的实现路径加载，例如 tools.shell_tools:run_shell_command。
+# code_agent_simple: do not aggregate imports at the package root, to avoid pulling in file_tools / session_tools and others not shipped with the repository.
+# Tools are loaded via the implementation path in YAML, e.g. tools.shell_tools:run_shell_command.

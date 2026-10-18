@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-Harness Compliance Checker — 验证 Agent workspace 是否符合 HARNESS.md v1.0 规范。
+Harness Compliance Checker -- verify that an Agent workspace conforms to the HARNESS.md v1.0 specification.
 
-用法:
+Usage:
   python validate_harness.py /path/to/workspace [--json] [--profile hermes|openclaw|codex|generic]
 
-输出:
-  合规审计报告 (JSON 格式 + 可读摘要)
+Output:
+  compliance audit report (JSON + a readable summary)
 """
 import os
 import sys
@@ -130,7 +130,7 @@ def audit_workspace(workspace_root: str, profile: str = "generic") -> dict:
     score = 0
     max_score = sum(c["weight"] for c in checks.values())
 
-    # Manifest 检查
+    # Manifest checks
     has_manifest_dir = (root / "manifests").is_dir()
     has_manifest_paths = [p for p in root.glob("*manifest*") if p.is_file()] + [p for p in root.glob("manifests/*.json") if p.is_file()]
     has_manifest = bool(has_manifest_paths)
@@ -186,7 +186,7 @@ def audit_workspace(workspace_root: str, profile: str = "generic") -> dict:
 
         report["components"][name] = component_report
 
-    # Manifest 检查
+    # Manifest checks
     manifest_files_str = []
     if has_manifest_paths:
         manifest_files_str = [str(p.relative_to(root)) for p in has_manifest_paths]
@@ -241,7 +241,7 @@ def print_report(report: dict):
         for w in report["warnings"]:
             print(f"  [WARN] {w}")
 
-    # 分级判定
+    # Severity classification
     num_issues = len(report["issues"])
     if pct >= 90 and num_issues == 0:
         print(f"\n[PERFECT] Perfect compliance with HARNESS.md v1.0!")

@@ -58,7 +58,7 @@ one of these schemas:
 ```json
 {"mode": "check",
  "issues": [
-   {"issue_type": "工具错误 | 幻觉 | 循环 | 不合规 | 截断",
+   {"issue_type": "tool_error | hallucination | loop | non_compliance | truncation",
     "summary": "<one-line summary>",
     "evidence": "<quoted text / exact reason>",
     "trace_id": "<id of the trace this issue belongs to>",
@@ -67,7 +67,7 @@ one of these schemas:
  "response": "<short overall paragraph>"}
 ```
 
-`issue_type` MUST be one of the five Chinese enum values. `message_index`
+`issue_type` MUST be one of the five enum values. `message_index`
 is the 0-based position within that trace's normalized `messages` array.
 `trace_id` MUST match a `trace_id` from the input files; if a file lacks
 one, use its basename instead. `issues` may be an empty list if no

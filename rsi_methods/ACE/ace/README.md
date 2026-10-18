@@ -3,9 +3,6 @@
 <div align="left">
 
 <p align="left" style="display:flex; gap:18px;">
-  <a href="https://arxiv.org/abs/2510.04618" target="_blank" style="margin-right:0;">
-    <img alt="arXiv" src="https://img.shields.io/badge/arXiv-2510.04618-b31b1b.svg">
-  </a>
   <a href="https://join.slack.com/t/ace-agent/shared_invite/zt-3np7gusuf-DCUJaBshNjuAz5ECDx702w" target="_blank" style="margin-right:0;">
     <img alt="Slack" src="https://img.shields.io/badge/Join Slack-4A154B?logo=slack&logoColor=white">
   </a>
@@ -32,7 +29,7 @@
 ACE (Agentic Context Engineering) is a framework that enables large language models to self-improve by treating contexts as evolving playbooks that accumulate, refine, and organize strategies through a modular process of generation, reflection, and curation. Unlike traditional approaches that suffer from **brevity bias** and **context collapse**, ACE introduces structured, incremental updates guided by a grow-and-refine principle, preserving detailed, domain-specific knowledge while remaining comprehensive and scalable throughout adaptation.
 
 ## Latest News
-- **2025 Nov**: ACE [Paper](https://arxiv.org/abs/2510.04618) and Repo says "Hello World"!
+- **2025 Nov**: ACE Repo says "Hello World"!
 
 ### Key Features
 
@@ -335,7 +332,7 @@ This work builds upon insights from Dynamic Cheatsheet and incorporates ideas fr
 
 ### 📧 Contact
 For questions and feedback:
-- **Paper Authors**: See [arXiv paper](https://arxiv.org/abs/2510.04618) for author contact information
+- **Paper Authors**: See the accompanying publication for author contact information
 - **Issues**: Please open an issue on GitHub
 - **Discussions**: Join the [GitHub Discussions](../../discussions)
 
@@ -347,14 +344,10 @@ For questions and feedback:
 If you use ACE in your research, please cite our paper:
 
 ```bibtex
-@misc{zhang2025agenticcontextengineeringevolving,
+@misc{ace,
       title={Agentic Context Engineering: Evolving Contexts for Self-Improving Language Models}, 
-      author={Qizheng Zhang and Changran Hu and Shubhangi Upasani and Boyuan Ma and Fenglu Hong and Vamsidhar Kamanuru and Jay Rainton and Chen Wu and Mengmeng Ji and Hanchen Li and Urmish Thakker and James Zou and Kunle Olukotun},
+      author={Anonymous},
       year={2025},
-      eprint={2510.04618},
-      archivePrefix={arXiv},
-      primaryClass={cs.LG},
-      url={https://arxiv.org/abs/2510.04618}, 
 }
 ```
 

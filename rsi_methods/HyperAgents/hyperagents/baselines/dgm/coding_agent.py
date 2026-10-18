@@ -1,4 +1,4 @@
-# Code adapted from https://github.com/jennyzzt/dgm/blob/main/coding_agent.py
+# Code adapted from the DGM project (coding_agent.py)
 
 import argparse
 import subprocess

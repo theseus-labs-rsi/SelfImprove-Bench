@@ -68,10 +68,10 @@ NEXAU_VENV = "/opt/nexau-venv"
 
 # Default packages installed into the template's nexau venv. These pin the
 # in-sandbox NexAU + harbor pair; they are intentionally separate from the
-# host-side deps in pyproject.toml (host runs harbor-LJH; the sandbox runs
+# host-side deps in pyproject.toml (host runs the harbor fork; the sandbox runs
 # NexAU-harbor, the trimmed harbor variant meant for in-template execution).
 DEFAULT_NEXAU_PACKAGES = [
-    "git+https://github.com/Curry09/NexAU-harbor.git",
+    "git+https://github.com/OWNER/NexAU-harbor.git",
     "git+https://github.com/nex-agi/NexAU.git@v0.3.9",
 ]
 

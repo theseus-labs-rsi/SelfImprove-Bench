@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# # # 恢复 gpt54 实验，从第 1 轮开始，跳过评测（直接用已有 rollout 结果）
+# # # Resume the gpt54 experiment from round 1, skipping evaluation (reuse existing rollout results)
 # exec "$(dirname "$0")/evolve.sh" \
 #     --experiment xxx \
 #     --start-iteration 13 \

@@ -157,7 +157,7 @@ class CodexExecAgent(GeneralistAgent):
                 json.dumps({"OPENAI_API_KEY": self._api_key}, ensure_ascii=False, indent=2),
                 encoding="utf-8",
             )
-            endpoint = getattr(self.config, "endpoint", None) or "https://free-router.opendatalab.com/v1"
+            endpoint = getattr(self.config, "endpoint", None) or "https://api.example.invalid/v1"
             config_path = Path(codex_home) / "config.toml"
             reasoning_effort = str(getattr(self.config, "reasoning_effort", "medium")).strip().lower()
             if reasoning_effort not in {"none", "minimal", "low", "medium", "high", "xhigh"}:

@@ -1379,7 +1379,7 @@ def _extract_trace_timing(trace_path: Path) -> str:
 
 
 def _invoke_adb_ask_once(cmd: list[str], env: dict[str, str], timeout: float) -> str:
-    """单次执行 ``adb ask``：成功返回模型回复文本；失败则返回以 ``[adb`` 开头的错误摘要。"""
+    """Run a single ``adb ask``: return the model reply text on success, or an error summary starting with ``[adb`` on failure."""
     try:
         result = subprocess.run(
             cmd, capture_output=True, text=True,
@@ -1476,7 +1476,7 @@ def _run_single_adb_ask(job: TaskAnalysisJob, config: dict, k: int = 1,
         env["QA_API_KEY"] = llm_cfg["api_key"]
 
     timeout = float(config.get("timeout_per_task", 180))
-    # 按 task 重试：子进程失败 / JSON status=failed / 超时 / 非零退出码 等凡返回 [adb 前缀的均会重试
+    # Retry per task: any result with the [adb prefix (subprocess failure / JSON status=failed / timeout / nonzero exit code) is retried
     retry_attempts = max(1, int(config.get("retry_attempts", 3)))
     backoff = float(config.get("retry_backoff_seconds", 2.0))
 
@@ -1488,8 +1488,8 @@ def _run_single_adb_ask(job: TaskAnalysisJob, config: dict, k: int = 1,
         if attempt < retry_attempts - 1:
             msg = response[:200].replace("\n", " ")
             print(
-                f"[adb] task={job.task_name} 第 {attempt + 1}/{retry_attempts} 次失败，"
-                f"{backoff:.1f}s 后重试: {msg}",
+                f"[adb] task={job.task_name} attempt {attempt + 1}/{retry_attempts} failed, "
+                f"retrying in {backoff:.1f}s: {msg}",
                 flush=True,
             )
             time.sleep(backoff)
@@ -1546,7 +1546,7 @@ def _run_single_adb_ask(job: TaskAnalysisJob, config: dict, k: int = 1,
 def _extract_one_liner(qa_response: str) -> str:
     """Extract a short plain-text summary for overview lines (single line).
 
-    adb replies are often Markdown (## 回答, numbered sections). The old
+    adb replies are often Markdown (## Answer, numbered sections). The old
     `. ` split misfired on ``1. ...`` list markers and produced broken overviews.
     """
     s = qa_response.strip()

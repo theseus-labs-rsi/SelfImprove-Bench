@@ -33,16 +33,19 @@ METRICS = (
     "score_variance", "declining_round_fraction",
     "drop_20pct_round_count",
 )
-CHINESE_COLUMNS = {
-    "first_absolute_score": "首轮绝对分数", "last_absolute_score": "末轮绝对分数",
-    "absolute_gain": "（末轮-首轮）", "relative_gain": "（末轮-首轮）/首轮",
-    "replay_score_difference": "重放得分差异", "replay_difference_per_gap": "重放分差/间隔",
-    "holdout_same_domain_same_difficulty": "域内同难度上的留出评测",
-    "holdout_same_domain_higher_difficulty": "域内难度提高的留出评测",
-    "holdout_cross_domain": "跨域任务评测", "tokens_per_absolute_gain": "Token/绝对增益",
-    "time_per_absolute_gain": "Time/绝对增益", "score_variance": "得分方差",
-    "declining_round_fraction": "得分下降轮次占比",
-    "drop_20pct_round_count": "回退至少20%的轮次数",
+COLUMN_LABELS = {
+    "first_absolute_score": "First-round absolute score",
+    "last_absolute_score": "Last-round absolute score",
+    "absolute_gain": "(last - first)", "relative_gain": "(last - first) / first",
+    "replay_score_difference": "Replay score difference",
+    "replay_difference_per_gap": "Replay difference / gap",
+    "holdout_same_domain_same_difficulty": "Holdout: same domain, same difficulty",
+    "holdout_same_domain_higher_difficulty": "Holdout: same domain, higher difficulty",
+    "holdout_cross_domain": "Holdout: cross-domain",
+    "tokens_per_absolute_gain": "Tokens / absolute gain",
+    "time_per_absolute_gain": "Time / absolute gain", "score_variance": "Score variance",
+    "declining_round_fraction": "Fraction of declining rounds",
+    "drop_20pct_round_count": "Rounds dropping at least 20%",
 }
 TEXT_FIELDS = (
     "source_path", "schema_kind", "run_id", "repeat_id", "method", "provider",
@@ -453,9 +456,9 @@ def _write_markdown(path: Path, rows: list[dict[str, Any]], *, aggregate: bool) 
     labels = ["schema", "method", "benchmark", "difficulty"]
     if aggregate:
         fields.append("repeat_count")
-        labels.append("重复数")
+        labels.append("repeats")
     fields.extend(METRICS)
-    labels.extend(CHINESE_COLUMNS[field] for field in METRICS)
+    labels.extend(COLUMN_LABELS[field] for field in METRICS)
     lines = ["| " + " | ".join(labels) + " |", "| " + " | ".join("---" for _ in fields) + " |"]
     for row in rows:
         values = []

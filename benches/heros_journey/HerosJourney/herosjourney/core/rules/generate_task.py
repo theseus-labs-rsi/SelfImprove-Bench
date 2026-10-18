@@ -26,7 +26,7 @@ def list_json_files(directory):
 
 
 def collect_meta_paths(input_meta: dict) -> set:
-    """提取 input_meta 中已经使用的 lexicon path，用于后续过滤。"""
+    """Extract lexicon paths already used in input_meta for later filtering."""
     used_paths = set()
     for key in ("name", "repeat_name"):
         used_paths.update(input_meta.get(key, []))
@@ -35,7 +35,7 @@ def collect_meta_paths(input_meta: dict) -> set:
 
 
 def get_valid_pools(data, meta_paths: set, threshold: int, current_path="") -> list:
-    """递归查找长度足够且不属于元数据的 lexicon pool。"""
+    """Recursively find a lexicon pool that is long enough and is not metadata."""
     valid_pools = []
     if not isinstance(data, dict):
         return valid_pools
@@ -50,7 +50,7 @@ def get_valid_pools(data, meta_paths: set, threshold: int, current_path="") -> l
 
 
 def get_nested_node(data: dict, category_path: str):
-    """按点分路径取得 lexicon 节点。"""
+    """Get a lexicon node by dotted path."""
     current = data
     for key in category_path.split("."):
         if not isinstance(current, dict) or key not in current:
@@ -76,7 +76,7 @@ def _find_input_pools(input_dimensions: int, input_n: int, seed: int) -> list:
     candidates = list(unique.values())
     if len(candidates) < input_dimensions:
         raise ValueError(
-            f"找不到足够的 input pool：需要 {input_dimensions} 个，只有 {len(candidates)} 个。"
+            f"Not enough input pools: need {input_dimensions}, only {len(candidates)} available."
         )
     return random.Random(seed).sample(candidates, input_dimensions)
 
@@ -91,13 +91,13 @@ def construct(
 ):
 
     if input_dimensions != 2:
-        raise ValueError("单层 override 第一版要求 input_dimensions=2。")
+        raise ValueError("The first version of single-level override requires input_dimensions=2.")
     if output_dimensions < 2 or output_dimensions > len(OUTPUT_SPECS):
         raise ValueError(
-            f"output_dimensions 必须在 2 到 {len(OUTPUT_SPECS)} 之间。"
+            f"output_dimensions must be between 2 and {len(OUTPUT_SPECS)}."
         )
     if input_n < 2 or output_n < 2:
-        raise ValueError("input_n 和 output_n 必须至少为 2。")
+        raise ValueError("input_n and output_n must be at least 2.")
 
     rng = random.Random(seed)
     input_pools = _find_input_pools(input_dimensions, input_n, seed)

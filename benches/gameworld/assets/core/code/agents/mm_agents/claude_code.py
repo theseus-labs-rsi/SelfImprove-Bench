@@ -32,7 +32,7 @@ class ClaudeCodeConfig(BaseClientConfig):
         default_factory=lambda: os.environ.get("ANTHROPIC_AUTH_TOKEN")
     )
     claude_bin: str = "claude"
-    endpoint: str | None = "https://free-router.opendatalab.com"
+    endpoint: str | None = "https://api.example.invalid"
     request_timeout: float = 180.0
     retry_interval_sec: float = 30.0
     max_attempts: int = 120
@@ -48,7 +48,7 @@ class ClaudeCodeAgent(GeneralistAgent):
         self._claude_bin = str(getattr(config, "claude_bin", "claude"))
         self._base_url = str(
             getattr(config, "endpoint", None)
-            or "https://free-router.opendatalab.com"
+            or "https://api.example.invalid"
         ).rstrip("/")
         self._api_key = self._resolve_api_key(
             config.api_key,

@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-Generate Change Manifest — 根据 git diff 或用户输入生成 HARNESS.md Change Manifest。
+Generate Change Manifest -- produce a HARNESS.md Change Manifest from a git diff or user input.
 
-用法:
+Usage:
   python generate_manifest.py --workspace /path/to/workspace
                              [--diff --staged | --interactive]
                              [--author agent-name]
 
-输出:
-  将 manifest 写入 manifests/change_<timestamp>.json
+Output:
+  write the manifest to manifests/change_<timestamp>.json
 """
 import copy
 import os
@@ -48,7 +48,7 @@ def get_next_iteration(root: Path) -> int:
 
 
 def parse_git_diff(root: Path, staged: bool = False) -> list:
-    """从 git diff 提取变更信息"""
+    """Extract change information from a git diff"""
     cmd = ["git", "diff", "--name-only"]
     if staged:
         cmd.append("--staged")
@@ -68,7 +68,7 @@ def parse_git_diff(root: Path, staged: bool = False) -> list:
 
 
 def parse_diff_output(diff_text: str, root: Path) -> list:
-    """解析 `git diff --name-only` 输出，映射到组件"""
+    """Parse `git diff --name-only` output and map it to components"""
     changes = []
     seen_paths = set()
     for line in diff_text.splitlines():
@@ -98,7 +98,7 @@ def parse_diff_output(diff_text: str, root: Path) -> list:
 
 
 def _detect_component(path: Path) -> str:
-    """根据文件路径推断所属组件"""
+    """Infer the owning component from a file path"""
     spath = str(path.as_posix())
     if spath in ("AGENTS.md", "SOUL.md", "systemprompt.md", "CLAUDE.md", ".cursorrules"):
         return "system_rules"
@@ -118,7 +118,7 @@ def _detect_component(path: Path) -> str:
 
 
 def interactive_mode(root: Path) -> list:
-    """交互式输入变更信息"""
+    """Interactively collect change information"""
     print(f"\n[Harness Change Manifest Generator]")
     print(f"  Workspace: {root.resolve()}")
     print(f"  Iteration: {get_next_iteration(root)}")
@@ -165,7 +165,7 @@ def interactive_mode(root: Path) -> list:
 
 
 def write_manifest(root: Path, changes: list, author: str):
-    """将 manifest 写入文件"""
+    """Write the manifest to a file"""
     next_iter = get_next_iteration(root)
     now = datetime.now(TZ)
     scheduled = (now + timedelta(hours=24)).isoformat()
