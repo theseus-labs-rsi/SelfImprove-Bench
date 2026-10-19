@@ -8,6 +8,7 @@ from typing import Any
 from .ace import run_ace_analysis
 from .ahe import run_ahe_analysis
 from .hyper import run_hyper_analysis
+from .report import GAMES, run_report
 
 
 def _positive_int(value: str) -> int:
@@ -40,6 +41,13 @@ def _build_parser() -> argparse.ArgumentParser:
     ahe.add_argument("--model", default=os.getenv("OPENAI_MODEL"), help="Model name")
     ahe.add_argument("--limit", type=_positive_int, help="Analyze only the first N iterations")
     ahe.add_argument("--timeout", type=float, help="Timeout in seconds for a single API request")
+    report = commands.add_parser("report", help="Create an evidence-linked, per-game trajectory report")
+    report.add_argument("--game", required=True, choices=GAMES, help="Game shared by all input trajectories")
+    report.add_argument("--input", dest="inputs", nargs="+", required=True, help="Existing trajectory analysis JSON files")
+    report.add_argument("--output-dir", required=True, help="Directory for Markdown, JSON and CSV reports")
+    report.add_argument("--model", help="Optional interpretation model; omit for offline statistics only")
+    report.add_argument("--language", choices=("zh", "en"), default="zh", help="Report language")
+    report.add_argument("--timeout", type=float, help="Timeout in seconds for the report API request")
     return parser
 
 
@@ -62,7 +70,12 @@ def _print_node(node: dict[str, Any]) -> None:
 def main() -> None:
     """Parse arguments and run the control loop of the selected method."""
     args = _build_parser().parse_args()
-    if args.command == "ace":
+    if args.command == "report":
+        try:
+            run_report(args)
+        except (OSError, ValueError, RuntimeError) as exc:
+            raise SystemExit(str(exc)) from exc
+    elif args.command == "ace":
         if not args.model:
             raise SystemExit("Specify a model via --model or OPENAI_MODEL")
         state = run_ace_analysis(

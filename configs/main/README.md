@@ -176,6 +176,58 @@ exclude replay/holdout/candidate-validation runs, and pair rounds 1-2 through
 Do not mix these differences with parent/candidate scores from analyzer nodes.
 No paper-table generator is needed to retain these underlying experimental data.
 
+### Readable Per-Game Reports
+
+After classifying the trajectories above, combine the frameworks for one game:
+
+```bash
+python -m analyze report --game farm --input analysis/farm_ace.json analysis/farm_ahe.json analysis/farm_hyperagents.json --output-dir analysis/reports/farm --model gpt-5.6-sol
+```
+
+Use any of the six game names (`farm`, `combat`, `sweepmine`, `hero`, `minecraft`,
+`astray`), with only the matching game's input files. The game name is explicitly
+declared and checked against an embedded `game` field when present; otherwise
+it is not independently verified. Trajectory schemas 5, 6, and 7 are supported;
+old files without node scores can still be analyzed, with scores left missing.
+One or multiple framework/run files are accepted; runs remain separate rather
+than being treated as independent seeds or silently pooled. Duplicate input
+contents and duplicate node IDs within one input are rejected.
+
+Outputs in the requested directory:
+
+- `report.md`: readable overview, per-node score records, proposal classification
+  counts, category/delta associations, findings, recommendations, hypotheses,
+  and an evidence index. Chinese by default; use `--language en` for English.
+- `report.json`: full-precision statistics, complete source evidence, source-file
+  hashes, evidence IDs, model interpretation, limitations, and API usage metadata.
+- `nodes.csv`: node-level scores, acceptance/selection status and proposal counts.
+- `proposals.csv`: every extracted proposal occurrence with labels and evidence.
+
+Without `--model`, the command performs no API calls, even if `OPENAI_MODEL` is
+set. With `--model`, structured interpretation calls summarize
+observations, proposes concrete changes and validation experiments, and outlines
+possible characteristics. Every statement must reference existing evidence IDs;
+invalid references fail instead of silently entering the report. The statistical
+files remain available if model interpretation fails, with an explicit failure
+status. The command does not modify trajectory files or train/evaluate agents.
+
+Statistics are recomputed from the node proposals, not cached summary counters.
+Node deltas require finite parent/current scores and must agree with any stored
+delta. Missing scores and unknown acceptance remain missing/unknown, not zero or
+rejection. Category associations count each node once per label; overlapping
+labels and multiple proposals at a node preclude causal attribution to one
+proposal. The node score semantics stay those of each framework's analyzer:
+these are **not** the adjacent-training-round score analysis or HCI. Incomplete
+analyses are flagged and unclassified nodes are not zero-proposal observations.
+
+Full evidence is retained in JSON/CSV. For the model prompt only, individual
+evidence fragments are capped at 1,200 characters and marked if truncated. An
+oversized catalogue is split into node-preserving batches, followed by a final
+synthesis that merges the evidence-linked findings. No nodes are silently
+omitted. This uses multiple API calls for large inputs; one node or a final
+synthesis that still exceeds the limit is rejected explicitly. Suggestions and hypotheses require new
+controlled experiments before being treated as established results.
+
 ## Provenance and Limits
 
 - Farm's 18-crop catalog and numeric crop attributes are recovered from archived

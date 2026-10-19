@@ -97,6 +97,21 @@ python -m analyze hyper outputs/main/farm/hyperagents --model MODEL --output far
 python -m benchmark.aggregate_results --input RUN_DIRS --output-dir OUT
 ```
 
+Create a readable report for one game from its existing trajectory analyses:
+
+```bash
+python -m analyze report --game farm --input farm_ace_analysis.json farm_ahe_analysis.json farm_hyperagents_analysis.json --output-dir analysis/reports/farm --model MODEL
+```
+
+This writes `report.md`, `report.json`, `nodes.csv`, and `proposals.csv`.
+The report contains descriptive statistics, evidence-linked findings, untested
+improvement recommendations, and hypotheses about trajectory characteristics.
+Omit `--model` for offline statistics only (no API calls). Game identity is
+declared by `--game`; pass only that game's trajectories. Repeat for each game.
+Model interpretations are not causal proof or replacements for raw scores.
+Large inputs are interpreted in node-preserving batches and then synthesized;
+this requires multiple API calls when `--model` is enabled.
+
 Calculate G0--G3 HCI from a trained run and its matching untrained evaluation:
 
 ```bash
