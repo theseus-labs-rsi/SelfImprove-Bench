@@ -1,7 +1,7 @@
 # SelfImprove-Bench
 
 A deterministic benchmark harness for evaluating Recursive Self-Improvement (RSI)
-and self-evolving agent methods across multiple game environments.
+and self-evolving agent methods across six game environments.
 
 ## Project Overview
 
@@ -12,8 +12,9 @@ score gain, replay retention, generalization, and token/time cost.
 - `benchmark/` — orchestration: config loading, deterministic task/holdout
   generation, agent lifecycle, refinement/selection loop, metrics, persistence.
   Entry point: `python -m benchmark`.
-- `benches/` — game modules (task generation, simulator, reference scoring):
-  `farm`, `combat`, `sweepmine`, `heros_journey`, `gameworld`.
+- `benches/` — six games (task generation, simulator, reference scoring):
+  Farm, Combat, Sweepmine, Hero's Journey, Minecraft, and Astray.
+  Minecraft and Astray share the GameWorld integration.
 - `rsi_methods/` — method adaptors: `ACE`, `AHE`, `HyperAgents`.
 - `analyze/` — inspects a method's evolution artifacts.
 
@@ -95,6 +96,17 @@ python -m analyze ahe outputs/main/farm/ahe --model MODEL --output farm_ahe_anal
 python -m analyze hyper outputs/main/farm/hyperagents --model MODEL --output farm_hyperagents_analysis.json
 python -m benchmark.aggregate_results --input RUN_DIRS --output-dir OUT
 ```
+
+Calculate G0--G3 HCI from a trained run and its matching untrained evaluation:
+
+```bash
+python -m benchmark.hci --trained outputs/main/farm/ace --initial outputs/main/farm/ace_initial --output analysis/farm_ace_hci.json
+```
+
+HCI is a ratio, not a percent. The command checks task identities, uses the
+post-refinement retained-harness baseline for G0, and the target game's initial
+scores for G1--G3. See [the main experiment guide](configs/main/README.md#hci-calculation)
+for task groupings and missing-data handling.
 
 ## License and third-party components
 

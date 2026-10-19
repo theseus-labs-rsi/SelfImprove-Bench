@@ -85,6 +85,47 @@ candidate score. Missing selection evidence is reported as an unavailable pair,
 not silently replaced with the pre-refinement score. Initial and trained holdout
 manifests have identical task identities even though their config hashes differ.
 
+## HCI Calculation
+
+After both the normal run and its matching `--initial` run finish:
+
+```bash
+python -m benchmark.hci --trained outputs/main/farm/ace --initial outputs/main/farm/ace_initial --output analysis/farm_ace_hci.json
+```
+
+The command supports all six games and all three frameworks. It reads
+`result.json` and `task_manifest.json` in each directory without making model
+calls or modifying experimental records. Replace the game and method names to
+calculate another experiment. It produces scores and HCI data, not paper tables.
+
+- Formula: `(mean(final) - mean(initial)) / (1 - mean(initial))`, using normalized
+  `relative_score` throughout. Output HCI values are ratios, not percentages.
+  Scores and HCI values are not clipped, including scores above the reference.
+- G0: the retained harness's post-refinement score on each original instance
+  versus the later replay execution score on that exact instance.
+- G1: initial versus trained scores on the source game's Medium holdouts.
+- G2: initial versus trained scores on the source game's Hard holdouts.
+- G3: initial versus trained scores on the paired destination game's Medium
+  holdouts, both read from this experiment's matching holdout manifests.
+  The source game's Medium baseline is never substituted.
+
+Medium/Hard are D3/D5 for Farm/Combat and D3/D4 for Sweepmine/Hero. Minecraft
+uses `18_02,18_03` / `18_04,18_05`; Astray uses `03_03` / `03_05`, matching the
+reported grouping above. G3 uses the destination game's Medium definition.
+The command verifies manifest fingerprints, complete result coverage, matching
+initial/trained task identities, identical agent configurations, and an untrained
+initial baseline. Use the same method TOML/model settings for both runs: the
+benchmark JSON does not capture changes to external method TOMLs.
+
+Execution records with `status=error` or `status=skipped` count as zero while
+preserving their statuses in the output. Missing or invalid successful scores
+are not silently converted to zero. Missing G0 post-refinement evidence is not
+replaced by a pre-refinement score. A missing group or score makes that HCI
+`unavailable`; partial groups are not averaged into a reported HCI. The report
+is saved with status `incomplete` and exit code 1. Invalid/mismatched inputs are
+rejected with exit code 2. Zero headroom yields `hci: null`, status `undefined`,
+reason `zero_headroom`; it is not a missing experiment or a zero gain.
+
 ## Trajectory Analysis
 
 After training, run the existing analyzers on the full output directory:
