@@ -104,7 +104,7 @@ python -m benchmark.hci --trained outputs/main/farm/ace --initial outputs/main/f
 ```
 
 HCI is a ratio, not a percent. The command checks task identities, uses the
-post-refinement retained-harness baseline for G0, and the target game's initial
+pre-refinement execution-score baseline for G0, and the target game's initial
 scores for G1--G3. See [the main experiment guide](configs/main/README.md#hci-calculation)
 for task groupings and missing-data handling.
 

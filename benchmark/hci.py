@@ -9,7 +9,7 @@ from pathlib import Path
 from statistics import fmean
 from typing import Any
 
-from .metrics import post_refinement_score
+from .metrics import execution_score as _score
 from .tasks import task_fingerprint
 
 
@@ -45,12 +45,6 @@ def _game(task: dict[str, Any]) -> str:
     if game not in PAIRED_GAMES:
         raise ValueError(f"Unsupported game: {game}")
     return game
-
-
-def _score(record: dict[str, Any]) -> float | None:
-    if record.get("status") in {"error", "skipped"}:
-        return 0.0
-    return _number(record.get("relative_score")) if record.get("status") == "ok" else None
 
 
 def _index(items: list[dict[str, Any]], label: str) -> dict[str, dict[str, Any]]:
@@ -164,14 +158,7 @@ def calculate_hci(
         if original_id not in original_rounds or len(original_rounds) - original_rounds[original_id] != gap:
             raise ValueError(f"Replay timing does not match its round gap: {task['run_id']}")
         record = training_records[original_id]
-        baseline = _number(post_refinement_score(record))
-        # A retained parent with a failed execution follows the paper's zero-score rule.
-        selection = record.get("selection") or {}
-        retained_parent = selection.get("status") in {"unchanged", "skipped"} or (
-            not selection and "refinement" in record and record["refinement"] is None
-        )
-        if baseline is not None and retained_parent:
-            baseline = _score(record)
+        baseline = _score(record)
         replay = training_records[task["run_id"]]
         replay_pairs.append({
             "original_run_id": original_id, "replay_run_id": task["run_id"],
@@ -202,7 +189,7 @@ def calculate_hci(
         "source_game": source, "method": agent["provider"],
         "formula": "(mean(final) - mean(initial)) / (1 - mean(initial))",
         "score_field": "relative_score", "hci_unit": "ratio", "failed_execution_score": 0,
-        "g0_baseline": "post_refinement_score_of_retained_harness",
+        "g0_baseline": "pre_refinement_execution_score",
         "groups": groups,
     }
 

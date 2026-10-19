@@ -75,14 +75,13 @@ the game/difficulty label. Keep scores on one scale; when using `relative_score`
 use its normalized reference (1), not a raw-profit or raw-objective reference.
 
 The replay schedule uses rounds 2/7/12/17 as originals and evaluates those exact
-tasks after rounds 5/10/15/20. For G0, pair the score of the harness retained
-after the original task's refinement with its replay execution score via
-`replay_of`. Training records save this baseline as `post_refinement_score`.
-For older records, the metrics reader recovers it from the final committed
-candidate's same-task validation result; when selection retains the parent,
-use the original execution score. Never use a rejected candidate or the maximum
-candidate score. Missing selection evidence is reported as an unavailable pair,
-not silently replaced with the pre-refinement score. Initial and trained holdout
+tasks after rounds 5/10/15/20. For G0, pair the original task's execution score
+before that round's refinement (`relative_score`) with its later replay execution
+score via `replay_of`. For example, compare the score before round 2's refinement
+with the score of the framework retained after round 5 on that same round-2 task.
+Do not use `post_refinement_score`, selected-candidate scores, or the maximum
+candidate score as the G0 baseline. Selection evidence is not required for G0;
+post-refinement scores remain available as diagnostic records. Initial and trained holdout
 manifests have identical task identities even though their config hashes differ.
 
 ## HCI Calculation
@@ -101,7 +100,7 @@ calculate another experiment. It produces scores and HCI data, not paper tables.
 - Formula: `(mean(final) - mean(initial)) / (1 - mean(initial))`, using normalized
   `relative_score` throughout. Output HCI values are ratios, not percentages.
   Scores and HCI values are not clipped, including scores above the reference.
-- G0: the retained harness's post-refinement score on each original instance
+- G0: the pre-refinement execution score on each original instance
   versus the later replay execution score on that exact instance.
 - G1: initial versus trained scores on the source game's Medium holdouts.
 - G2: initial versus trained scores on the source game's Hard holdouts.
@@ -119,8 +118,8 @@ benchmark JSON does not capture changes to external method TOMLs.
 
 Execution records with `status=error` or `status=skipped` count as zero while
 preserving their statuses in the output. Missing or invalid successful scores
-are not silently converted to zero. Missing G0 post-refinement evidence is not
-replaced by a pre-refinement score. A missing group or score makes that HCI
+are not silently converted to zero. Missing G0 pre-refinement execution scores
+are not replaced by candidate or post-refinement scores. A missing group or score makes that HCI
 `unavailable`; partial groups are not averaged into a reported HCI. The report
 is saved with status `incomplete` and exit code 1. Invalid/mismatched inputs are
 rejected with exit code 2. Zero headroom yields `hci: null`, status `undefined`,

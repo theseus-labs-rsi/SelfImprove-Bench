@@ -41,13 +41,14 @@ def selected_record(score=0.8):
 
 
 class ReplayBaselineTest(unittest.TestCase):
-    def test_committed_score_not_pre_score_or_maximum(self):
+    def test_pre_score_not_committed_score_or_maximum(self):
         original = selected_record()
         replay = {"run_id": "replay", "replay": True, "replay_of": "original",
-                  "replay_gap": 3, "relative_score": 0.7}
+                  "replay_gap": 3, "relative_score": 0.7, "status": "ok"}
         retention = calculate_metrics([original, replay], [], evolution_window=1)["capability_retention"]
-        self.assertAlmostEqual(retention["average_score_change"], -0.1)
-        self.assertEqual(retention["pairs"][0]["baseline_score"], 0.8)
+        self.assertAlmostEqual(retention["average_score_change"], 0.5)
+        self.assertEqual(retention["baseline"], "pre_refinement_execution_score")
+        self.assertEqual(retention["pairs"][0]["baseline_score"], 0.2)
         self.assertEqual(retention["pairs"][0]["replay_score"], 0.7)
 
     def test_rejected_candidate_retains_parent(self):
@@ -88,15 +89,39 @@ class ReplayBaselineTest(unittest.TestCase):
         record["selection"]["stages"].insert(0, earlier)
         self.assertEqual(post_refinement_score(record), 0.8)
 
-    def test_missing_post_score_is_reported(self):
+    def test_missing_post_score_does_not_prevent_retention(self):
         record = selected_record()
         record["selection"]["status"] = "error"
         replay = {"run_id": "replay", "replay": True, "replay_of": "original",
-                  "replay_gap": 3, "relative_score": 0.7}
+                  "replay_gap": 3, "relative_score": 0.7, "status": "ok"}
+        retention = calculate_metrics([record, replay], [], evolution_window=1)["capability_retention"]
+        self.assertEqual(retention["replay_pair_count"], 1)
+        self.assertEqual(retention["unavailable_pair_count"], 0)
+        self.assertAlmostEqual(retention["average_score_change"], 0.5)
+
+    def test_missing_execution_score_is_reported(self):
+        record = selected_record()
+        record["relative_score"] = None
+        replay = {"run_id": "replay", "replay": True, "replay_of": "original",
+                  "replay_gap": 3, "relative_score": 0.7, "status": "ok"}
         retention = calculate_metrics([record, replay], [], evolution_window=1)["capability_retention"]
         self.assertEqual(retention["replay_pair_count"], 0)
         self.assertEqual(retention["unavailable_pair_count"], 1)
+        self.assertEqual(retention["unavailable_pairs"][0]["reason"], "execution_score_unavailable")
         self.assertIsNone(retention["average_score_change"])
+
+    def test_failed_original_or_replay_counts_as_zero(self):
+        for original_status, replay_status, expected in (
+            ("error", "ok", 0.7), ("skipped", "ok", 0.7),
+            ("ok", "error", -0.2), ("ok", "skipped", -0.2),
+        ):
+            with self.subTest(original=original_status, replay=replay_status):
+                record = selected_record()
+                record["status"] = original_status
+                replay = {"run_id": "replay", "replay": True, "replay_of": "original",
+                          "replay_gap": 3, "relative_score": 0.7, "status": replay_status}
+                retention = calculate_metrics([record, replay], [], evolution_window=1)["capability_retention"]
+                self.assertAlmostEqual(retention["average_score_change"], expected)
 
     def test_runner_persists_post_score_without_changing_execution(self):
         with tempfile.TemporaryDirectory() as directory:

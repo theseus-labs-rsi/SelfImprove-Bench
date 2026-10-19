@@ -18,6 +18,18 @@ def _total(record: dict[str, Any], field: str) -> float:
     return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else 0.0
 
 
+def execution_score(record: dict[str, Any]) -> float | None:
+    """Read the pre-refinement execution score, counting explicit failures as zero."""
+    if record.get("status") in {"error", "skipped"}:
+        return 0.0
+    value = record.get("relative_score")
+    return (
+        float(value) if record.get("status") == "ok"
+        and isinstance(value, (int, float)) and not isinstance(value, bool)
+        and isfinite(value) else None
+    )
+
+
 def post_refinement_score(record: dict[str, Any]) -> float | None:
     """Recover the score of the harness actually retained after same-task selection."""
     if "post_refinement_score" in record:
@@ -81,15 +93,16 @@ def calculate_metrics(
         gap = replay.get("replay_gap")
         if original is None or not isinstance(gap, int) or gap <= 0:
             continue
-        baseline = post_refinement_score(original)
-        if baseline is None:
+        baseline = execution_score(original)
+        replay_score = execution_score(replay)
+        if baseline is None or replay_score is None:
             unavailable_pairs.append({
                 "original_run_id": original["run_id"],
                 "replay_run_id": replay["run_id"],
-                "reason": "post_refinement_score_unavailable",
+                "reason": "execution_score_unavailable",
             })
             continue
-        change = _score(replay) - baseline
+        change = replay_score - baseline
         retention_changes.append(change)
         normalized_changes.append(change / gap)
         pairs.append(
@@ -98,7 +111,7 @@ def calculate_metrics(
                 "replay_run_id": replay["run_id"],
                 "gap": gap,
                 "baseline_score": baseline,
-                "replay_score": _score(replay),
+                "replay_score": replay_score,
                 "score_change": change,
                 "change_per_round": change / gap,
             }
@@ -140,7 +153,7 @@ def calculate_metrics(
             "average_score_change": fmean(retention_changes) if retention_changes else None,
             "average_change_per_round": fmean(normalized_changes) if normalized_changes else None,
             "pairs": pairs,
-            "baseline": "post_refinement",
+            "baseline": "pre_refinement_execution_score",
             "unavailable_pair_count": len(unavailable_pairs),
             "unavailable_pairs": unavailable_pairs,
         },

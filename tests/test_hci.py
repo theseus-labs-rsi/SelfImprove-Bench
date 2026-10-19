@@ -58,7 +58,8 @@ class HCITest(unittest.TestCase):
                     self.assertEqual(report["status"], "completed")
                     self.assertEqual(report["source_game"], game)
                     self.assertEqual(report["method"], method)
-                    self.assertAlmostEqual(report["groups"]["G0"]["hci"], 1 / 3)
+                    self.assertAlmostEqual(report["groups"]["G0"]["hci"], 0)
+                    self.assertEqual(report["g0_baseline"], "pre_refinement_execution_score")
                     self.assertEqual(report["groups"]["G0"]["task_count"], 4)
                     self.assertEqual(
                         [(p["original_round"], p["replay_after_round"])
@@ -96,7 +97,7 @@ class HCITest(unittest.TestCase):
         self.assertAlmostEqual(group["final_score"], 0.65)
         self.assertAlmostEqual(group["hci"], 0.3)
 
-    def test_g0_uses_final_committed_score_not_pre_score_or_best_candidate(self):
+    def test_g0_uses_pre_score_not_committed_score_or_best_candidate(self):
         data = fixture()
         for record in data[0]["training_runs"]:
             if not record["replay"]:
@@ -110,8 +111,8 @@ class HCITest(unittest.TestCase):
                     ]}],
                 }
         group = calculate_hci(*data)["groups"]["G0"]
-        self.assertEqual(group["initial_score"], 0.5)
-        self.assertAlmostEqual(group["hci"], 0.2)
+        self.assertEqual(group["initial_score"], 0.1)
+        self.assertAlmostEqual(group["hci"], 5 / 9)
 
     def test_failed_and_skipped_executions_are_zero_and_statuses_survive(self):
         data = fixture("minecraft")
@@ -154,15 +155,27 @@ class HCITest(unittest.TestCase):
                 record["reference_score"] = 1000
         self.assertAlmostEqual(calculate_hci(*data)["groups"]["G1"]["hci"], 0.5)
 
-    def test_missing_g0_evidence_does_not_fall_back_to_pre_score(self):
+    def test_g0_does_not_require_post_refinement_evidence(self):
         data = fixture()
         for record in data[0]["training_runs"]:
             if not record["replay"]:
                 record["post_refinement_score"] = None
         report = calculate_hci(*data)
-        self.assertEqual(report["status"], "incomplete")
-        self.assertIsNone(report["groups"]["G0"]["hci"])
-        self.assertEqual(report["groups"]["G0"]["valid_pair_count"], 0)
+        self.assertEqual(report["status"], "completed")
+        self.assertEqual(report["groups"]["G0"]["hci"], 0)
+        self.assertEqual(report["groups"]["G0"]["valid_pair_count"], 4)
+
+    def test_g0_missing_or_invalid_pre_score_is_not_replaced_by_post_score(self):
+        for value in (None, True, float("nan"), float("inf")):
+            with self.subTest(value=value):
+                data = fixture()
+                for record in data[0]["training_runs"]:
+                    if not record["replay"]:
+                        record["relative_score"] = value
+                group = calculate_hci(*data)["groups"]["G0"]
+                self.assertEqual(group["status"], "unavailable")
+                self.assertIsNone(group["hci"])
+                self.assertEqual(group["valid_pair_count"], 0)
 
     def test_missing_replays_is_not_zero_retention(self):
         data = fixture()
@@ -174,19 +187,21 @@ class HCITest(unittest.TestCase):
         data = fixture()
         original_id = next(r["replay_of"] for r in data[0]["training_runs"] if r["replay"])
         original = next(r for r in data[0]["training_runs"] if r["run_id"] == original_id)
-        original["post_refinement_score"] = None
+        original["relative_score"] = None
         group = calculate_hci(*data)["groups"]["G0"]
         self.assertEqual(group["valid_pair_count"], 3)
         self.assertIsNone(group["hci"])
 
-    def test_unchanged_parent_and_failed_execution_use_zero_g0_baseline(self):
-        data = fixture()
-        for record in data[0]["training_runs"]:
-            if not record["replay"]:
-                record.update(status="error", selection={"status": "unchanged"})
-        group = calculate_hci(*data)["groups"]["G0"]
-        self.assertEqual(group["initial_score"], 0)
-        self.assertAlmostEqual(group["hci"], 0.6)
+    def test_failed_execution_uses_zero_g0_baseline_regardless_of_selection(self):
+        for status in ("error", "skipped"):
+            with self.subTest(status=status):
+                data = fixture()
+                for record in data[0]["training_runs"]:
+                    if not record["replay"]:
+                        record.update(status=status, selection={"status": "committed"})
+                group = calculate_hci(*data)["groups"]["G0"]
+                self.assertEqual(group["initial_score"], 0)
+                self.assertAlmostEqual(group["hci"], 0.6)
 
     def test_mismatch_and_incomplete_records_are_rejected(self):
         mutations = (
