@@ -195,18 +195,20 @@ contents and duplicate node IDs within one input are rejected.
 
 Outputs in the requested directory:
 
-- `report.md`: readable overview, per-node score records, proposal classification
-  counts, category/delta associations, findings, recommendations, hypotheses,
-  and an evidence index. Chinese by default; use `--language en` for English.
+- `report.md`: short classification/score tables, findings and possible framework
+  characteristics. No proposal text or concrete agent-change recommendations.
+  Chinese by default; use `--language en` for English.
+- `statistics.json`: complete statistics-only model input: counts, proportions,
+  numeric score summaries and evidence IDs. No proposal text, code or raw logs.
 - `report.json`: full-precision statistics, complete source evidence, source-file
   hashes, evidence IDs, model interpretation, limitations, and API usage metadata.
 - `nodes.csv`: node-level scores, acceptance/selection status and proposal counts.
 - `proposals.csv`: every extracted proposal occurrence with labels and evidence.
 
 Without `--model`, the command performs no API calls, even if `OPENAI_MODEL` is
-set. With `--model`, structured interpretation calls summarize
-observations, proposes concrete changes and validation experiments, and outlines
-possible characteristics. Every statement must reference existing evidence IDs;
+set. With `--model`, one structured interpretation call summarizes observations
+and possible framework characteristics from aggregate statistics only.
+Every statement must reference existing aggregate-statistic evidence IDs;
 invalid references fail instead of silently entering the report. The statistical
 files remain available if model interpretation fails, with an explicit failure
 status. The command does not modify trajectory files or train/evaluate agents.
@@ -220,13 +222,24 @@ proposal. The node score semantics stay those of each framework's analyzer:
 these are **not** the adjacent-training-round score analysis or HCI. Incomplete
 analyses are flagged and unclassified nodes are not zero-proposal observations.
 
-Full evidence is retained in JSON/CSV. For the model prompt only, individual
-evidence fragments are capped at 1,200 characters and marked if truncated. An
-oversized catalogue is split into node-preserving batches, followed by a final
-synthesis that merges the evidence-linked findings. No nodes are silently
-omitted. This uses multiple API calls for large inputs; one node or a final
-synthesis that still exceeds the limit is rejected explicitly. Suggestions and hypotheses require new
-controlled experiments before being treated as established results.
+Full evidence is retained in the audit JSON/CSV, but is never sent to the report
+model. `statistics.json` is the entire data payload for interpretation; the model
+does not reclassify proposals. Oversized summaries are rejected before API calls.
+Hypotheses require controlled experiments before being treated as established results.
+
+Optionally add `--score-stats FILE [FILE ...]` to attach score statistics:
+
+- `benchmark.hci` JSON outputs (schema 1), importing G0--G3 summaries, not raw pairs.
+- Adjacent-round CSV: `game,method,valid_pairs,positive,zero,negative,mean_delta`.
+- Category association CSV: `game,method,category,pairs,positive,zero,negative,mean_delta`.
+- Evaluation CSV: `game,method,metric,target_game,score_group,initial_score,final_score,hci_ratio,hci_status`.
+
+Extra source/evidence text columns are discarded from the model input. Only rows
+for the declared game are imported; methods must match a supplied trajectory.
+Duplicate summaries are rejected. Missing scores stay missing; imported HCI is
+not recalculated. Native node deltas, adjacent-round differences and final
+evaluation gains are separate statistics, never interchangeable. Imported scores
+are matched by game/method, not independently certified as the same run lineage.
 
 ## Provenance and Limits
 

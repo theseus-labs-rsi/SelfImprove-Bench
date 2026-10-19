@@ -103,14 +103,19 @@ Create a readable report for one game from its existing trajectory analyses:
 python -m analyze report --game farm --input farm_ace_analysis.json farm_ahe_analysis.json farm_hyperagents_analysis.json --output-dir analysis/reports/farm --model MODEL
 ```
 
-This writes `report.md`, `report.json`, `nodes.csv`, and `proposals.csv`.
-The report contains descriptive statistics, evidence-linked findings, untested
-improvement recommendations, and hypotheses about trajectory characteristics.
+This writes a short `report.md` and the statistics-only model input
+`statistics.json`. Detailed audit exports remain in `report.json`, `nodes.csv`,
+and `proposals.csv`; these raw evidence exports are **not** sent to the report model.
+The model interprets classification counts/proportions and score statistics only,
+with findings and possible framework characteristics, not concrete agent changes.
+Add `--score-stats summary.csv category_stats.csv farm_ace_hci.json` to include
+adjacent-round summaries, category/score associations, or `benchmark.hci` outputs.
+Imported scores and HCI are preserved, not recomputed by the report command.
 Omit `--model` for offline statistics only (no API calls). Game identity is
 declared by `--game`; pass only that game's trajectories. Repeat for each game.
 Model interpretations are not causal proof or replacements for raw scores.
-Large inputs are interpreted in node-preserving batches and then synthesized;
-this requires multiple API calls when `--model` is enabled.
+Interpretation uses one statistics-only API request; oversized summaries are
+rejected before an API call. No proposal text, code or raw logs enter that request.
 
 Calculate G0--G3 HCI from a trained run and its matching untrained evaluation:
 
