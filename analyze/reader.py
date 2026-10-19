@@ -244,15 +244,6 @@ def collect_hyperagent_artifacts(
     )
 
 
-def collect_hyperdsh_artifacts(
-    experiment_dir: str | Path,
-) -> list[dict[str, Any]]:
-    """Read the single valid HyperDSH run and order candidates by explicit parent_id."""
-    return _collect_hyper_tree_artifacts(
-        experiment_dir, method_dir="hyperdsh", method_name="HyperDSH",
-    )
-
-
 def _collect_hyper_tree_artifacts(
     experiment_dir: str | Path,
     *,

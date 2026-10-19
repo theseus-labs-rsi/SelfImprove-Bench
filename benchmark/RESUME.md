@@ -23,10 +23,9 @@ python -m benchmark CONFIG --target-dir NEW_OUTPUT_DIR
 `CONFIG.output_dir` is the original directory and `--target-dir` is the new working
 directory; the existing adaptor recovery rules apply. It cannot be combined with
 `--resume` or `--max-new-train-runs`. An older experiment without
-`checkpoints/initial.json` cannot use the new `--resume`. HyperDSH does not yet support
-either recovery entry point and rejects them if passed explicitly.
+`checkpoints/initial.json` cannot use the new `--resume`.
 
-Ordinary errors keep the `continue_on_error` semantics; fatal AHE / HyperDSH errors stop
+Ordinary errors keep the `continue_on_error` semantics; fatal AHE errors stop
 the experiment. Continuing after a task that was not successfully committed stops
 appending to the checkpoint chain, keeps the ordinary results, and marks
 `checkpoint_chain_complete=false` in the summary. Original-directory recovery refuses to

@@ -7,7 +7,7 @@ from typing import Any
 
 from .ace import refine_snapshot, summarize_analysis
 from .llm import AnalysisLLMError, analyze_artifact
-from .reader import collect_hyperagent_artifacts, collect_hyperdsh_artifacts
+from .reader import collect_hyperagent_artifacts
 
 
 def _write_state(path: Path, state: dict[str, Any]) -> None:
@@ -115,7 +115,6 @@ def run_hyper_analysis(
     """Analyze a HyperAgent-style candidate tree in topological order."""
     collectors = {
         "HyperAgent": collect_hyperagent_artifacts,
-        "HyperDSH": collect_hyperdsh_artifacts,
     }
     if method_name not in collectors:
         raise ValueError(f"Unsupported tree analysis method: {method_name}")

@@ -185,9 +185,7 @@ evaluation rules are preserved; the training YAML uses parameterized seeds. Abso
 paths of checkpoints from before a move and code hashes are not migrated automatically;
 start a new experiment directory after changing code.
 
-GameWorld currently only accepts ACE / AHE / HyperAgents. HyperDSH image forwarding and
-step recovery are left for a later integration, while the Hero / Sweepmine HyperDSH
-integration is retained. Metrics and aggregation follow the current CSD version.
+Metrics and aggregation follow the current CSD version.
 
 TODO: config file import directories, relative-path baselines, and the initialization
 method are left for discussion; this round does not migrate config files or rewrite the

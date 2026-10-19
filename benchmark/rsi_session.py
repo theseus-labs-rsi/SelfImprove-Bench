@@ -23,7 +23,7 @@ from .contracts import (
 )
 
 
-RSI_PROVIDERS = frozenset({"ace", "baseline", "hyperagents", "hyperdsh", "self_harness", "ahe"})
+RSI_PROVIDERS = frozenset({"ace", "ahe", "hyperagents"})
 AHE_FATAL_ERROR_MARKERS = (
     "ahe selection",
     "ahe candidate generation failed",
@@ -33,31 +33,12 @@ AHE_FATAL_ERROR_MARKERS = (
     "pending rsi candidate batch",
     "prompt too long",
 )
-HYPERDSH_FATAL_ERROR_MARKERS = (
-    "deepseek harness command",
-    "deepseek harness exited with code",
-    "deepseek harness terminated by signal",
-    "hyperdsh requires",
-    "hyperdsh refinement dependencies are missing",
-    "hyperdsh profile patch",
-    "dsh: plugin tree failed to load",
-    "docker daemon is unavailable",
-    "docker image build failed",
-    "docker container creation failed",
-    "metaagent command failed",
-)
 
 
 def is_fatal_ahe_error(value: Any) -> bool:
     """Identify AHE errors for which retrying is inappropriate."""
     message = str(value or "").lower()
     return any(marker in message for marker in AHE_FATAL_ERROR_MARKERS)
-
-
-def is_fatal_hyperdsh_error(value: Any) -> bool:
-    """Identify errors indicating a broken HyperDSH runtime."""
-    message = str(value or "").lower()
-    return any(marker in message for marker in HYPERDSH_FATAL_ERROR_MARKERS)
 
 
 def _copy_resume_workspace(source: Path, target: Path, method: str) -> tuple[Path, Path, int, str]:
@@ -305,8 +286,6 @@ class RSIBatchSession:
             raise ValueError("resume_from and target_dir must be provided together")
         if resume and resume_from is not None:
             raise ValueError("resume and resume_from are mutually exclusive")
-        if normalized == "hyperdsh" and (resume or resume_from is not None):
-            raise ValueError("HyperDSH does not support resume; start a clean lineage instead")
         if (resume or resume_from is not None) and normalized not in {"ace", "ahe", "hyperagents"}:
             raise ValueError(f"RSI method {normalized!r} does not support resume")
         self.method = normalized
@@ -402,29 +381,12 @@ class RSIBatchSession:
             from rsi_methods.ACE.ACEAdaptor import ACEAdaptor
 
             return ACEAdaptor()
-        if self.method == "baseline":
-            from rsi_methods.Baseline import BaselineAdaptor
-
-            return BaselineAdaptor(backend=self._baseline_backend())
-        if self.method == "self_harness":
-            from rsi_methods.SelfHarness import SelfHarnessAdaptor
-
-            return SelfHarnessAdaptor()
         if self.method == "ahe":
             from rsi_methods.AHE.AHEAdaptor import AHEAdaptor
 
             return AHEAdaptor(
                 run_dir=self.artifact_dir / "state",
                 timeout_seconds=float(getattr(self.agent_config, "timeout", 300.0)),
-            )
-        if self.method == "hyperdsh":
-            from rsi_methods.HyperDSH.HyperDSHAdaptor import HyperDSHAdaptor
-
-            return HyperDSHAdaptor(
-                run_dir=self.artifact_dir / "state",
-                reuse_existing=False,
-                max_refinement_rounds=task_count,
-                timeout_seconds=getattr(self.agent_config, "timeout", 300),
             )
         try:
             from rsi_methods.HyperAgents.HyperAgentsAdaptor import HyperAgentsAdaptor
@@ -440,11 +402,6 @@ class RSIBatchSession:
             reuse_existing=False,
             max_refinement_rounds=task_count,
         )
-
-    def _baseline_backend(self) -> str | None:
-        """The benchmark's agent.backend; returns None when unset so BaselineAdaptor uses its default backend."""
-        backend = getattr(self.agent_config, "backend", None)
-        return str(backend).strip().lower() if backend else None
 
     def begin_task(self, task_id: str) -> Any:
         if self._closed:
@@ -576,13 +533,12 @@ class RSIBatchSession:
             json.dumps(to_jsonable(selection_input), ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
         )
-        selection_options = {} if self.method == "hyperdsh" else {"selection_mode": selection_mode}
         selection = self.adaptor.select(
             batch=batch,
             parent_evaluation=parent_evaluation,
             candidate_evaluations=normalized_results,
             output_dir=stage_dir,
-            **selection_options,
+            selection_mode=selection_mode,
         )
         status = str(getattr(selection, "status", "")).strip().lower()
         replacement = getattr(selection, "batch", None)
@@ -781,7 +737,6 @@ __all__ = [
     "execution_status_for_error",
     "is_rsi_infrastructure_error",
     "is_fatal_ahe_error",
-    "is_fatal_hyperdsh_error",
     "extract_rsi_answer",
     "make_feedback_result",
     "make_step_feedback",

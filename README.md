@@ -14,23 +14,16 @@ score gain, replay retention, generalization, and token/time cost.
   Entry point: `python -m benchmark`.
 - `benches/` — game modules (task generation, simulator, reference scoring):
   `farm`, `combat`, `sweepmine`, `heros_journey`, `gameworld`.
-- `rsi_methods/` — method adaptors: `ACE`, `AHE`, `HyperAgents`, `HyperDSH`.
+- `rsi_methods/` — method adaptors: `ACE`, `AHE`, `HyperAgents`.
 - `analyze/` — inspects a method's evolution artifacts.
 
-Supported `agent.provider` values:
-
-- Baselines (single call, no evolution): `codex`, `claude`, `deepseek`, `openai`.
-- RSI methods (evolve a playbook/harness/candidate): `ace`, `hyperagents`,
-  `hyperdsh`, `ahe`, `self_harness`, `baseline`.
+Training and evaluation support three frameworks: ACE (`ace`), AHE (`ahe`),
+and HyperAgents (`hyperagents`). Each can be evaluated before and after training.
 
 The Minecraft and Astray environments are adapted, with some modifications, from
 [GameWorld](https://github.com/gameworld-project/gameworld); see
 [benches/gameworld/README.md](benches/gameworld/README.md) for attribution, citation,
 and the research-only disclaimer that applies to the bundled game assets.
-
-Game constraints: `farm`/`combat` accept any provider; `sweepmine`/
-`heros_journey` require an RSI provider; `gameworld` requires `ace`,
-`hyperagents`, or `ahe`.
 
 ## Environment Setup
 
@@ -45,13 +38,8 @@ pip install -r requirements.txt
 
 Install only what your target method needs.
 ```bash
-# HyperAgents: 
+# HyperAgents:
 pip install -r rsi_methods/HyperAgents/requirements.txt
-
-# HyperDSH:
-pip install -r rsi_methods/HyperDSH/requirements.txt
-npm install -g @deepseek-ai/dsh
-
 
 # GameWorld
 pip install -e ./benches/gameworld/assets/core/code
@@ -59,11 +47,8 @@ playwright install chromium
 ```
 
 - Credentials are read from environment variables and are never written to configs:
-  - `OPENAI_API_KEY`, `OPENAI_BASE_URL` — `openai` provider and the OpenAI-compatible
-    backends configured in each method `config.toml`.
-  - `TASK_PROVIDER_API_KEY`, `TASK_PROVIDER_BASE_URL` — HyperDSH task provider.
-  - `DEEPSEEK_API_KEY` — DeepSeek Harness baseline.
-- Baseline CLI backends must be on `PATH`: `codex`, `claude`.
+  - `OPENAI_API_KEY`, `OPENAI_BASE_URL` — the OpenAI-compatible backends configured
+    in each method `config.toml`.
 - Method models (backend, model, reasoning effort) live in
   `rsi_methods/<METHOD>/config.toml`; the benchmark config's `agent.model` does not
   override them.
@@ -76,23 +61,15 @@ task groupings, trajectory analysis, and historical-protocol limitations are in
 [configs/main/README.md](configs/main/README.md). Run commands from this repository
 root. No external task repository is required for Minecraft or Astray.
 
-Create a config (JSON or TOML) — e.g. `farm_baseline.json`:
-
-```json
-{
-  "seed": 0,
-  "schedule": [{"game": "farm", "difficulty": 1, "count": 3}],
-  "holdout": [{"game": "farm", "difficulty": 1, "count": 1}],
-  "agent": {"provider": "codex", "backend": "codex"},
-  "output_dir": "benchmark_results"
-}
-```
-
-Run it:
+For example, train ACE on Farm and evaluate the trained framework, then evaluate
+its untrained initial framework on the same holdout tasks:
 
 ```bash
-python -m benchmark farm_baseline.json
+python -m benchmark configs/main/farm_ace.json
+python -m benchmark configs/main/farm_ace.json --initial
 ```
+
+Replace `ace` with `ahe` or `hyperagents` to run the other frameworks.
 
 Key config fields: `seed`, `schedule` (training items), `holdout`, `agent`
 (`provider`/`backend`/`model`/`timeout`/`max_attempts`), `output_dir`,
@@ -104,8 +81,7 @@ Recovery flags:
 - `--resume` — continue the same `output_dir`.
 - `--target-dir NEW_DIR` — branch into a new workspace.
 
-See `benchmark/RESUME.md` for the full recovery contract. HyperDSH does not support
-resume.
+See `benchmark/RESUME.md` for the full recovery contract.
 
 Outputs under `output_dir`: `result.json` (summary + metrics), `runs/train` and
 `runs/holdout`, `checkpoints/`, `tasks/`, `rsi/` (method state),
@@ -114,7 +90,9 @@ Outputs under `output_dir`: `result.json` (summary + metrics), `runs/train` and
 Analysis and aggregation:
 
 ```bash
-python -m analyze {ace,hyper,hyperdsh,ahe} EXPERIMENT_DIR --model MODEL
+python -m analyze ace outputs/main/farm/ace --model MODEL --output farm_ace_analysis.json
+python -m analyze ahe outputs/main/farm/ahe --model MODEL --output farm_ahe_analysis.json
+python -m analyze hyper outputs/main/farm/hyperagents --model MODEL --output farm_hyperagents_analysis.json
 python -m benchmark.aggregate_results --input RUN_DIRS --output-dir OUT
 ```
 

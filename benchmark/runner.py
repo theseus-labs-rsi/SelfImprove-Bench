@@ -19,7 +19,7 @@ from .metrics import calculate_metrics, format_metrics, post_refinement_score
 from .tasks import GAMES, PlannedTask, TaskManifest, build_manifest
 
 
-RSI_METHODS = frozenset({"ace", "baseline", "hyperagents", "hyperdsh", "self_harness", "ahe"})
+RSI_METHODS = frozenset({"ace", "ahe", "hyperagents"})
 
 
 def _write_json(path: Path, value: Any) -> None:
@@ -57,8 +57,6 @@ def _is_fatal_method_error(config: BenchmarkConfig, record: Mapping[str, Any]) -
         return False
     if config.agent.provider == "ahe":
         return rsi_session.is_fatal_ahe_error(record.get("error"))
-    if config.agent.provider == "hyperdsh":
-        return rsi_session.is_fatal_hyperdsh_error(record.get("error"))
     return False
 
 
@@ -70,7 +68,7 @@ def _must_stop_after_error(config: BenchmarkConfig, record: Mapping[str, Any]) -
 
 
 class AgentController:
-    """Own either a stateless baseline or one evolving RSI lineage."""
+    """Own one ACE, AHE, or HyperAgents lineage for training and evaluation."""
 
     def __init__(
         self, config: BenchmarkConfig, output_dir: Path, training_count: int,
@@ -567,8 +565,6 @@ def _run_target_benchmark(
     config: BenchmarkConfig, *, target_dir: str | Path | None = None,
 ) -> dict[str, Any]:
     """Generate, orchestrate, evaluate and persist one complete benchmark."""
-    if config.agent.provider == "hyperdsh" and target_dir is not None:
-        raise ValueError("HyperDSH does not support resume; --target-dir cannot be used")
     source_dir = Path(config.output_dir).resolve()
     output_dir = Path(target_dir).resolve() if target_dir is not None else source_dir
     resuming_holdout = False

@@ -34,12 +34,6 @@ def _build_parser() -> argparse.ArgumentParser:
     hyper.add_argument("--model", default=os.getenv("OPENAI_MODEL"), help="Model name")
     hyper.add_argument("--limit", type=_positive_int, help="Analyze only the first N nodes in topological order")
     hyper.add_argument("--timeout", type=float, help="Timeout in seconds for a single API request")
-    hyperdsh = commands.add_parser("hyperdsh", help="Analyze HyperDSH candidates by parent-child tree")
-    hyperdsh.add_argument("experiment_dir", help="HyperDSH experiment directory")
-    hyperdsh.add_argument("--output", default="hyperdsh_analysis.json", help="Output path for the trace state")
-    hyperdsh.add_argument("--model", default=os.getenv("OPENAI_MODEL"), help="Model name")
-    hyperdsh.add_argument("--limit", type=_positive_int, help="Analyze only the first N nodes in topological order")
-    hyperdsh.add_argument("--timeout", type=float, help="Timeout in seconds for a single API request")
     ahe = commands.add_parser("ahe", help="Analyze AHE iterations in order")
     ahe.add_argument("experiment_dir", help="AHE experiment directory")
     ahe.add_argument("--output", default="ahe_analysis.json", help="Output path for the trace state")
@@ -86,10 +80,9 @@ def main() -> None:
                 f"partial results saved to {args.output}"
             )
         print(f"Done: {len(state['nodes'])} nodes written to {args.output}")
-    elif args.command in {"hyper", "hyperdsh"}:
+    elif args.command == "hyper":
         if not args.model:
             raise SystemExit("Specify a model via --model or OPENAI_MODEL")
-        method_name = "HyperAgent" if args.command == "hyper" else "HyperDSH"
         state = run_hyper_analysis(
             args.experiment_dir,
             args.output,
@@ -97,7 +90,6 @@ def main() -> None:
             limit=args.limit,
             timeout=args.timeout,
             on_node=_print_node,
-            method_name=method_name,
         )
         print(f"Done: {len(state['nodes'])} nodes written to {args.output}")
     elif args.command == "ahe":

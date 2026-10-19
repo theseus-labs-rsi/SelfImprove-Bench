@@ -13,21 +13,10 @@ from benches.sweepmine.task_factory import load_difficulty_manifest
 
 
 SUPPORTED_GAMES = ("farm", "combat", "sweepmine", "heros_journey", "gameworld")
-SUPPORTED_PROVIDERS = (
-    "codex",
-    "claude",
-    "deepseek",
-    "openai",
-    "ace",
-    "baseline",
-    "hyperagents",
-    "hyperdsh",
-    "self_harness",
-    "ahe",
-)
+SUPPORTED_PROVIDERS = ("ace", "ahe", "hyperagents")
 EVOLUTION_WINDOW = 1
 HOLDOUT_TASKS_PER_DIFFICULTY = 5
-# Execution backends available to the static baseline (provider="baseline")
+# Legacy execution backend labels; each framework owns its model backend settings.
 BACKEND_CHOICES = ("codex", "claude", "dsh")
 
 
@@ -58,7 +47,7 @@ class HoldoutItem:
 
 @dataclass(frozen=True)
 class AgentConfig:
-    provider: str = "codex"
+    provider: str = "ace"
     backend: str = "codex"
     model: str | None = None
     timeout: float = 300.0
@@ -174,17 +163,15 @@ def config_from_mapping(value: dict[str, Any]) -> BenchmarkConfig:
     agent_raw = value.get("agent", {})
     if not isinstance(agent_raw, dict):
         raise ValueError("agent must be an object")
-    provider = str(agent_raw.get("provider", "codex")).strip().lower()
+    provider = str(agent_raw.get("provider", "ace")).strip().lower()
     if provider not in SUPPORTED_PROVIDERS:
         raise ValueError(f"agent.provider must be one of: {', '.join(SUPPORTED_PROVIDERS)}")
-    if not schedule_raw and provider != "baseline":
-        raise ValueError("schedule must be non-empty unless agent.provider is baseline")
     holdout_manifest = value.get("holdout_manifest")
     if holdout_manifest is not None:
         if not isinstance(holdout_manifest, str) or not holdout_manifest.strip():
             raise ValueError("holdout_manifest must be a non-empty path")
-        if provider != "baseline" or schedule_raw:
-            raise ValueError("holdout_manifest requires baseline with an empty schedule")
+        if schedule_raw:
+            raise ValueError("holdout_manifest requires an empty schedule")
     timeout = agent_raw.get("timeout", 300)
     if not isinstance(timeout, (int, float)) or isinstance(timeout, bool) or timeout <= 0:
         raise ValueError("agent.timeout must be positive")
@@ -205,18 +192,11 @@ def config_from_mapping(value: dict[str, Any]) -> BenchmarkConfig:
     sweepmine = load_difficulty_manifest()
     hero = load_hero_difficulties()
     requested_games = {item.game for item in (*schedule, *holdout)}
-    interactive_providers = {
-        "ace", "baseline", "hyperagents", "hyperdsh", "self_harness", "ahe"
-    }
     if "gameworld" in requested_games:
         gameworld_provider = str(
             gameworld_options.get("framework", provider)
         ).strip().lower()
         gameworld_options.setdefault("framework", provider)
-        if provider not in {"ace", "hyperagents", "ahe"}:
-            raise ValueError(
-                "GameWorld requires agent.provider to be ace, hyperagents, or ahe"
-            )
         if gameworld_provider != provider:
             raise ValueError(
                 "game_options.gameworld.framework must match agent.provider "
@@ -248,14 +228,6 @@ def config_from_mapping(value: dict[str, Any]) -> BenchmarkConfig:
         overlap = train_keys & holdout_keys
         if overlap:
             raise ValueError(f"GameWorld train/holdout task overlap: {sorted(overlap)}")
-    if "sweepmine" in requested_games and provider not in interactive_providers:
-        raise ValueError(
-            "Sweepmine requires an RSI agent provider: ace, baseline, hyperagents, hyperdsh, self_harness, or ahe"
-        )
-    if "heros_journey" in requested_games and provider not in interactive_providers:
-        raise ValueError(
-            "Hero's Journey requires an RSI agent provider: ace, baseline, hyperagents, hyperdsh, self_harness, or ahe"
-        )
     for item in (*schedule, *holdout):
         if item.game == "sweepmine" and item.difficulty not in sweepmine:
             available = ", ".join(str(level) for level in sorted(sweepmine))
