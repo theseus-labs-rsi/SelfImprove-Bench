@@ -105,7 +105,11 @@ python -m benchmark.hci --trained outputs/main/farm/ace --initial outputs/main/f
 
 HCI is a ratio, not a percent. The command checks task identities, uses the
 pre-refinement execution-score baseline for G0, and the target game's initial
-scores for G1--G3. See [the main experiment guide](configs/main/README.md#hci-calculation)
+scores for G1--G3. It uses shared group references: Farm Medium/Hard
+1.179/1.297, Combat 1.433/1.314, and 1 for the other four games. G3 uses the
+destination game's Medium reference. Scores retain their available precision
+through calculation; rounding is only for display.
+See [the main experiment guide](configs/main/README.md#hci-calculation)
 for task groupings and missing-data handling.
 
 ## License and third-party components

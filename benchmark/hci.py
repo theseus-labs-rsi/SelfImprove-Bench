@@ -22,6 +22,16 @@ GAMEWORLD_GROUPS = {
     "minecraft": {"medium": {"18_02", "18_03"}, "hard": {"18_04", "18_05"}},
     "astray": {"medium": {"03_03"}, "hard": {"03_05"}},
 }
+# Fixed, shared maxima from the reported experiment groups, on relative-score
+# scale. These are not each execution's raw solver reference or per-run maxima.
+HCI_REFERENCES = {
+    "farm": {"medium": 1.179, "hard": 1.297},
+    "combat": {"medium": 1.433, "hard": 1.314},
+    "sweepmine": {"medium": 1.0, "hard": 1.0},
+    "hero": {"medium": 1.0, "hard": 1.0},
+    "minecraft": {"medium": 1.0, "hard": 1.0},
+    "astray": {"medium": 1.0, "hard": 1.0},
+}
 
 
 def _number(value: Any) -> float | None:
@@ -77,23 +87,28 @@ def _validate_run(result: dict[str, Any], manifest: dict[str, Any], label: str) 
                     raise ValueError(f"{label}: record/manifest {key} mismatch: {run_id}")
 
 
-def _summary(pairs: list[dict[str, Any]], target: str, reason: str | None = None) -> dict[str, Any]:
+def _summary(
+    pairs: list[dict[str, Any]], target: str, reason: str | None = None,
+    *, level: str = "medium",
+) -> dict[str, Any]:
+    reference = HCI_REFERENCES[target][level]
     missing = [pair for pair in pairs if pair["initial_score"] is None or pair["final_score"] is None]
     unavailable = reason or ("missing_pair_scores" if missing else None)
     if not pairs and not unavailable:
         unavailable = "no_tasks"
     initial = fmean(pair["initial_score"] for pair in pairs) if not unavailable else None
     final = fmean(pair["final_score"] for pair in pairs) if not unavailable else None
-    value = headroom_closed_index(initial, final) if not unavailable else None
+    value = headroom_closed_index(initial, final, reference) if not unavailable else None
     return {
         "target_game": target,
         "status": "unavailable" if unavailable else "undefined" if value is None else "ok",
         "reason": unavailable or ("zero_headroom" if value is None else None),
         "task_count": len(pairs), "valid_pair_count": len(pairs) - len(missing),
-        "initial_score": initial, "final_score": final, "reference_score": 1.0,
+        "initial_score": initial, "final_score": final, "reference_score": reference,
+        "reference_group": level,
         "score_change": final - initial if initial is not None else None,
         "hci": value,
-        "warning": "initial_above_reference" if initial is not None and initial > 1 else None,
+        "warning": "initial_above_reference" if initial is not None and initial > reference else None,
         "pairs": pairs,
     }
 
@@ -182,12 +197,13 @@ def calculate_hci(
                 "initial_score": _score(start), "final_score": _score(end),
                 "initial_status": start.get("status"), "final_status": end.get("status"),
             })
-        groups[name] = {**_summary(pairs, target, reason), "difficulty_group": level}
+        groups[name] = {**_summary(pairs, target, reason, level=level), "difficulty_group": level}
     return {
         "schema_version": 1,
         "status": "incomplete" if any(g["status"] == "unavailable" for g in groups.values()) else "completed",
         "source_game": source, "method": agent["provider"],
-        "formula": "(mean(final) - mean(initial)) / (1 - mean(initial))",
+        "formula": "(mean(final) - mean(initial)) / (reference - mean(initial))",
+        "reference_policy": "fixed_reported_game_group_reference",
         "score_field": "relative_score", "hci_unit": "ratio", "failed_execution_score": 0,
         "g0_baseline": "pre_refinement_execution_score",
         "groups": groups,

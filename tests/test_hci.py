@@ -72,7 +72,15 @@ class HCITest(unittest.TestCase):
                     for name, count in zip(("G1", "G2", "G3"), expected):
                         group = report["groups"][name]
                         self.assertEqual(group["task_count"], count)
-                        self.assertAlmostEqual(group["hci"], 0.5)
+                        references = {
+                            "farm": (1.179, 1.297, 1.433),
+                            "combat": (1.433, 1.314, 1.179),
+                        }.get(game, (1.0, 1.0, 1.0))
+                        reference = references[int(name[1:]) - 1]
+                        self.assertEqual(group["reference_score"], reference)
+                        self.assertAlmostEqual(group["hci"], 0.4 / (reference - 0.2))
+                    self.assertEqual(report["groups"]["G0"]["reference_score"],
+                                     {"farm": 1.179, "combat": 1.433}.get(game, 1.0))
 
     def test_g3_uses_destination_medium_and_matching_initial(self):
         data = fixture("minecraft")
@@ -112,7 +120,7 @@ class HCITest(unittest.TestCase):
                 }
         group = calculate_hci(*data)["groups"]["G0"]
         self.assertEqual(group["initial_score"], 0.1)
-        self.assertAlmostEqual(group["hci"], 5 / 9)
+        self.assertAlmostEqual(group["hci"], 0.5 / (1.179 - 0.1))
 
     def test_failed_and_skipped_executions_are_zero_and_statuses_survive(self):
         data = fixture("minecraft")
@@ -149,7 +157,7 @@ class HCITest(unittest.TestCase):
     def test_formula_does_not_clip_and_ignores_raw_reference_scale(self):
         self.assertAlmostEqual(headroom_closed_index(0.5, 1.5), 2)
         self.assertAlmostEqual(headroom_closed_index(1.5, 1.8), -0.6)
-        data = fixture()
+        data = fixture("minecraft")
         for result in data[:2]:
             for record in result["holdout_runs"]:
                 record["reference_score"] = 1000
@@ -201,7 +209,51 @@ class HCITest(unittest.TestCase):
                         record.update(status=status, selection={"status": "committed"})
                 group = calculate_hci(*data)["groups"]["G0"]
                 self.assertEqual(group["initial_score"], 0)
-                self.assertAlmostEqual(group["hci"], 0.6)
+                self.assertAlmostEqual(group["hci"], 0.6 / 1.179)
+
+    def test_reported_farm_and_combat_values_use_shared_group_references(self):
+        cases = (
+            ("farm", "G1", 0.997, 1.145, 1.179),
+            ("farm", "G2", 0.784, 0.859, 1.297),
+            ("farm", "G3", 0.533, 0.596, 1.433),
+            ("combat", "G1", 0.674, 1.427, 1.433),
+            ("combat", "G2", 0.301, 1.196, 1.314),
+            ("combat", "G3", 1.105, 1.087, 1.179),
+        )
+        for game, metric, initial, final, reference in cases:
+            with self.subTest(game=game, metric=metric):
+                data = fixture(game)
+                for record in data[0]["holdout_runs"]:
+                    record.update(relative_score=final, reference_score=1000)
+                for record in data[1]["holdout_runs"]:
+                    record.update(relative_score=initial, reference_score=1000)
+                report = calculate_hci(*data)
+                group = report["groups"][metric]
+                self.assertEqual(group["reference_score"], reference)
+                self.assertAlmostEqual(group["hci"], (final - initial) / (reference - initial))
+                self.assertIsNone(group["warning"])
+                self.assertEqual(report["reference_policy"], "fixed_reported_game_group_reference")
+
+    def test_farm_zero_headroom_uses_group_reference_not_one(self):
+        data = fixture("farm")
+        for record in data[1]["holdout_runs"]:
+            record["relative_score"] = (1.433 if record["game"] == "combat" else
+                                        1.297 if record["difficulty"] == 5 else 1.179)
+        report = calculate_hci(*data)
+        for metric in ("G1", "G2", "G3"):
+            self.assertEqual(report["groups"][metric]["status"], "undefined")
+            self.assertIsNone(report["groups"][metric]["hci"])
+
+    def test_no_intermediate_rounding_of_scores_or_hci(self):
+        data = fixture("hero")
+        for record in data[1]["holdout_runs"]:
+            record["relative_score"] = 0.09351
+        for record in data[0]["holdout_runs"]:
+            record["relative_score"] = 0.15377000465620738
+        group = calculate_hci(*data)["groups"]["G1"]
+        self.assertEqual(group["final_score"], 0.15377000465620738)
+        self.assertAlmostEqual(group["hci"], (0.15377000465620738 - 0.09351) / (1 - 0.09351))
+        self.assertEqual(f'{group["hci"] * 100:.1f}', "6.6")
 
     def test_mismatch_and_incomplete_records_are_rejected(self):
         mutations = (

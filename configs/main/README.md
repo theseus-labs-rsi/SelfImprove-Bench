@@ -71,8 +71,8 @@ while retaining the original error status in the records.
 Use the matching configuration's `--initial` output for transfer baselines too:
 holdout pool membership/order can affect generated task seeds across different
 training-game configurations. Match the destination task identities, not just
-the game/difficulty label. Keep scores on one scale; when using `relative_score`,
-use its normalized reference (1), not a raw-profit or raw-objective reference.
+the game/difficulty label. Keep scores on one scale: the HCI references below are
+on the `relative_score` scale, not raw-profit or raw-objective solver references.
 
 The replay schedule uses rounds 2/7/12/17 as originals and evaluates those exact
 tasks after rounds 5/10/15/20. For G0, pair the original task's execution score
@@ -97,9 +97,11 @@ The command supports all six games and all three frameworks. It reads
 calls or modifying experimental records. Replace the game and method names to
 calculate another experiment. It produces scores and HCI data, not paper tables.
 
-- Formula: `(mean(final) - mean(initial)) / (1 - mean(initial))`, using normalized
+- Formula: `(mean(final) - mean(initial)) / (reference - mean(initial))`, using
   `relative_score` throughout. Output HCI values are ratios, not percentages.
-  Scores and HCI values are not clipped, including scores above the reference.
+  Average scores before dividing, retain their stored precision throughout, and
+  round only for display. Scores and HCI values are not clipped, including
+  scores above the reference.
 - G0: the pre-refinement execution score on each original instance
   versus the later replay execution score on that exact instance.
 - G1: initial versus trained scores on the source game's Medium holdouts.
@@ -107,6 +109,28 @@ calculate another experiment. It produces scores and HCI data, not paper tables.
 - G3: initial versus trained scores on the paired destination game's Medium
   holdouts, both read from this experiment's matching holdout manifests.
   The source game's Medium baseline is never substituted.
+
+HCI uses the following fixed, shared references from the reported experiment
+groups. Farm/Combat use the highest saved group-level scores across baselines
+and trained methods; the other four games use 1. These are not individual-task
+maxima, method-specific maxima, or values recomputed from one run's scores.
+
+| Game | Medium reference | Hard reference |
+| --- | --- | --- |
+| Farm | 1.179 | 1.297 |
+| Combat | 1.433 | 1.314 |
+| Sweepmine / Hero / Minecraft / Astray | 1 | 1 |
+
+G0 and G1 use the source game's Medium reference; G2 uses its Hard reference;
+G3 uses the destination game's Medium reference. Farm's Hard maximum includes
+the saved Ds baseline (1.297), not just the three evolving methods. The fixed
+references live in `benchmark/hci.py:HCI_REFERENCES`; a new comparison cohort
+requiring different maxima must use a consistently updated reference table for
+all methods, rather than silently changing the denominator per run. Each output
+group records its `reference_score` and `reference_group`. Per-execution
+`reference_score` fields are raw solver references and are not HCI denominators.
+Historical tables that rounded input aggregates before computing HCI may differ
+slightly from a calculation that retains the full available score precision.
 
 Medium/Hard are D3/D5 for Farm/Combat and D3/D4 for Sweepmine/Hero. Minecraft
 uses `18_02,18_03` / `18_04,18_05`; Astray uses `03_03` / `03_05`, matching the
