@@ -166,6 +166,7 @@ __all__ = [
     "FeedbackResult",
     "FeedbackResults",
     "ImageRecord",
+    "SelectionEvaluation",
     "StepFeedback",
     "TaskEvaluation",
     "TokenUsage",

@@ -7,6 +7,7 @@ from dataclasses import replace
 
 from .config import ReplayConfig, load_config
 from .runner import run_benchmark
+from .methods import RSI_PROVIDERS
 
 
 def main() -> None:
@@ -14,7 +15,7 @@ def main() -> None:
     parser.add_argument("config", help="JSON or TOML benchmark configuration")
     parser.add_argument(
         "--initial", action="store_true",
-        help="Evaluate a fresh ACE/AHE/HyperAgents framework on the same holdouts, without training",
+        help="Evaluate a fresh RSI framework on the same holdouts, without training",
     )
     recovery = parser.add_mutually_exclusive_group()
     recovery.add_argument("--target-dir", help="New workspace for resuming from config.output_dir")
@@ -24,8 +25,8 @@ def main() -> None:
     try:
         config = load_config(args.config)
         if args.initial:
-            if config.agent.provider not in {"ace", "ahe", "hyperagents"}:
-                raise ValueError("--initial requires ace, ahe, or hyperagents")
+            if config.agent.provider not in RSI_PROVIDERS:
+                raise ValueError("--initial requires an RSI method")
             if args.target_dir:
                 raise ValueError("--initial cannot load an evolved --target-dir workspace")
             # Keep the holdout pool and seeds identical to the training config.

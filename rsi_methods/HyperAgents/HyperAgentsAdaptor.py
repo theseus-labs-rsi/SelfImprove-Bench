@@ -13,6 +13,8 @@ from typing import Any
 from uuid import uuid4
 
 from benchmark.token_ledger import hyperagents_usage_report
+from benchmark.interfaces import MethodContext
+from rsi_methods.checkpoint import MethodCheckpointMixin
 from benchmark.contracts import (
     ExecutionStatus,
     FeedbackResult,
@@ -127,16 +129,23 @@ class HyperAgentsSelectionOutput:
     report: HyperAgentsSelectionReport
 
 
-class HyperAgentsAdaptor:
+class HyperAgentsAdaptor(MethodCheckpointMixin):
     """Expose HyperAgents through the common RSIMethod lifecycle."""
+
+    checkpoint_method = "hyperagents"
 
     def __init__(
         self,
+        context: MethodContext | None = None,
         *,
         run_dir: str | Path | None = None,
         reuse_existing: bool = False,
         max_refinement_rounds: int | None = None,
     ) -> None:
+        self.bind_context(context)
+        if context is not None:
+            run_dir = context.artifact_dir / "state"
+            max_refinement_rounds = context.task_count
         if reuse_existing:
             raise ValueError("HyperAgentsAdaptor only supports clean workspaces")
         if max_refinement_rounds is not None and max_refinement_rounds <= 0:
@@ -630,17 +639,18 @@ class HyperAgentsAdaptor:
         )
         success_count = sum(result.evaluation.success for result in feedback_results)
         task_count = len(feedback_results)
+        score_mean = sum(
+            result.evaluation.score for result in feedback_results
+        ) / task_count
         return {
             "schema_version": 1,
             "valid": completed,
-            "selection_score": success_count / task_count if completed else None,
+            "selection_score": score_mean if completed else None,
             "metrics": {
                 "task_count": task_count,
                 "success_count": success_count,
                 "success_rate": success_count / task_count,
-                "score_mean": sum(
-                    result.evaluation.score for result in feedback_results
-                ) / task_count,
+                "score_mean": score_mean,
             },
             "feedback": "Inspect the complete per-case task evidence.",
             "cases": cases,

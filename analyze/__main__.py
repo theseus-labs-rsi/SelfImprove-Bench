@@ -47,7 +47,6 @@ def _build_parser() -> argparse.ArgumentParser:
     report.add_argument("--score-stats", nargs="+", help="Optional numeric summary CSVs or benchmark.hci JSON files")
     report.add_argument("--output-dir", required=True, help="Directory for Markdown, JSON and CSV reports")
     report.add_argument("--model", help="Optional interpretation model; omit for offline statistics only")
-    report.add_argument("--language", choices=("zh", "en"), default="zh", help="Report language")
     report.add_argument("--timeout", type=float, help="Timeout in seconds for the report API request")
     return parser
 

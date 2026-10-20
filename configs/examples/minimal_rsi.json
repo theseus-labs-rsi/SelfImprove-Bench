@@ -1,0 +1,14 @@
+{
+  "seed": 42,
+  "schedule": [{"game": "farm", "difficulty": 1, "count": 5, "replay": true}],
+  "holdout": [{"game": "farm", "difficulty": 1, "count": 1}],
+  "replay": {"every": 5, "lag": 3},
+  "agent": {
+    "provider": "rsi",
+    "adapter": "examples.minimal_rsi:MinimalAdapter",
+    "adapter_options": {"action": {"days": []}},
+    "max_attempts": 1
+  },
+  "output_dir": "outputs/examples/minimal_rsi",
+  "continue_on_error": false
+}

@@ -30,7 +30,8 @@
     "lag": 3
   },
   "agent": {
-    "provider": "ace",
+    "provider": "rsi",
+    "adapter": "rsi_methods.ACE.ACEAdaptor:ACEAdaptor",
     "backend": "codex",
     "model": null,
     "timeout": 600.0,

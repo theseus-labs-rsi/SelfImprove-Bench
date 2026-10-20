@@ -28,14 +28,6 @@ LIMITATIONS = [
     "These are descriptive associations, not causal effects, independent replicates, or significance tests.",
     "Incomplete and failed analyses are included and flagged; unclassified nodes are not treated as having no proposals.",
 ]
-TAXONOMY_ZH = {
-    "relations": "新颖性", "scope": "适用范围", "function": "功能", "surface": "修改对象",
-    "semantically_new": "新提案", "contradiction_or_revision": "修订", "duplicate": "重复",
-    "task_specific": "任务特定", "capability_category_general": "同能力类别通用", "fully_general": "完全通用",
-    "exploration": "探索", "reasoning": "推理", "planning": "规划", "execution": "执行",
-    "prompt_memory": "提示词/记忆", "scaffold_codebase": "执行框架代码", "meta": "改进器本身",
-    "undetermined": "未确定",
-}
 
 
 class EvidenceStatement(BaseModel):
@@ -94,7 +86,7 @@ def build_report(inputs: list[str | Path], game: str) -> dict[str, Any]:
         "schema_version": 1, "game": game, "sources": [], "runs": [],
         "nodes": [], "proposals": [], "evidence": {},
         "limitations": list(LIMITATIONS), "insights": None, "telemetry": {},
-        "status": "statistics_only", "score_statistics": [], "score_sources": [],
+        "status": "statistics_only", "language": "en", "score_statistics": [], "score_sources": [],
     }
     seen = set()
     for run_index, source in enumerate(inputs, 1):
@@ -343,8 +335,8 @@ and relate these patterns to the supplied score outcomes. Do not guess what indi
 diagnose specific code bugs, or recommend changes to game-playing strategies.
 Separate observed findings from possible framework characteristics (hypotheses). Cite exact evidence_ids
 for every statement. Prefer interesting, concrete comparisons with numbers over generic warnings.
-Return at most three findings and two hypotheses. Keep the report within roughly 800 Chinese characters
-or 450 English words. Use short observation/interpretation fields; implications and next experiments
+Return at most three findings and two hypotheses. Write all report text in English and keep it within
+roughly 450 words. Use short observation/interpretation fields; implications and next experiments
 should concern statistical interpretation or controlled validation, not concrete agent modifications.
 Use only supplied statistics; do not invent scores, counts or missing values. Missing is not zero.
 Category/score associations are not causal effects. Labels can overlap; proportions need not sum to one.
@@ -357,12 +349,12 @@ Classification labels are model annotations, not independent ground truth. Retur
 
 
 def add_insights(
-    report: dict[str, Any], *, model: str, language: str = "zh", timeout: float | None = None,
+    report: dict[str, Any], *, model: str, timeout: float | None = None,
     client: Any = None, max_input_chars: int = 240_000,
 ) -> None:
     """Attach model interpretation only after validating every evidence reference."""
     payload = build_statistics(report)
-    prefix = REPORT_INSTRUCTIONS + f"\nRequested language: {language}\n"
+    prefix = REPORT_INSTRUCTIONS + "\nRequested language: en\n"
     prompt = prefix + json.dumps(payload, ensure_ascii=False, allow_nan=False, separators=(",", ":"))
     if len(prompt) > max_input_chars:
         raise ValueError("Statistics exceed the model input character limit; split inputs")
@@ -386,7 +378,7 @@ def add_insights(
     report["insights"] = parsed.model_dump(mode="json")
     report["model"] = model
     report["returned_model"] = getattr(response, "model", None)
-    report["language"] = language
+    report["language"] = "en"
     report["status"] = "interpreted"
     report["interpretation_scope"] = payload["input_scope"]
 
@@ -399,19 +391,17 @@ def _cell(value: Any) -> str:
     return str(value).replace("|", "\\|").replace("\r", " ").replace("\n", " ")
 
 
-def render_markdown(report: dict[str, Any], language: str = "zh") -> str:
-    zh = language == "zh"
-    lines = [f"# {report['game']} " + ("轨迹分类与分数解读" if zh else "Classification and Score Report"), ""]
+def render_markdown(report: dict[str, Any]) -> str:
+    lines = [f"# {report['game']} Classification and Score Report", ""]
     if report.get("data_note"):
         lines += [_cell(report["data_note"]), ""]
-    lines += [("## 分类统计" if zh else "## Classification Statistics"), "",
-             ("| 框架 | 已分类节点 / 总节点 | 提案数 | 状态 |" if zh else
-              "| Method | Classified / nodes | Proposals | Status |"), "| --- | --- | --- | --- |"]
+    lines += ["## Classification Statistics", "",
+              "| Method | Classified / nodes | Proposals | Status |", "| --- | --- | --- | --- |"]
     for run in report["runs"]:
         row = [run["method"], f"{run['classified_node_count']} / {run['node_count']}",
                run["proposal_count"], run["analysis_status"]]
         lines.append("| " + " | ".join(_cell(value) for value in row) + " |")
-    lines += ["", ("| 维度 / 类别 | " if zh else "| Dimension / label | ") + " | ".join(run["method"] for run in report["runs"]) + " |",
+    lines += ["", "| Dimension / label | " + " | ".join(run["method"] for run in report["runs"]) + " |",
               "| --- | " + " | ".join("---" for _ in report["runs"]) + " |"]
     for dimension in DIMENSIONS:
         labels = sorted({label for run in report["runs"] for label in run["classification_counts"][dimension]})
@@ -421,59 +411,54 @@ def render_markdown(report: dict[str, Any], language: str = "zh") -> str:
                 count = run["classification_counts"][dimension].get(label, 0)
                 total = run["proposal_count"]
                 values.append(f"{count} ({count / total:.1%})" if total else "N/A")
-            name = f"{TAXONOMY_ZH[dimension]} / {TAXONOMY_ZH.get(label, label)}" if zh else f"{dimension} / {label}"
+            name = f"{dimension} / {label}"
             lines.append(f"| {name} | " + " | ".join(values) + " |")
-    lines += ["", ("比例以各框架已标注提案数为分母；新颖/修订/重复与功能标签可重叠，未确定标签详见 statistics.json。"
-                   if zh else "Proportions use each framework's annotated proposals; relation/function labels may overlap. Unknowns: statistics.json."), "",
-              "## " + ("分数统计" if zh else "Score Statistics")]
+    lines += ["", "Proportions use each framework's annotated proposals; relation/function labels may overlap. Unknowns: statistics.json.", "",
+              "## Score Statistics"]
     adjacent = [row for row in report["score_statistics"] if row["kind"] == "adjacent_training_rounds"]
     if adjacent:
-        lines += ["", ("相邻训练轮次（可能跨任务，不是受控提分评测）：" if zh else "Adjacent training rounds (may span tasks, not controlled gains):"), "",
-                  ("| 框架 | 分数对数 | 正 / 零 / 负 | 平均分差 |" if zh else
-                   "| Method | Pairs | + / 0 / - | Mean delta |"), "| --- | --- | --- | --- |"]
+        lines += ["", "Adjacent training rounds (may span tasks, not controlled gains):", "",
+                  "| Method | Pairs | + / 0 / - | Mean delta |", "| --- | --- | --- | --- |"]
         for row in adjacent:
             values = [row["method"], row["valid_pairs"], f"{row['positive']:g} / {row['zero']:g} / {row['negative']:g}", row["mean_delta"]]
             lines.append("| " + " | ".join(_cell(value) for value in values) + " |")
     evaluations = [row for row in report["score_statistics"] if row["kind"] == "initial_final_evaluation"]
     if evaluations:
-        lines += ["", ("| 框架 | 指标 | 目标 / 分组 | 初始分数 | 最终分数 | HCI |" if zh else
-                       "| Method | Metric | Target / group | Initial | Final | HCI |"), "| --- | --- | --- | --- | --- | --- |"]
+        lines += ["", "| Method | Metric | Target / group | Initial | Final | HCI |", "| --- | --- | --- | --- | --- | --- |"]
         for item in evaluations:
             row = [item["method"], item["metric"], f"{item['target_game']} / {item['score_group']}",
                    item.get("initial_score"), item.get("final_score"), item.get("hci_ratio")]
             lines.append("| " + " | ".join(_cell(value) for value in row) + " |")
     if any(run["scored_node_count"] for run in report["runs"]):
-        lines += ["", ("原生父/当前节点分差（独立口径，不与相邻轮次混用）：" if zh else "Native parent/current deltas (not adjacent training deltas):"), "",
+        lines += ["", "Native parent/current deltas (not adjacent training deltas):", "",
                   "| Method | Scored / nodes | + / 0 / - | Mean delta |", "| --- | --- | --- | --- |"]
         for run in report["runs"]:
             row = [run["method"], f"{run['scored_node_count']} / {run['node_count']}",
                    f"{run['positive']} / {run['zero']} / {run['negative']}", run["mean_score_delta"]]
             lines.append("| " + " | ".join(_cell(value) for value in row) + " |")
     elif not adjacent and not evaluations:
-        lines += ["", "N/A：没有可用分数。" if zh else "N/A: no scores available."]
+        lines += ["", "N/A: no scores available."]
     insights = report["insights"]
-    for key, title in (("findings", "观察结论" if zh else "Findings"),
-                       ("hypotheses", "可能特征（待验证假设）" if zh else "Possible Characteristics (Hypotheses)")):
+    for key, title in (("findings", "Findings"),
+                       ("hypotheses", "Possible Characteristics (Hypotheses)")):
         lines += ["", f"## {title}", ""]
         if insights is None:
-            lines.append("未调用报告模型；以上为程序统计。" if zh else "No report model was called; statistics only.")
+            lines.append("No report model was called; statistics only.")
             continue
         if not insights[key]:
-            lines.append("暂无足够证据。" if zh else "Insufficient evidence.")
+            lines.append("Insufficient evidence.")
         for index, statement in enumerate(insights[key], 1):
             lines += [f"{index}. **{_cell(statement['title'])}** " + " ".join(
                 _cell(statement[field]) for field in ("observation", "interpretation", "implication") if statement[field]), ""]
-    lines += ["", ("分类来自已有 LLM 标注；这里只作描述性关联，不推断具体建议的因果效果。N/A 不是零。"
-                   if zh else "Labels come from existing LLM annotations; associations are descriptive, not causal. N/A is not zero."),
-              ("解读范围仅为 statistics.json 中的分类与分数统计，不含提案原文、代码或日志。证据编号、验证思路和来源留在 JSON 中。"
-               if zh else "Interpretation is limited to statistics.json summaries, not proposals, code or logs. Evidence references, validation ideas and provenance remain in JSON.")]
+    lines += ["", "Labels come from existing LLM annotations; associations are descriptive, not causal. N/A is not zero.",
+              "Interpretation is limited to statistics.json summaries, not proposals, code or logs. Evidence references, validation ideas and provenance remain in JSON."]
     if report.get("interpretation_error"):
-        lines += ["", ("模型解读失败，程序统计仍然保留：" if zh else "Model interpretation failed; statistics retained: ")
+        lines += ["", "Model interpretation failed; statistics retained: "
                   + _cell(report["interpretation_error"])]
     return "\n".join(lines) + "\n"
 
 
-def write_report(report: dict[str, Any], output_dir: str | Path, language: str = "zh") -> None:
+def write_report(report: dict[str, Any], output_dir: str | Path) -> None:
     directory = Path(output_dir)
     directory.mkdir(parents=True, exist_ok=True)
     protected = {Path(source["path"]).resolve() for source in report["sources"] + report["score_sources"]}
@@ -481,7 +466,7 @@ def write_report(report: dict[str, Any], output_dir: str | Path, language: str =
     if any(path.resolve() in protected for path in paths):
         raise ValueError("Report output must not overwrite an input trajectory")
     paths[0].write_text(json.dumps(report, ensure_ascii=False, indent=2, allow_nan=False) + "\n", encoding="utf-8")
-    paths[1].write_text(render_markdown(report, language), encoding="utf-8")
+    paths[1].write_text(render_markdown(report), encoding="utf-8")
     paths[4].write_text(json.dumps(build_statistics(report), ensure_ascii=False, indent=2, allow_nan=False) + "\n", encoding="utf-8")
     for path, key, fallback in ((paths[2], "nodes", "node_id"), (paths[3], "proposals", "normalized_opinion")):
         rows = report[key]
@@ -497,14 +482,14 @@ def write_report(report: dict[str, Any], output_dir: str | Path, language: str =
 def run_report(args: Any) -> None:
     report = build_report(args.inputs, args.game)
     attach_score_statistics(report, getattr(args, "score_stats", None) or [])
-    report.update(requested_model=args.model, language=args.language)
-    write_report(report, args.output_dir, args.language)
+    report.update(requested_model=args.model)
+    write_report(report, args.output_dir)
     if args.model:
         try:
-            add_insights(report, model=args.model, language=args.language, timeout=args.timeout)
+            add_insights(report, model=args.model, timeout=args.timeout)
         except (ValueError, AnalysisLLMError) as exc:
             report.update(status="interpretation_failed", interpretation_error=str(exc))
-            write_report(report, args.output_dir, args.language)
+            write_report(report, args.output_dir)
             raise
-        write_report(report, args.output_dir, args.language)
+        write_report(report, args.output_dir)
     print(f"Saved {args.game} trajectory report ({report['status']}) to {args.output_dir}")

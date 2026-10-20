@@ -66,8 +66,11 @@ class MetaAgent(AgentSystem):
         instruction = f"""Improve the HyperAgent implementation in `{repo_path}`.
 
 Your objective is to make a generalizable code change that increases the
-`selection_score` produced by the evaluator. Evaluation history is available
-read-only at `{eval_path}`.
+`selection_score` produced by the evaluator: the mean continuous benchmark
+score (`metrics.score_mean`), not binary task success rate or execution
+completion rate. Task success and execution status are diagnostic signals,
+not substitutes for numeric score. Evaluation history is available read-only
+at `{eval_path}`.
 
 Before editing code:
 1. Recursively inspect the evaluation-history folder. Read

@@ -15,6 +15,9 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 from uuid import uuid4
 
+from benchmark.interfaces import MethodContext
+from rsi_methods.checkpoint import MethodCheckpointMixin
+
 from .agent import AHEAgent
 from .build import build as build_agent
 from .init import AHEState, apply_agent_limits, initialize
@@ -49,12 +52,14 @@ def _resume_workspace_relative(selected: str, source: Path, copied: Path) -> Pat
     return relative
 
 
-class AHEAdaptor:
+class AHEAdaptor(MethodCheckpointMixin):
     """Hold one AHE lineage across benchmark tasks and generations."""
+
+    checkpoint_method = "ahe"
 
     def __init__(
         self,
-        run_dir: str | Path | None = None,
+        run_dir: str | Path | MethodContext | None = None,
         *,
         config_path: str | Path | None = None,
         model: str | None = None,
@@ -63,6 +68,11 @@ class AHEAdaptor:
         timeout_seconds: float = 300,
         candidate_count: int = 1,
     ) -> None:
+        context = run_dir if isinstance(run_dir, MethodContext) else None
+        self.bind_context(context)
+        if context is not None:
+            run_dir = context.artifact_dir / "state"
+            timeout_seconds = context.timeout
         if candidate_count < 1:
             raise ValueError("candidate_count must be positive")
         project_root = Path(__file__).resolve().parents[3]

@@ -30,7 +30,8 @@
     "lag": 3
   },
   "agent": {
-    "provider": "hyperagents",
+    "provider": "rsi",
+    "adapter": "rsi_methods.HyperAgents.HyperAgentsAdaptor:HyperAgentsAdaptor",
     "backend": "codex",
     "model": null,
     "timeout": 1800.0,

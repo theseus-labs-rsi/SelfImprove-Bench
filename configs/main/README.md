@@ -3,6 +3,11 @@
 Run from the repository root after installing the dependencies in the root README.
 The 18 JSON files cover `farm`, `combat`, `sweepmine`, `hero`, `minecraft`, and
 `astray`, each with `ace`, `ahe`, and `hyperagents`.
+All use `agent.provider: "rsi"` and an explicit `agent.adapter` import path,
+the same public interface used by additional RSI methods. The old method-named
+providers remain compatibility aliases. Output method names and experiment
+settings are unchanged. Do not switch config formats during an existing run;
+checkpoint resume requires its original configuration.
 
 ## Models and Credentials
 
@@ -197,7 +202,7 @@ Outputs in the requested directory:
 
 - `report.md`: short classification/score tables, findings and possible framework
   characteristics. No proposal text or concrete agent-change recommendations.
-  Chinese by default; use `--language en` for English.
+  Reports are generated in English only, including model-written interpretations.
 - `statistics.json`: complete statistics-only model input: counts, proportions,
   numeric score summaries and evidence IDs. No proposal text, code or raw logs.
 - `report.json`: full-precision statistics, complete source evidence, source-file

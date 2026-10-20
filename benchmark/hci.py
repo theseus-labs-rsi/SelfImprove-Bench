@@ -9,6 +9,7 @@ from pathlib import Path
 from statistics import fmean
 from typing import Any
 
+from .methods import RSI_PROVIDERS, method_identity
 from .metrics import execution_score as _score
 from .tasks import task_fingerprint
 
@@ -139,7 +140,7 @@ def calculate_hci(
     agent = trained["config"]["agent"]
     if agent != initial["config"]["agent"]:
         raise ValueError("Initial and trained agent configurations differ")
-    if agent.get("provider") not in {"ace", "ahe", "hyperagents"}:
+    if agent.get("provider") not in RSI_PROVIDERS:
         raise ValueError("Unsupported framework")
     normal = [task for task in trained_manifest["training"] if not task.get("replay")]
     games = {_game(task) for task in normal}
@@ -201,7 +202,7 @@ def calculate_hci(
     return {
         "schema_version": 1,
         "status": "incomplete" if any(g["status"] == "unavailable" for g in groups.values()) else "completed",
-        "source_game": source, "method": agent["provider"],
+        "source_game": source, "method": method_identity(agent),
         "formula": "(mean(final) - mean(initial)) / (reference - mean(initial))",
         "reference_policy": "fixed_reported_game_group_reference",
         "score_field": "relative_score", "hci_unit": "ratio", "failed_execution_score": 0,

@@ -6,7 +6,7 @@ import json
 import re
 import shutil
 import time
-from dataclasses import dataclass, is_dataclass
+from dataclasses import is_dataclass
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 from uuid import uuid4
@@ -16,6 +16,7 @@ from .contracts import (
     BackendResponse,
     ExecutionStatus,
     FeedbackResult,
+    SelectionEvaluation,
     StepFeedback,
     TaskEvaluation,
     TokenUsage,
@@ -23,7 +24,7 @@ from .contracts import (
 )
 
 
-RSI_PROVIDERS = frozenset({"ace", "ahe", "hyperagents"})
+from .methods import RSI_PROVIDERS, create_adaptor, method_identity
 AHE_FATAL_ERROR_MARKERS = (
     "ahe selection",
     "ahe candidate generation failed",
@@ -74,18 +75,6 @@ def _copy_resume_workspace(source: Path, target: Path, method: str) -> tuple[Pat
         before += 1
     shutil.copytree(source, target)
     return source_batch, target / "rsi" / method / source_batch.name, before, phase
-
-
-@dataclass(frozen=True, slots=True)
-class SelectionEvaluation:
-    """Compact benchmark result used only to compare parent and candidates."""
-
-    status: str
-    relative_score: float | None
-    success: bool
-    result_path: str
-    error_type: str | None = None
-    error: str | None = None
 
 
 def _extract_json_object(text: str) -> dict[str, Any]:
@@ -286,30 +275,33 @@ class RSIBatchSession:
             raise ValueError("resume_from and target_dir must be provided together")
         if resume and resume_from is not None:
             raise ValueError("resume and resume_from are mutually exclusive")
-        if (resume or resume_from is not None) and normalized not in {"ace", "ahe", "hyperagents"}:
-            raise ValueError(f"RSI method {normalized!r} does not support resume")
-        self.method = normalized
+        identity = (method_identity(agent) or normalized) if normalized == "rsi" else normalized
+        if resume_from is not None and identity == "rsi":
+            raise ValueError("External RSI adapters use --resume in place; --target-dir is built-in only")
+        self.resuming = resume
+        self.method = identity
+        self._provider = normalized
         source_batch = None
         previous_batch = None
         before_task = None
         resume_phase = None
         if resume_from is not None:
             source_batch, previous_batch, before_task, resume_phase = _copy_resume_workspace(
-                Path(resume_from).resolve(), Path(target_dir).resolve(), normalized
+                Path(resume_from).resolve(), Path(target_dir).resolve(), identity
             )
             artifact_root = Path(target_dir).resolve() / "rsi"
         self.resume_before_task_index = before_task
         self.resume_phase = resume_phase
         self.resumed_batch_dir = previous_batch
         self.batch_id = batch_id or uuid4().hex
-        self.artifact_dir = Path(artifact_root).resolve() / normalized / self.batch_id
+        self.artifact_dir = Path(artifact_root).resolve() / identity / self.batch_id
         if resume:
             manifest_path = self.artifact_dir / "batch_manifest.json"
             if batch_id is None or not manifest_path.is_file():
                 raise RuntimeError("Missing existing RSI batch for checkpoint resume")
             saved_batch = json.loads(manifest_path.read_text(encoding="utf-8"))
             if any(saved_batch.get(key) != value for key, value in {
-                "method": normalized, "batch_id": batch_id, "task_count": task_count,
+                "method": identity, "batch_id": batch_id, "task_count": task_count,
             }.items()):
                 raise RuntimeError("Existing RSI batch identity or task count differs")
         else:
@@ -325,8 +317,6 @@ class RSIBatchSession:
         self._closed = False
         if resume:
             # State restoration follows checkpoint validation in the runner.
-            if self.method == "ahe":
-                self.adaptor._configure(self.adaptor._load_config())
             return
         if resume_from is None:
             self.adaptor.init()
@@ -367,6 +357,8 @@ class RSIBatchSession:
                 ),
             },
         }
+        if self._provider == "rsi":
+            manifest["adapter"] = self.agent_config.adapter
         if source_batch is not None:
             manifest["resumed_from_batch_id"] = source_batch.name
             manifest["resume_before_task_index"] = before_task
@@ -376,32 +368,10 @@ class RSIBatchSession:
         )
 
     def _create_adaptor(self, task_count: int) -> Any:
-        """Keep method-owned settings in method TOML configuration."""
-        if self.method == "ace":
-            from rsi_methods.ACE.ACEAdaptor import ACEAdaptor
-
-            return ACEAdaptor()
-        if self.method == "ahe":
-            from rsi_methods.AHE.AHEAdaptor import AHEAdaptor
-
-            return AHEAdaptor(
-                run_dir=self.artifact_dir / "state",
-                timeout_seconds=float(getattr(self.agent_config, "timeout", 300.0)),
-            )
-        try:
-            from rsi_methods.HyperAgents.HyperAgentsAdaptor import HyperAgentsAdaptor
-        except ModuleNotFoundError as exc:
-            requirements = Path(__file__).resolve().parents[1] / "rsi_methods" / "HyperAgents" / "requirements.txt"
-            raise RuntimeError(
-                "HyperAgents host dependencies are missing. Install them with: "
-                f"python -m pip install -r {requirements}"
-            ) from exc
-
-        return HyperAgentsAdaptor(
-            run_dir=self.artifact_dir / "state",
-            reuse_existing=False,
-            max_refinement_rounds=task_count,
-        )
+        """Construct a method without depending on any game's implementation."""
+        return create_adaptor(self._provider, artifact_dir=self.artifact_dir,
+                              task_count=task_count, agent=self.agent_config,
+                              resuming=self.resuming)
 
     def begin_task(self, task_id: str) -> Any:
         if self._closed:
@@ -452,6 +422,8 @@ class RSIBatchSession:
             batch = self.adaptor.refine([feedback], output_dir=output_dir)
             if batch is not None:
                 _validate_candidate_batch(batch)
+                if not callable(getattr(self.adaptor, "select", None)):
+                    raise TypeError("An RSI adapter returning candidates must implement select()")
                 self._pending_batch = batch
                 self._pending_output_dir = output_dir
         except Exception as exc:

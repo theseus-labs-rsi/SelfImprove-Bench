@@ -149,8 +149,11 @@ evaluation results are unaffected. When video is not needed, CMD can run
 `set GAMEWORLD_DISABLE_VIDEO_REPLAY=1` and PowerShell can run
 `$env:GAMEWORLD_DISABLE_VIDEO_REPLAY = "1"`.
 
-When switching frameworks, change both `agent.provider` and
-`game_options.gameworld.framework`; an inconsistency is rejected during config parsing so
+When switching frameworks, set `agent.provider` to `rsi` with the matching
+`agent.adapter`, and set `game_options.gameworld.framework` to the method name
+(`ace`, `ahe`, or `hyperagents`), or omit it for automatic inference. External
+adapters use `framework: "rsi"`. Legacy provider aliases are also supported.
+An inconsistency is rejected during config parsing so
 that a hidden mismatch such as "using AHE refinement while actually running the ACE
 client" cannot occur.
 

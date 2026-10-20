@@ -12,6 +12,7 @@ from unittest.mock import patch
 
 from benchmark.__main__ import main
 from benchmark.config import ReplayConfig, load_config
+from benchmark.methods import BUILTIN_ADAPTERS, method_identity
 from benchmark.tasks import GAMES as GAME_MODULES, build_manifest, task_fingerprint
 from benches.gameworld.asset_paths import ASSETS_ROOT
 
@@ -53,9 +54,15 @@ class MainConfigurationsTest(unittest.TestCase):
                 with self.subTest(game=game, method=method):
                     config = load_config(CONFIGS / f'{game}_{method}.json')
                     print(f'\nChecking {game}/{method}', flush=True)
-                    self.assertEqual(config.agent.provider, method)
+                    self.assertEqual(config.agent.provider, 'rsi')
+                    self.assertEqual(config.agent.adapter, BUILTIN_ADAPTERS[method])
+                    self.assertEqual(method_identity(config.agent), method)
                     self.assertEqual(config.output_dir, f'outputs/main/{game}/{method}')
                     manifest = build_manifest(config)
+                    legacy = replace(config, agent=replace(config.agent, provider=method, adapter=None))
+                    legacy_manifest = build_manifest(legacy)
+                    self.assertEqual(manifest.training, legacy_manifest.training)
+                    self.assertEqual(manifest.holdout, legacy_manifest.holdout)
                     normal = [task for task in manifest.training if not task.replay]
                     replay = [task for task in manifest.training if task.replay]
                     self.assertEqual(len(normal), 20)
@@ -118,7 +125,8 @@ class MainConfigurationsTest(unittest.TestCase):
                     patch('benchmark.__main__.run_benchmark') as run:
                 main()
                 config = run.call_args.args[0]
-                self.assertEqual(config.agent.provider, method)
+                self.assertEqual(config.agent.provider, 'rsi')
+                self.assertEqual(method_identity(config.agent), method)
                 self.assertFalse(config.schedule)
                 self.assertFalse(config.replay.enabled)
                 self.assertTrue(config.output_dir.endswith('_initial'))

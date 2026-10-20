@@ -17,6 +17,12 @@ _ORIGINAL_SHA256 = {
     "agent/llm_withtools.py": "9dd804865516bd846922e007f5c2b1f933c7fec8f11786d55efe0981a44e63f3",
     "agent/tools/bash.py": "489c1cac70546f53375f1ec03e685d18f45f30532a06954f9b95ce3b0ff51b1e",
 }
+# The release bundles an already-adapted base, distinct from the upstream pin.
+# Only these exact audited files may receive the same runtime safety overlay.
+_BUNDLED_SHA256 = {
+    "agent/llm_withtools.py": "11f761662184a56d04d0245b4f1bf3c3934e7cf0e31f8e44a074532767180f86",
+    "agent/tools/bash.py": "2a20313afed0ffa5fd5c2c34312ddb0e9ad0b4d8952618145efe1adb20cd0867",
+}
 
 
 def _sha256(path: Path) -> str:
@@ -30,7 +36,7 @@ def stage_runtime_safety(root_dir: str | Path) -> None:
         destination = root / relative
         overlay = _OVERLAY / relative
         observed = _sha256(destination)
-        if observed not in (original, _sha256(overlay)):
+        if observed not in (original, _BUNDLED_SHA256[relative], _sha256(overlay)):
             raise RuntimeError(f"Unexpected HyperAgents runtime version: {relative} ({observed})")
         shutil.copy2(overlay, destination)
 
@@ -51,7 +57,7 @@ def install_runtime_safety(container, commit_hash: str, repo_path: str) -> str:
         fixed = _sha256(overlay)
         if observed == fixed:
             continue
-        if observed != original:
+        if observed not in (original, _BUNDLED_SHA256[relative]):
             raise RuntimeError(f"Refusing to overwrite evolved runtime module: {relative} ({observed})")
         copy_to_container(container, overlay, f"{repo_path}/{relative}")
         changed = True

@@ -126,6 +126,9 @@ class RuntimeSafetyTests(unittest.TestCase):
             stage_runtime_safety(root)
             self.assertEqual((root / "agent/llm_withtools.py").read_bytes(),
                              (ROOT / "runtime_overlay/agent/llm_withtools.py").read_bytes())
+            (root / "agent/llm_withtools.py").write_text("unknown evolved runtime\n")
+            with self.assertRaisesRegex(RuntimeError, "Unexpected HyperAgents runtime"):
+                stage_runtime_safety(root)
 
 
 if __name__ == "__main__":

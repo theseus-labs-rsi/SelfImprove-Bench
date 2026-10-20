@@ -18,8 +18,9 @@ score gain, replay retention, generalization, and token/time cost.
 - `rsi_methods/` — method adaptors: `ACE`, `AHE`, `HyperAgents`.
 - `analyze/` — inspects a method's evolution artifacts.
 
-Training and evaluation support three frameworks: ACE (`ace`), AHE (`ahe`),
-and HyperAgents (`hyperagents`). Each can be evaluated before and after training.
+Built-in frameworks are ACE (`ace`), AHE (`ahe`), and HyperAgents (`hyperagents`).
+External RSI methods use the public adapter interface described below, without
+changing game implementations or the runner. Each supports before/after evaluation.
 
 The Minecraft and Astray environments are adapted, with some modifications, from
 [GameWorld](https://github.com/gameworld-project/gameworld); see
@@ -131,6 +132,146 @@ destination game's Medium reference. Scores retain their available precision
 through calculation; rounding is only for display.
 See [the main experiment guide](configs/main/README.md#hci-calculation)
 for task groupings and missing-data handling.
+
+## Adding an RSI Method
+
+**Integration point:** implement an adapter following
+[`RSIMethod`](benchmark/interfaces.py), then set `agent.provider` to `rsi` and
+`agent.adapter` to its `package.module:AdapterClass` import path. The package
+must be importable in your Python environment. No registry or game edits are
+required. Import paths execute Python code; use only adapters you trust.
+
+The three bundled methods use this same interface and configuration in all
+18 main experiment configs, not a separate construction path:
+
+| Method | `agent.adapter` |
+|---|---|
+| ACE | `rsi_methods.ACE.ACEAdaptor:ACEAdaptor` |
+| AHE | `rsi_methods.AHE.AHEAdaptor:AHEAdaptor` |
+| HyperAgents | `rsi_methods.HyperAgents.HyperAgentsAdaptor:HyperAgentsAdaptor` |
+
+For example, ACE uses `"provider": "rsi"` together with the ACE import path
+above. The old `ace`, `ahe`, and `hyperagents` provider names remain aliases
+for the same adapter factory and lifecycle. Method names in result directories,
+GameWorld task manifests and HCI reports remain `ace`, `ahe`, and `hyperagents`.
+Bundled methods keep their existing model/prompt settings in their respective
+`rsi_methods/<method>/config.toml`; they currently require empty
+`adapter_options`. The generic `agent.model` is available to external adapters
+but does not override the bundled methods' per-role TOML settings.
+Seeds, task schedules, scoring and selection rules are unchanged.
+
+The adapter factory receives one `MethodContext` containing the run-local
+`artifact_dir`, `task_count`, `options`, `model`, `timeout`, and `resuming` flag.
+Construction must not initialize/train/reset the method: the harness calls
+`init()` for fresh runs or `restore_state()` for checkpoint resumes.
+
+| Interface | Responsibility |
+|---|---|
+| `init()` | Initialize the untrained method state. |
+| `load()` | Return a fresh acting session for the currently committed method state. Do not train or change committed state. |
+| `agent.act(prompt, *, image_paths=())` | Return `BackendResponse` containing action text, optional reasoning and token usage. Minecraft/Astray supply screenshot paths; other games supply text. |
+| `refine(feedback, *, output_dir)` | Improve from `list[FeedbackResult]`. Commit internally and return `None`, or return `CandidateBatch` for harness evaluation. |
+| `export_state()` | Return a JSON object fully describing the committed method state. |
+| `restore_state(state)` | Restore precisely that state, without training or making model calls. |
+| `close()` | Release resources; it must be safe to call repeatedly, including between tasks. |
+
+`BackendResponse` and `FeedbackResult` are defined in
+[`benchmark/contracts.py`](benchmark/contracts.py). Feedback includes the task,
+step trajectory, numeric score, execution status, and diagnostic metrics.
+Use `evaluation.score` for numeric performance; success and execution status are
+not interchangeable with score. Action JSON remains game-specific and is
+specified in the game-built prompt: Farm uses a full plan, Combat stage
+decisions, Sweepmine a single action, Hero's Journey its configured interaction
+protocol, and Minecraft/Astray registered GameWorld actions.
+
+The separation is:
+
+```text
+Your method -> RSIMethod / ActingAgent -> runner -> game bench -> score + trajectory
+```
+
+Games own observation construction, legal actions, simulation, and scoring.
+[`benchmark/game_adapters.py`](benchmark/game_adapters.py) is the shared game-side
+evaluation entry point; it does not initialize or improve methods. The runner
+calls `refine` only on normal training tasks, never on replay or holdout tasks.
+Method internals (prompts, memory, code, model weights, selection strategy) belong
+to the adapter. Avoid leaking per-episode execution state across `load()` calls;
+if parallel calls are supported, agents may declare `supports_parallel_calls=True`.
+
+Minimal configuration:
+
+```json
+{
+  "agent": {
+    "provider": "rsi",
+    "adapter": "my_method.adapter:MyAdapter",
+    "adapter_options": {"my_setting": 1},
+    "model": "YOUR_MODEL"
+  }
+}
+```
+
+`adapter_options` is passed unchanged as `context.options`; credentials should
+stay in environment variables, not options or exported state. Keep code and
+dependencies fixed when resuming. For checkpoint files that reference large
+artifacts, write immutable/versioned files under `context.artifact_dir`, not a
+mutable "latest" file: interrupted refinement must not overwrite committed
+snapshots. `export_state` must return finite JSON values (no NaN/Infinity).
+
+For an executable, **offline lifecycle example, not a learning baseline**, see
+[`examples/minimal_rsi.py`](examples/minimal_rsi.py):
+
+```bash
+python -m benchmark configs/examples/minimal_rsi.json
+python -m benchmark configs/examples/minimal_rsi.json --initial
+```
+
+It exercises five training tasks, a round-2 replay after round 5, and held-out
+evaluation using a fixed no-op Farm plan. To test checkpoint recovery instead,
+start with a fresh output directory:
+
+```bash
+python -m benchmark configs/examples/minimal_rsi.json --max-new-train-runs 2
+python -m benchmark configs/examples/minimal_rsi.json --resume
+```
+
+External adapters support initial evaluation, training, holdout, task replay,
+task-level checkpoint resume, and the existing G0--G3 HCI calculator when the
+chosen task manifest contains the required groups. For Minecraft/Astray, use
+`game_options.gameworld.framework: "rsi"` (or omit it to infer the method);
+the standard screenshot/action client is selected automatically. Browser-step
+recovery (`resumable_steps`/`RSI_STEP_RESUME`) and legacy copied-workspace
+`--target-dir` recovery remain built-in-only; external methods use task-level
+`--resume`. Bundled adapters retain their method-specific GameWorld clients and
+recovery support even when configured with `provider: "rsi"`. Existing run
+configurations must not be changed during an in-place resume: keep an old
+provider alias for an old run; use the migrated configs for fresh runs.
+
+### Optional Candidate Evaluation
+
+A method that wants harness-managed same-task validation returns public
+`CandidateBatch`/`Candidate` objects from `refine`, and implements the optional
+`CandidateSelectingMethod.select` interface. The runner evaluates candidates on
+the same training task, not on holdout tasks, and passes their
+`SelectionEvaluation` values back to the method. `select` owns acceptance and
+state commitment; return `SelectionResult` with status `committed`, `completed`,
+or `unchanged`, or `needs_validation` with another candidate batch. Provide the
+committed candidate ID when applicable. Candidate IDs must be unique within a
+batch; artifact directories must be writable and isolated from committed state.
+
+Methods may instead perform their own improvement/selection internally and
+return `None`. Such updates are recorded as completed, but a same-task
+`post_refinement_score` stays unavailable unless evaluated through the candidate
+interface; the harness never invents a post-update score. G0 still compares the
+original pre-refinement execution score with a later replay score.
+
+### Optional Trajectory Classification
+
+Training/evaluation logs and numeric results are emitted for every adapter.
+The LLM trajectory classifiers under `analyze/` currently have artifact readers
+for ACE, AHE, and HyperAgents. A new method's native modification artifacts need
+their own reader for that classification pipeline; classification is **not** a
+prerequisite for training, evaluation, replay, or HCI calculation.
 
 ## License and third-party components
 

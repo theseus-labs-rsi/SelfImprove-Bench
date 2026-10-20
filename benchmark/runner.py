@@ -17,9 +17,10 @@ from .config import BenchmarkConfig
 from .game_adapters import EvaluationOutcome, evaluate_task
 from .metrics import calculate_metrics, format_metrics, post_refinement_score
 from .tasks import GAMES, PlannedTask, TaskManifest, build_manifest
+from .methods import BUILTIN_METHODS, RSI_PROVIDERS, method_identity
 
 
-RSI_METHODS = frozenset({"ace", "ahe", "hyperagents"})
+RSI_METHODS = frozenset(RSI_PROVIDERS)
 
 
 def _write_json(path: Path, value: Any) -> None:
@@ -55,7 +56,7 @@ def _token_total(metrics: dict[str, Any]) -> int:
 def _is_fatal_method_error(config: BenchmarkConfig, record: Mapping[str, Any]) -> bool:
     if record.get("status") in {"ok", "skipped"}:
         return False
-    if config.agent.provider == "ahe":
+    if method_identity(config.agent) == "ahe":
         return rsi_session.is_fatal_ahe_error(record.get("error"))
     return False
 
@@ -68,7 +69,7 @@ def _must_stop_after_error(config: BenchmarkConfig, record: Mapping[str, Any]) -
 
 
 class AgentController:
-    """Own one ACE, AHE, or HyperAgents lineage for training and evaluation."""
+    """Own one method lineage through the shared RSI lifecycle."""
 
     def __init__(
         self, config: BenchmarkConfig, output_dir: Path, training_count: int,
@@ -76,7 +77,7 @@ class AgentController:
         batch_id: str | None = None, resume: bool = False,
     ) -> None:
         self.config = config
-        self.provider = config.agent.provider
+        self.provider = method_identity(config.agent)
         self.bridge: Any | None = None
         self.session: Any | None = None
         self.active_agent: Any | None = None
@@ -87,7 +88,7 @@ class AgentController:
                 if resume_from is not None else {}
             )
             self.session = self.bridge.create_rsi_batch(
-                self.provider,
+                config.agent.provider,
                 output_dir / "rsi",
                 task_count=max(1, training_count),
                 agent=config.agent,
@@ -121,7 +122,7 @@ class AgentController:
         return request_json(
             task,
             **kwargs,
-            provider=agent.provider,
+            provider=self.provider,
             model=agent.model,
             timeout=agent.timeout,
             max_attempts=agent.max_attempts,
@@ -461,7 +462,8 @@ def _run_one(
                     raise ValueError(f"Unsupported RSI selection status: {status or '<missing>'}")
             selection_summary = {
                 "stages": stages,
-                "status": stages[-1]["status"] if stages else "unchanged",
+                "status": (stages[-1]["status"] if stages else
+                           "completed" if controller.provider == "rsi" else "unchanged"),
                 "committed_candidate_id": (
                     stages[-1]["committed_candidate_id"] if stages else None
                 ),
@@ -607,7 +609,7 @@ def _run_target_benchmark(
             )
         ):
             raise ValueError("Completed holdout tasks differ from current configuration")
-        if config.agent.provider not in {"ace", "ahe", "hyperagents"}:
+        if method_identity(config.agent) not in BUILTIN_METHODS:
             raise ValueError(f"Resume is not implemented for {config.agent.provider}")
     else:
         manifest = build_manifest(config)
@@ -675,7 +677,7 @@ def _finish_benchmark(config, output_dir, manifest, controller,
             "scheduled_training_runs": len(manifest.training),
             "scheduled_refinements": (
                 refinement_count // controller.session.adaptor.refinement_every
-                if config.agent.provider == "ahe" and controller.session is not None
+                if method_identity(config.agent) == "ahe" and controller.session is not None
                 else refinement_count
             ),
             "completed_training_runs": len(training_records),
@@ -902,9 +904,11 @@ def run_benchmark(config: BenchmarkConfig, *, target_dir: str | Path | None = No
         raise ValueError("max_new_train_runs must be a positive integer")
     if target_dir is not None and (resume or max_new_train_runs is not None):
         raise ValueError("--target-dir cannot be combined with --resume or --max-new-train-runs")
-    supported = config.agent.provider in {"ace", "ahe", "hyperagents"}
+    supported = config.agent.provider in RSI_METHODS
     if not supported and (resume or max_new_train_runs is not None):
-        raise ValueError("Checkpoint resume/pause is supported for ACE, AHE and HyperAgents only")
+        raise ValueError("Checkpoint resume/pause requires an RSI method")
+    if target_dir is not None and method_identity(config.agent) == "rsi":
+        raise ValueError("External RSI adapters use --resume in place; --target-dir is built-in only")
     if target_dir is not None or not supported:
         return _run_target_benchmark(config, target_dir=target_dir)
     output_dir = Path(config.output_dir).resolve()

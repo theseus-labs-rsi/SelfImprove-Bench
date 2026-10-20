@@ -1,7 +1,7 @@
 """Framework registry for the open-source GameWorld integration.
 
-The framework (ACE, HyperAgents, or AHE) is independent from the model used by
-the framework. Model and credential names are supplied by the caller through
+The built-in frameworks and external RSI adapters are independent from the model
+used by the framework. Model and credential names are supplied by the caller through
 environment variables; this module contains no provider key or model secret.
 """
 
@@ -10,17 +10,21 @@ from __future__ import annotations
 import os
 from typing import Any
 
+from benchmark.methods import RSI_PROVIDERS
 
-SUPPORTED_FRAMEWORKS = ("ace", "hyperagents", "ahe")
+
+SUPPORTED_FRAMEWORKS = RSI_PROVIDERS
 CLIENT_MODULES = {
     "ace": "benches.gameworld.ace_game_client",
     "hyperagents": "benches.gameworld.hyperagents_game_client",
     "ahe": "benches.gameworld.ahe_game_client",
+    "rsi": "benches.gameworld.rsi_game_client",
 }
 CLIENT_CLASSES = {
     "ace": "ACEGameClient",
     "hyperagents": "HyperAgentsGameClient",
     "ahe": "AHEGameClient",
+    "rsi": "RSIGameClient",
 }
 ADAPTOR_IMPORTS = {
     "ace": "rsi_methods.ACE.ACEAdaptor.ACEAdaptor",

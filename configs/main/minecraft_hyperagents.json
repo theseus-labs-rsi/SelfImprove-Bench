@@ -18,7 +18,8 @@
   "holdout_tasks_per_difficulty": 10,
   "evolution_window": 1,
   "agent": {
-    "provider": "hyperagents",
+    "provider": "rsi",
+    "adapter": "rsi_methods.HyperAgents.HyperAgentsAdaptor:HyperAgentsAdaptor",
     "reasoning_effort": "low",
     "timeout": 600,
     "max_attempts": 1

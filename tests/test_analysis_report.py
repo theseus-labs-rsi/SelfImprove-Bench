@@ -5,7 +5,7 @@ import io
 import json
 import tempfile
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -133,13 +133,15 @@ class GameReportTest(unittest.TestCase):
         with (self.root / "reports/proposals.csv").open(newline="") as handle:
             self.assertEqual(len(list(csv.DictReader(handle))), 1)
         markdown = (self.root / "reports/report.md").read_text()
-        self.assertIn("轨迹分类与分数解读", markdown)
+        self.assertIn("Classification and Score Report", markdown)
+        self.assertTrue(markdown.isascii())
+        self.assertEqual(saved["language"], "en")
         self.assertNotIn("Check A", markdown)
         statistics = (self.root / "reports/statistics.json").read_text()
         self.assertNotIn("Check A", statistics)
         self.assertNotIn(str(source), statistics)
         self.assertIn("N/A", markdown)
-        self.assertIn("N/A: no scores available", render_markdown(report, "en"))
+        self.assertIn("N/A: no scores available", render_markdown(report))
 
     def test_empty_trajectory_and_zero_delta_do_not_invent_gains(self):
         report = build_report([self.source(state([]))], "astray")
@@ -174,7 +176,10 @@ class GameReportTest(unittest.TestCase):
         client = self.client(self.insights())
         add_insights(report, model="offline-test", client=client)
         self.assertEqual(report["status"], "interpreted")
-        self.assertNotIn("改进建议", render_markdown(report))
+        self.assertNotIn("Recommendations", render_markdown(report))
+        self.assertTrue(render_markdown(report).isascii())
+        self.assertEqual(report["language"], "en")
+        self.assertIn("Write all report text in English", client.responses.parse.call_args.kwargs["input"])
         self.assertEqual(report["telemetry"]["responses"][0]["response_id"], "offline-response")
         self.assertIn("not causal", client.responses.parse.call_args.kwargs["input"])
         for ref in ("invented/node", "", "run_001/node_0001", "run_001/node_0001/proposal_0000"):
@@ -195,7 +200,7 @@ class GameReportTest(unittest.TestCase):
         client = Mock()
 
         def reply(**kwargs):
-            payload = json.loads(kwargs["input"].split("Requested language: zh\n", 1)[1])
+            payload = json.loads(kwargs["input"].split("Requested language: en\n", 1)[1])
             self.assertEqual(payload, build_statistics(report))
             self.assertNotIn(sentinel, kwargs["input"])
             self.assertNotIn("source_evidence", kwargs["input"])
@@ -295,6 +300,15 @@ class GameReportTest(unittest.TestCase):
         args = _build_parser().parse_args(["report", "--game", "minecraft", "--input", "a.json",
                                           "--score-stats", "s.csv", "--output-dir", "out"])
         self.assertEqual(args.score_stats, ["s.csv"])
+        self.assertFalse(hasattr(args, "language"))
+
+    def test_report_cli_has_no_language_selector(self):
+        command = ["report", "--game", "minecraft", "--input", "a.json", "--output-dir", "out"]
+        for language in ("zh", "en"):
+            with self.subTest(language=language), redirect_stderr(io.StringIO()), \
+                    self.assertRaises(SystemExit) as error:
+                _build_parser().parse_args(command + ["--language", language])
+            self.assertEqual(error.exception.code, 2)
 
     def test_cli_statistics_mode_does_not_call_model_even_with_model_env(self):
         source = self.source()
@@ -310,7 +324,7 @@ class GameReportTest(unittest.TestCase):
     def test_failed_model_keeps_statistical_report(self):
         source = self.source()
         args = SimpleNamespace(inputs=[source], game="farm", output_dir=self.root / "failed",
-                               model="offline-test", language="zh", timeout=None)
+                               model="offline-test", timeout=None)
         with patch("analyze.report.add_insights", side_effect=AnalysisLLMError("offline failure")), \
                 self.assertRaises(AnalysisLLMError):
             run_report(args)

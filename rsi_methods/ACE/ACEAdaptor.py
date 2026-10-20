@@ -13,7 +13,9 @@ from typing import Any
 from uuid import uuid4
 
 from benchmark.backend import BackendDispatcher, OpenAIBackend
+from benchmark.interfaces import MethodContext
 from benchmark.visual_evidence import frames, refinement_image_limit, sample, visual_note
+from rsi_methods.checkpoint import MethodCheckpointMixin
 
 if __package__:
     from .ACEAgent import ACEAgent
@@ -156,10 +158,13 @@ class _ACEFeedbackRecord:
     visual_frames: tuple[dict, ...] = ()
 
 
-class ACEAdaptor:
+class ACEAdaptor(MethodCheckpointMixin):
     """Expose ACE through the common RSI method lifecycle."""
 
-    def __init__(self) -> None:
+    checkpoint_method = "ace"
+
+    def __init__(self, context: MethodContext | None = None) -> None:
+        self.bind_context(context)
         self.config_path = CONFIG_PATH
         self.max_refinement_images: int | None = 16
         self.dispatcher: BackendDispatcher | None = None
@@ -180,6 +185,9 @@ class ACEAdaptor:
         self.last_selection_report: ACESelectionReport | None = None
         self._pending_batch: ACECandidateBatch | None = None
         self._config_snapshot = b""
+
+    def close(self) -> None:
+        """ACE's actors hold no persistent runtime process to release."""
 
     def _validate_config(self) -> None:
         """Reject configurations whose meaning would otherwise be ambiguous."""

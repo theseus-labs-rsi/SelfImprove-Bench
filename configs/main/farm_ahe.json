@@ -30,7 +30,8 @@
     "lag": 3
   },
   "agent": {
-    "provider": "ahe",
+    "provider": "rsi",
+    "adapter": "rsi_methods.AHE.AHEAdaptor:AHEAdaptor",
     "backend": "codex",
     "model": null,
     "timeout": 1800.0,

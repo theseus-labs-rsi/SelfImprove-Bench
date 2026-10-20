@@ -228,6 +228,11 @@ class GameWorldBenchmark:
         framework = str(task.get("framework") or "").strip().lower()
         if framework not in FRAMEWORK_CLIENTS:
             raise ValueError(f"GameWorld task requires framework in {tuple(FRAMEWORK_CLIENTS)}")
+        if framework == "rsi" and step_resume_enabled(task):
+            raise ValueError(
+                "External RSI adapters support task-level --resume, not browser-step recovery; "
+                "disable resumable_steps and unset RSI_STEP_RESUME"
+            )
         gameworld_root = resolve_gameworld_root(task)
         if not gameworld_root.is_dir():
             raise FileNotFoundError(
@@ -302,7 +307,7 @@ class GameWorldBenchmark:
 
             # The same task id is run concurrently by all three RSI providers.
             # Separate each framework's GameWorld ports to avoid cross-run collision.
-            framework_offset = {"ace": 0, "hyperagents": 1000, "ahe": 2000}[framework]
+            framework_offset = {"ace": 0, "hyperagents": 1000, "ahe": 2000, "rsi": 3000}[framework]
             # Task ids repeat across games (e.g. train-gameworld-d1-0001), so key by game too.
             port_key = f"{task['game_id']}/{task_key}"
             port = 20000 + framework_offset + (zlib.crc32(port_key.encode("utf-8")) % 1000)

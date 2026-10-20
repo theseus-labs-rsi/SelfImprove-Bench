@@ -18,7 +18,8 @@
   "holdout_tasks_per_difficulty": 10,
   "evolution_window": 1,
   "agent": {
-    "provider": "ace",
+    "provider": "rsi",
+    "adapter": "rsi_methods.ACE.ACEAdaptor:ACEAdaptor",
     "reasoning_effort": "low",
     "timeout": 600,
     "max_attempts": 1

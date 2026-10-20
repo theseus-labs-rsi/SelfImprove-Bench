@@ -21,10 +21,10 @@ from pathlib import Path
 from typing import Any
 
 from . import rsi_session
+from .methods import RSI_PROVIDERS
 
 
 BASELINE_PROVIDERS = ("codex", "claude", "deepseek", "openai")
-RSI_PROVIDERS = ("ace", "ahe", "hyperagents")
 PROVIDER_CHOICES = BASELINE_PROVIDERS + RSI_PROVIDERS
 DSH_INSTALL_HELP = (
     "DeepSeek Harness (dsh) is not installed. Install it with:\n"

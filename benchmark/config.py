@@ -8,12 +8,14 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from .methods import RSI_PROVIDERS, method_identity, validate_adapter_spec
+
 from benches.heros_journey.task_factory import load_difficulty_manifest as load_hero_difficulties
 from benches.sweepmine.task_factory import load_difficulty_manifest
 
 
 SUPPORTED_GAMES = ("farm", "combat", "sweepmine", "heros_journey", "gameworld")
-SUPPORTED_PROVIDERS = ("ace", "ahe", "hyperagents")
+SUPPORTED_PROVIDERS = RSI_PROVIDERS
 EVOLUTION_WINDOW = 1
 HOLDOUT_TASKS_PER_DIFFICULTY = 5
 # Legacy execution backend labels; each framework owns its model backend settings.
@@ -54,6 +56,8 @@ class AgentConfig:
     max_attempts: int = 3
     show_output: bool = False
     reasoning_effort: str | None = None
+    adapter: str | None = None
+    adapter_options: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -77,6 +81,11 @@ class BenchmarkConfig:
         value = asdict(self)
         if self.agent.reasoning_effort is None:
             value["agent"].pop("reasoning_effort")
+        # Keep existing run identities unchanged for the three built-in methods.
+        if self.agent.adapter is None:
+            value["agent"].pop("adapter")
+        if not self.agent.adapter_options:
+            value["agent"].pop("adapter_options")
         return value
 
 
@@ -166,6 +175,14 @@ def config_from_mapping(value: dict[str, Any]) -> BenchmarkConfig:
     provider = str(agent_raw.get("provider", "ace")).strip().lower()
     if provider not in SUPPORTED_PROVIDERS:
         raise ValueError(f"agent.provider must be one of: {', '.join(SUPPORTED_PROVIDERS)}")
+    adapter = agent_raw.get("adapter")
+    adapter_options = agent_raw.get("adapter_options", {})
+    if not isinstance(adapter_options, dict):
+        raise ValueError("agent.adapter_options must be an object")
+    if provider == "rsi":
+        adapter = validate_adapter_spec(adapter)
+    elif adapter is not None or adapter_options:
+        raise ValueError("agent.adapter and agent.adapter_options require agent.provider='rsi'")
     holdout_manifest = value.get("holdout_manifest")
     if holdout_manifest is not None:
         if not isinstance(holdout_manifest, str) or not holdout_manifest.strip():
@@ -193,14 +210,15 @@ def config_from_mapping(value: dict[str, Any]) -> BenchmarkConfig:
     hero = load_hero_difficulties()
     requested_games = {item.game for item in (*schedule, *holdout)}
     if "gameworld" in requested_games:
+        identity = method_identity({"provider": provider, "adapter": adapter})
         gameworld_provider = str(
-            gameworld_options.get("framework", provider)
+            gameworld_options.get("framework", identity)
         ).strip().lower()
-        gameworld_options.setdefault("framework", provider)
-        if gameworld_provider != provider:
+        gameworld_options.setdefault("framework", identity)
+        if gameworld_provider != identity:
             raise ValueError(
-                "game_options.gameworld.framework must match agent.provider "
-                f"({provider!r}) so the CSD method and GameWorld client cannot diverge"
+                "game_options.gameworld.framework must match the agent method "
+                f"({identity!r}) so the CSD method and GameWorld client cannot diverge"
             )
         for phase in ("train", "holdout"):
             pool = gameworld_options.get(phase)
@@ -253,6 +271,8 @@ def config_from_mapping(value: dict[str, Any]) -> BenchmarkConfig:
             timeout=float(timeout),
             max_attempts=max_attempts,
             show_output=bool(agent_raw.get("show_output", False)),
+            adapter=adapter,
+            adapter_options=adapter_options,
         ),
         evolution_window=window,
         output_dir=str(value.get("output_dir", "benchmark_results")),

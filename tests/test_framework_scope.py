@@ -13,6 +13,7 @@ from benchmark.client import RSI_PROVIDERS as CLIENT_METHODS
 from benchmark.config import AgentConfig, SUPPORTED_PROVIDERS, config_from_mapping, load_config
 from benchmark.rsi_session import RSI_PROVIDERS, RSIBatchSession
 from benchmark.runner import RSI_METHODS
+from benchmark.methods import BUILTIN_ADAPTERS, method_identity
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -23,7 +24,7 @@ REMOVED_METHODS = ("hyperdsh", "baseline", "self_harness", "codex", "claude", "d
 class FrameworkScopeTest(unittest.TestCase):
     def test_framework_registries_agree(self):
         for registry in (SUPPORTED_PROVIDERS, RSI_PROVIDERS, RSI_METHODS, CLIENT_METHODS):
-            self.assertEqual(set(registry), METHODS)
+            self.assertEqual(set(registry), METHODS | {"rsi"})
         self.assertEqual(AgentConfig().provider, "ace")
 
     def test_all_main_configs_load(self):
@@ -32,7 +33,9 @@ class FrameworkScopeTest(unittest.TestCase):
         for path in paths:
             with self.subTest(config=path.name):
                 config = load_config(path)
-                self.assertIn(config.agent.provider, METHODS)
+                self.assertEqual(config.agent.provider, "rsi")
+                self.assertIn(method_identity(config.agent), METHODS)
+                self.assertEqual(config.agent.adapter, BUILTIN_ADAPTERS[method_identity(config.agent)])
                 self.assertEqual(sum(item.count for item in config.schedule), 20)
 
     def test_removed_providers_are_rejected(self):
