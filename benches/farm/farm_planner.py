@@ -1,9 +1,4 @@
-"""Text based farm planning task generator and simulator.
-
-The module has no third-party dependencies and can be used both as a library
-and from the command line.  A plan is executed in day order, with operations
-on one day ordered as buy -> plant -> harvest -> sell.
-"""
+"""Text based farm planning task generator and simulator."""
 
 from __future__ import annotations
 
@@ -125,7 +120,7 @@ def generate_task(
         "crop_catalog": {crop_id: asdict(crops[crop_id]) | {"id": crop_id} for crop_id in selected},
         "rules": {
             "day_numbering": "1-based",
-            "daily_operation_order": ["buy_seeds", "plant", "harvest", "sell"],
+            "daily_operation_order": ["harvest", "sell", "buy_seeds", "plant"],
             "harvest_day": "plant_day + maturity_days",
             "unsold_fruit_has_no_value": True,
         },
@@ -369,54 +364,56 @@ def simulate_plan(
         seen_days.add(day)
         events: dict[str, Any] = {"day": day, "bought": [], "planted": [], "harvested": [], "sold": [], "money": money}
 
-        for crop_id, quantity in _entries(day_record.get("buy_seeds", []), "buy_seeds", day):
-            if crop_id not in available:
-                raise FarmError(f"Cannot buy crop on day {day}: {crop_id}")
-            cost = crops[crop_id].seed_price * quantity
-            if cost > money:
-                raise FarmError(f"Insufficient funds on day {day}: need {cost}, only {money} left")
-            money -= cost
-            seed_inventory[crop_id] = seed_inventory.get(crop_id, 0) + quantity
-            events["bought"].append({"crop": crop_id, "quantity": quantity, "cost": cost})
-
-        for crop_id, quantity in _entries(day_record.get("plant", []), "plant", day):
-            if crop_id not in available:
-                raise FarmError(f"Cannot plant crop on day {day}: {crop_id}")
-            if seed_inventory.get(crop_id, 0) < quantity:
-                raise FarmError(f"Not enough {crop_id} seeds on day {day}")
-            if len(growing) + quantity > farmland:
-                raise FarmError(f"Not enough farmland on day {day}: need {quantity}, available {farmland - len(growing)}")
-            seed_inventory[crop_id] -= quantity
-            growing.append({"crop": crop_id, "quantity": quantity, "harvest_day": day + crops[crop_id].maturity_days})
-            events["planted"].append({"crop": crop_id, "quantity": quantity})
-
-        for crop_id, quantity in _entries(day_record.get("harvest", []), "harvest", day):
-            batches = [batch for batch in growing if batch["crop"] == crop_id and batch["harvest_day"] <= day]
-            available_plants = sum(batch["quantity"] for batch in batches)
-            if available_plants < quantity:
-                raise FarmError(f"Not enough mature {crop_id} crops on day {day}")
-            remaining = quantity
-            for batch in list(batches):
-                taken = min(remaining, batch["quantity"])
-                batch["quantity"] -= taken
-                remaining -= taken
-                if batch["quantity"] == 0:
-                    growing.remove(batch)
-                if remaining == 0:
-                    break
-            fruits = quantity * crops[crop_id].yield_per_harvest
-            fruit_inventory[crop_id] = fruit_inventory.get(crop_id, 0) + fruits
-            events["harvested"].append({"crop": crop_id, "quantity": quantity, "fruits": fruits})
-
-        for crop_id, quantity in _entries(day_record.get("sell", []), "sell", day):
-            if crop_id not in available:
-                raise FarmError(f"Cannot sell crop on day {day}: {crop_id}")
-            if fruit_inventory.get(crop_id, 0) < quantity:
-                raise FarmError(f"Not enough {crop_id} fruit on day {day}")
-            revenue = quantity * crops[crop_id].fruit_price
-            fruit_inventory[crop_id] -= quantity
-            money += revenue
-            events["sold"].append({"crop": crop_id, "quantity": quantity, "revenue": revenue})
+        for operation, actions in day_record.items():
+            if operation not in {"harvest", "sell", "buy_seeds", "plant"}:
+                continue
+            for crop_id, quantity in _entries(actions, operation, day):
+                if operation == "harvest":
+                    batches = [batch for batch in growing if batch["crop"] == crop_id and batch["harvest_day"] <= day]
+                    available_plants = sum(batch["quantity"] for batch in batches)
+                    if available_plants < quantity:
+                        raise FarmError(f"Not enough mature {crop_id} crops on day {day}")
+                    remaining = quantity
+                    for batch in list(batches):
+                        taken = min(remaining, batch["quantity"])
+                        batch["quantity"] -= taken
+                        remaining -= taken
+                        if batch["quantity"] == 0:
+                            growing.remove(batch)
+                        if remaining == 0:
+                            break
+                    fruits = quantity * crops[crop_id].yield_per_harvest
+                    fruit_inventory[crop_id] = fruit_inventory.get(crop_id, 0) + fruits
+                    events["harvested"].append({"crop": crop_id, "quantity": quantity, "fruits": fruits})
+                elif operation == "sell":
+                    if crop_id not in available:
+                        raise FarmError(f"Cannot sell crop on day {day}: {crop_id}")
+                    if fruit_inventory.get(crop_id, 0) < quantity:
+                        raise FarmError(f"Not enough {crop_id} fruit on day {day}")
+                    revenue = quantity * crops[crop_id].fruit_price
+                    fruit_inventory[crop_id] -= quantity
+                    money += revenue
+                    events["sold"].append({"crop": crop_id, "quantity": quantity, "revenue": revenue})
+                elif operation == "buy_seeds":
+                    if crop_id not in available:
+                        raise FarmError(f"Cannot buy crop on day {day}: {crop_id}")
+                    cost = crops[crop_id].seed_price * quantity
+                    if cost > money:
+                        raise FarmError(f"Insufficient funds on day {day}: need {cost}, only {money} left")
+                    money -= cost
+                    seed_inventory[crop_id] = seed_inventory.get(crop_id, 0) + quantity
+                    events["bought"].append({"crop": crop_id, "quantity": quantity, "cost": cost})
+                else:
+                    if crop_id not in available:
+                        raise FarmError(f"Cannot plant crop on day {day}: {crop_id}")
+                    if seed_inventory.get(crop_id, 0) < quantity:
+                        raise FarmError(f"Not enough {crop_id} seeds on day {day}")
+                    occupied = sum(batch["quantity"] for batch in growing)
+                    if occupied + quantity > farmland:
+                        raise FarmError(f"Not enough farmland on day {day}: need {quantity}, available {farmland - occupied}")
+                    seed_inventory[crop_id] -= quantity
+                    growing.append({"crop": crop_id, "quantity": quantity, "harvest_day": day + crops[crop_id].maturity_days})
+                    events["planted"].append({"crop": crop_id, "quantity": quantity})
         events["money"] = money
         log.append(events)
 
