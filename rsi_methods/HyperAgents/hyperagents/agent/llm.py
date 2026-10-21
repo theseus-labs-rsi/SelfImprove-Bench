@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from pathlib import Path
 
 from benchmark.backend import BackendDispatcher, OpenAIBackend
 from benchmark.contracts import BackendResponse
@@ -17,7 +18,10 @@ def _normalize_messages(msg_history, prompt) -> list[dict]:
         converted = dict(history_message)
         if "text" in converted and "content" not in converted:
             converted["content"] = converted.pop("text")
-        for metadata_key in ("usage", "reasoning", "status", "finish_reason"):
+        for metadata_key in (
+            "usage", "reasoning", "status", "finish_reason", "usage_attempts",
+            "tool_budget_exhausted", "tool_calls_executed", "tool_call_limit",
+        ):
             converted.pop(metadata_key, None)
         messages.append(converted)
 
@@ -71,14 +75,19 @@ def generate_response(
 ) -> tuple[BackendResponse, list[dict]]:
     """Generate one assistant turn and return its complete local history."""
     messages = _normalize_messages(msg_history, prompt)
-    request_prompt = prompt if isinstance(prompt, str) else ""
-    request_messages = () if image_paths else messages
+    if image_paths:
+        paths = tuple(Path(path) for path in image_paths)
+        builder = (
+            OpenAIBackend._build_responses_input
+            if api_mode == "responses" else OpenAIBackend._build_chat_messages
+        )
+        # Keep the images in history so subsequent tool turns retain the evidence.
+        messages[-1]["content"] = builder(str(prompt), paths)[0]["content"]
     response = _dispatcher(api_key_env, base_url_env).distribute(
         backend,
-        request_prompt,
+        "",
         model=model,
-        messages=request_messages,
-        image_paths=image_paths,
+        messages=messages,
         tools=tools,
         tool_choice=tool_choice,
         parallel_tool_calls=parallel_tool_calls,

@@ -31,6 +31,7 @@ from .lifecycle import (
     refine as refine_candidate,
 )
 from .runtime_agent import RuntimeAgent
+from .search_archive import SearchArchive
 
 
 CONFIG_PATH = Path(os.environ.get("RSI_HYPERAGENTS_CONFIG_PATH", Path(__file__).with_name("config.toml")))
@@ -118,6 +119,9 @@ class HyperAgentsSelectionReport:
     candidate_success: bool
     accepted: bool
     reason: str
+    next_parent_id: str | None = None
+    parent_selection: str = "score_child_prop"
+    archived_candidate_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -168,6 +172,9 @@ class HyperAgentsAdaptor(MethodCheckpointMixin):
         self.last_refinement_report: dict[str, Any] | None = None
         self.last_selection_report: HyperAgentsSelectionReport | None = None
         self._pending_batch: HyperAgentsCandidateBatch | None = None
+        self._archive_seed = context.seed if context is not None else 0
+        self._archive = SearchArchive(seed=self._archive_seed)
+        self.parent_selection = "score_child_prop"
 
     @property
     def snapshot(self) -> CandidateSnapshot:
@@ -191,15 +198,26 @@ class HyperAgentsAdaptor(MethodCheckpointMixin):
             reuse_existing=False,
         )
         self._refinement_round = 0
+        self._archive = SearchArchive(seed=self._archive_seed)
+        self._archive.add(self.snapshot, score=None, valid_parent=True)
         self.last_refinement_report = None
         self.last_selection_report = None
         self._pending_batch = None
+        self._persist_search(self.workspace_dir)
+
+    def _persist_search(self, output_dir: Path) -> None:
+        from benchmark.resume_state import atomic_json
+
+        atomic_json(output_dir / "search_archive.json", {
+            **self._archive.to_dict(), "active_candidate_id": str(self.snapshot.candidate_id),
+            "refinement_round": self._refinement_round,
+        })
 
     def resume(
         self, batch_dir: str | Path, *, source_batch: Path,
         before_task_index: int, target_dir: str | Path,
     ) -> None:
-        """Restore the selected candidate from the copied batch history."""
+        """Restore a complete archive from copied, completed training rounds."""
         self.close()
         batch = Path(batch_dir).resolve()
         state = batch / "state"
@@ -210,54 +228,44 @@ class HyperAgentsAdaptor(MethodCheckpointMixin):
         self._config_snapshot = (batch / "method_config.toml").read_bytes()
         self._configure(tomllib.loads(self._config_snapshot.decode("utf-8")))
         self.workspace_dir = workspaces[0]
+        archive_marker = self.workspace_dir / "search_archive.json"
+        if not archive_marker.is_file():
+            raise RuntimeError("HyperAgents batch predates archive restoration; use the historical code for that run")
         initial = initialize_agent(self.workspace_dir, reuse_existing=True)
         self._snapshot = initial
         self._refinement_round = 0
+        self._archive = SearchArchive()
+        self._archive.add(initial, score=None, valid_parent=True)
         for task in sorted(batch.glob("task_[0-9][0-9][0-9][0-9]_*")):
             if int(task.name[5:9]) >= before_task_index:
                 continue
-            stages = sorted(task.glob("selection_stage_*/selection.json"))
-            if not stages:
-                telemetry = task / "refinement_telemetry.json"
-                report = json.loads(telemetry.read_text(encoding="utf-8")) if telemetry.is_file() else {}
-                if report.get("status") != "skipped" or report.get("reason") != "tool_budget_exhausted":
-                    raise ValueError(f"HyperAgents task has no completed selection: {task}")
-                self._refinement_round += 1
-                continue
-            for stage in stages:
-                decision = json.loads(stage.read_text(encoding="utf-8"))
-                chosen = decision.get("selected_candidate_id")
-                if not chosen:
-                    continue
-                payload = json.loads((task / "candidate_batch.json").read_text(encoding="utf-8"))
-                candidates = [item for item in payload["candidates"] if item["candidate_id"] == chosen]
-                if len(candidates) != 1:
-                    raise ValueError(f"HyperAgents selection candidate is missing: {stage}")
-                saved = candidates[0]["snapshot"]
-                patches = []
-                recorded_batch = Path(saved["run_dir"]).resolve().parents[1]
-                if (recorded_batch.name != source_batch.name
-                        or recorded_batch.parent.name != "hyperagents"
-                        or recorded_batch.parent.parent.name != "rsi"):
-                    raise ValueError(f"HyperAgents snapshot has a different batch: {stage}")
-                for old_path in saved["lineage_patches"]:
-                    original = Path(old_path).resolve()
-                    if not original.is_relative_to(recorded_batch):
-                        raise ValueError(f"HyperAgents patch points outside source batch: {stage}")
-                    patch = batch / original.relative_to(recorded_batch)
-                    if not patch.is_file():
-                        raise FileNotFoundError(f"HyperAgents patch is missing: {patch}")
-                    patches.append(patch)
+            archive_path = task / "search_archive.json"
+            if not archive_path.is_file():
+                raise RuntimeError(f"Missing archive checkpoint; do not mix historical search policies: {task}")
+            payload = json.loads(archive_path.read_text(encoding="utf-8"))
+
+            def relocate(raw: str) -> str:
+                original = Path(raw).resolve()
+                if not original.is_relative_to(source_batch.resolve()):
+                    raise ValueError(f"HyperAgents archive path is outside source batch: {raw}")
+                return str(batch / original.relative_to(source_batch.resolve()))
+
+            for node in payload["nodes"]:
+                saved = node["snapshot"]
                 if saved["root_commit"] != initial.root_commit:
-                    raise ValueError(f"HyperAgents root commit changed: {stage}")
-                self._snapshot = with_lineage(
-                    initial, candidate_id=chosen, parent_id=saved["parent_id"],
-                    lineage_patches=patches,
-                )
-            self._refinement_round += 1
+                    raise ValueError(f"HyperAgents root commit changed: {archive_path}")
+                for key in ("run_dir", "workspace"):
+                    saved[key] = relocate(saved[key])
+                saved["lineage_patches"] = [relocate(p) for p in saved["lineage_patches"]]
+                if node["artifact_dir"]:
+                    node["artifact_dir"] = relocate(node["artifact_dir"])
+            self._archive = SearchArchive.from_dict(payload, root=batch)
+            self._snapshot = self._archive.nodes[payload["active_candidate_id"]]["snapshot"]
+            self._refinement_round = payload["refinement_round"]
         self.last_refinement_report = None
         self.last_selection_report = None
         self._pending_batch = None
+        self._persist_search(self.workspace_dir)
 
     def build(self) -> RuntimeAgent:
         """Instantiate the committed candidate in an isolated container."""
@@ -300,6 +308,10 @@ class HyperAgentsAdaptor(MethodCheckpointMixin):
         candidate_dir = resolved_output / "candidates" / candidate_id
         candidate_dir.mkdir(parents=True, exist_ok=False)
         evidence = self._feedback_to_result(feedback_results)
+        # The current parent has now been observed on a training task.
+        parent_node = self._archive.nodes[str(self.snapshot.candidate_id)]
+        if evidence["valid"]:
+            parent_node["score"] = evidence["selection_score"]
         metadata = new_generation_metadata(
             candidate_dir,
             candidate_id=candidate_id,
@@ -320,22 +332,11 @@ class HyperAgentsAdaptor(MethodCheckpointMixin):
                 output_dir=candidate_dir,
                 iterations_left=max(self.max_refinement_rounds - next_round, 0),
                 metadata=metadata,
+                search_archive=self._archive,
             )
         except Exception:
             candidate_instance.close()
             raise
-        if transition.metadata.get("tool_budget_exhausted"):
-            self.last_refinement_report = {
-                "status": "skipped", "reason": "tool_budget_exhausted",
-                "round": next_round, "metadata": dict(transition.metadata),
-            }
-            (candidate_dir / "refinement_report.json").write_text(
-                json.dumps(to_jsonable(self.last_refinement_report), ensure_ascii=False, indent=2),
-                encoding="utf-8",
-            )
-            candidate_instance.close()
-            self._refinement_round = next_round
-            return None
         if not transition.changed:
             transition.agent.snapshot = with_lineage(
                 self.snapshot,
@@ -395,7 +396,7 @@ class HyperAgentsAdaptor(MethodCheckpointMixin):
         output_dir: str | Path,
         selection_mode: str = "paired",
     ) -> HyperAgentsSelectionOutput:
-        """Commit the selected candidate, or retain the committed parent."""
+        """Archive the candidate, then sample the next parent without greedy rejection."""
         pending_batch = self._pending_batch
         if pending_batch is None:
             raise RuntimeError("HyperAgentsAdaptor.select() has no pending candidate batch")
@@ -418,7 +419,7 @@ class HyperAgentsAdaptor(MethodCheckpointMixin):
             raise RuntimeError("Committed HyperAgents state changed after refinement")
 
         candidate_evaluation = candidate_evaluations[candidate.candidate_id]
-        _, parent_score, _ = _selection_evaluation(parent_evaluation, "parent")
+        parent_status, parent_score, _ = _selection_evaluation(parent_evaluation, "parent")
         candidate_status, candidate_score, candidate_success = _selection_evaluation(
             candidate_evaluation, "candidate"
         )
@@ -426,15 +427,25 @@ class HyperAgentsAdaptor(MethodCheckpointMixin):
             accepted, reason = False, "candidate_has_no_change"
         elif candidate_status != "ok":
             accepted, reason = False, "candidate_status_not_ok"
-        elif selection_mode == "online":
-            accepted, reason = True, "changed_candidate_execution_valid"
-        elif parent_score is None or candidate_score is None:
+        elif candidate_score is None:
             accepted, reason = False, "selection_score_missing"
-        elif candidate_score < parent_score:
-            accepted, reason = False, "selection_score_regressed"
         else:
-            accepted, reason = True, "changed_candidate_score_not_below_parent"
-        selected_candidate_id = candidate.candidate_id if accepted else None
+            accepted, reason = True, "valid_candidate_added_to_archive"
+        parent_node = self._archive.nodes[candidate.parent_id]
+        if parent_status == "ok" and parent_score is not None:
+            parent_node["score"] = parent_score
+        self._archive.add(
+            candidate.snapshot, score=candidate_score, valid_parent=accepted,
+            artifact_dir=candidate.artifact_dir,
+        )
+        # Final evaluation uses the last round's valid output, not archive ranking.
+        final_round = self._refinement_round >= self.max_refinement_rounds
+        policy = "final_round" if final_round else self.parent_selection
+        next_snapshot = (
+            candidate.snapshot if accepted else self.snapshot
+        ) if final_round else self._archive.choose(policy)
+        selected_candidate_id = str(next_snapshot.candidate_id)
+        active_changed = next_snapshot.candidate_id != self.snapshot.candidate_id
         report = HyperAgentsSelectionReport(
             refinement_id=batch.refinement_id,
             selected_candidate_id=selected_candidate_id,
@@ -446,36 +457,33 @@ class HyperAgentsAdaptor(MethodCheckpointMixin):
             candidate_success=candidate_success,
             accepted=accepted,
             reason=reason,
+            next_parent_id=str(next_snapshot.candidate_id),
+            parent_selection=policy,
+            archived_candidate_id=candidate.candidate_id,
         )
         resolved_output = Path(output_dir).resolve()
         if self.workspace_dir is None:
             raise RuntimeError("HyperAgents workspace is not initialized")
-        if not accepted:
-            self._persist_selection_report(resolved_output, report)
-            self._persist_selection_report(self.workspace_dir, report)
-            if candidate.instantiated is not self._instantiated:
-                candidate.instantiated.close()
-            self.last_selection_report = report
-            self._pending_batch = None
-            return HyperAgentsSelectionOutput(
-                status="unchanged",
-                committed_candidate_id=None,
-                report=report,
-            )
-
         self._persist_selection_report(resolved_output, report)
         previous_instance = self._instantiated
-        if previous_instance is not None:
+        keep_candidate = next_snapshot.candidate_id == candidate.snapshot.candidate_id
+        keep_previous = next_snapshot.candidate_id == self.snapshot.candidate_id
+        if previous_instance is not None and not keep_previous:
             previous_instance.close()
-            self._instantiated = None
-        self._persist_active_snapshot(self.workspace_dir, candidate.snapshot, report)
-        self._snapshot = candidate.snapshot
-        self._instantiated = candidate.instantiated
+        if not keep_candidate and candidate.instantiated is not previous_instance:
+            candidate.instantiated.close()
+        self._persist_active_snapshot(self.workspace_dir, next_snapshot, report)
+        self._snapshot = next_snapshot
+        self._instantiated = candidate.instantiated if keep_candidate else (
+            previous_instance if keep_previous else None
+        )
+        self._persist_search(self.workspace_dir)
+        self._persist_search(batch.work_dir)
         self.last_selection_report = report
         self._pending_batch = None
         return HyperAgentsSelectionOutput(
-            status="committed",
-            committed_candidate_id=candidate.candidate_id,
+            status="committed" if active_changed else "unchanged",
+            committed_candidate_id=selected_candidate_id if active_changed else None,
             report=report,
         )
 
@@ -553,6 +561,9 @@ class HyperAgentsAdaptor(MethodCheckpointMixin):
         )
         self.meta_model = self._configured_model(config, "meta_agent")
         self.task_model = self._configured_model(config, "task_agent")
+        self.parent_selection = config.get("refine", {}).get("parent_selection", "score_child_prop")
+        if self.parent_selection not in {"random", "latest", "best", "score_prop", "score_child_prop"}:
+            raise ValueError(f"Unknown HyperAgents parent_selection: {self.parent_selection}")
         self.max_refinement_rounds = config.get("refine", {}).get(
             "max_refinement_rounds",
             1,

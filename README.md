@@ -38,6 +38,26 @@ conda activate SelfImprove-Bench
 pip install -r requirements.txt
 ```
 
+Run installation from this repository root. `requirements.txt` installs the
+bundled NexAU 0.3.9 wheel under `third_party/nexau/`; access to its upstream Git
+repository is not required. This is an RSI-Bench repack of a locally installed
+distribution, not an official upstream release artifact. Package files were
+verified against the installed RECORD before repacking; see
+[provenance and redistribution details](third_party/nexau/README.md).
+
+For AHE, install Linux `bubblewrap` (`bwrap`, e.g. `apt-get install bubblewrap`)
+and enable unprivileged user namespaces. Actor, Debugger, and Evolver processes
+run inside an allowlisted filesystem namespace; missing sandbox support stops
+the run rather than falling back to an unrestricted local process.
+Python/system dependencies and method code are read-only. Actors receive only
+their harness and their own writable action artifacts. Debuggers receive the
+current training evidence read-only. Evolvers can persist changes only to the
+candidate harness and explicitly mounted output files; training evidence and
+prior change summaries are read-only. Game implementations, holdout results,
+and unrelated host files are not mounted. Child shell commands inherit these
+filesystem restrictions. Networking remains enabled for model APIs; this is
+filesystem isolation, not a complete network or hostile-code security sandbox.
+
 Install only what your target method needs.
 ```bash
 # HyperAgents:
@@ -54,6 +74,47 @@ playwright install chromium
 - Method models (backend, model, reasoning effort) live in
   `rsi_methods/<METHOD>/config.toml`; the benchmark config's `agent.model` does not
   override them.
+
+AHE requires a successful Agent Debugger diagnosis before every refinement.
+The adapter runs the bundled `agent_debugger_core` CLI with the same Python
+interpreter, rather than relying on an `adb` executable on `PATH`. It passes
+the method's model and backend environment to the Debugger and sets `AHE_HOME`
+to the bundled AHE source. In benchmark runs, the method-scoped LLM environment
+takes precedence over interactive `adb config` / `QA_*` settings.
+Missing dependencies or configuration, a timeout, or an
+invalid/empty diagnosis stops training even with `continue_on_error: true`;
+there is no raw-trace-only fallback. Historical runs are not repaired by this
+change and must not be relabeled as Debugger-enabled runs.
+Keep the pinned `ag-ui-protocol` version: version 1.0 removes event classes
+imported by the bundled context-compaction middleware and prevents Debugger
+construction.
+
+Debugger provider usage is exported with the diagnosis and saved as
+`input/analysis/debugger_usage_snapshot.json` in each training iteration.
+`ahe_refine.json` sums that diagnostic usage once plus all candidate Evolver
+usage. Missing provider usage leaves the total unknown, never zero or a
+partial total labeled complete. This does not recover costs of historical runs.
+
+AHE's active-lineage policy follows the upstream default evolution loop
+(audited against upstream commit `8b2a55d97590363fe50c3cc6b5e833b020a4bb4c`):
+valid candidates advance even if their paired score decreases; failed candidate
+executions retain the parent. The default is one candidate. Multiple requested
+variants use benchmark-owned selection, not a recreation of upstream's optional
+full-dataset best-of-N mode. The final agent is the active committed workspace.
+The original Evolve prompt and context-compaction middleware are retained,
+with runtime adaptations for continuous scores, evidence paths, and screenshots.
+Only the task harness is writable, not the Evolve Agent itself.
+
+`evolution_history.{json,md}` links each round to its candidate manifests and
+`change_evaluation.json`. Comparisons are same-task parent/candidate deltas,
+not per-change causal estimates. Unlike upstream's fixed evaluation dataset,
+RSI-Bench supplies a changing training task per round, so no global best-ever
+ranking or cross-task pass/fail-flip attribution is inferred. Native NexAU traces
+remain available beside the reconstructed whole-game conversation.
+New checkpoints record this policy and history; old-policy checkpoints are
+rejected to avoid mixing incompatible evolution rules in one lineage.
+The filesystem-isolated policy also rejects older non-isolated checkpoints;
+start a new run instead of silently changing the protocol during resume.
 
 ## Running Guide
 
@@ -141,6 +202,14 @@ for task groupings and missing-data handling.
 must be importable in your Python environment. No registry or game edits are
 required. Import paths execute Python code; use only adapters you trust.
 
+Games consume task-facing action text, not method-specific response envelopes.
+Adapters must unwrap their own envelopes before returning `BackendResponse`;
+they can retain the original model output in `metadata["raw_response_text"]`.
+All methods use the same GameWorld client for screenshot input, action parsing,
+retry accounting and interaction logging. The old named clients remain only as
+constructor/import compatibility aliases. AHE step recovery uses the shared
+agent handle without changing the stored checkpoint format.
+
 The three bundled methods use this same interface and configuration in all
 18 main experiment configs, not a separate construction path:
 
@@ -158,10 +227,67 @@ Bundled methods keep their existing model/prompt settings in their respective
 `rsi_methods/<method>/config.toml`; they currently require empty
 `adapter_options`. The generic `agent.model` is available to external adapters
 but does not override the bundled methods' per-role TOML settings.
-Seeds, task schedules, scoring and selection rules are unchanged.
+Seeds, task schedules and scoring are unchanged. Method-specific search policies
+are described below.
+
+### HyperAgents Restoration (2026-10-21)
+
+Fresh candidates use the upstream one-line MetaAgent editing instruction and
+the upstream text `<json>` tool protocol. The runtime overlay retains API
+transport, usage accounting, and explicit budget controls, without adding a
+tool-use system instruction. Evaluation manifests describe fields and paths,
+not an optimization strategy.
+The initial candidate README also restores the upstream description of improving
+the system's own agent-generating mechanisms; only factual game evidence paths
+are appended.
+
+Game evidence remains an adaptation: up to eight raw screenshots by default
+are attached directly to the editing conversation, labeled by case and step.
+`RSI_MAX_REFINEMENT_IMAGES` controls sampling. There is no separate screenshot
+analysis call. Game task prompts and scoring are not changed.
+
+The active adapter retains every candidate returned for evaluation in a persistent archive,
+including invalid candidates (not eligible as parents) and valid candidates whose
+score regresses. The next parent is sampled from all valid evaluated nodes using
+the upstream CLI default `score_child_prop`, including its child-count penalty.
+`refine.parent_selection` also supports `random`, `latest`, `best`, and `score_prop`.
+Training feedback, candidate evaluations and editing logs are available to the
+MetaAgent as an allowlisted history; holdout results are not included. Checkpoints
+save every branch, patch digests and the sampler's random state. Fresh archive
+sampling uses the benchmark `seed`; resume restores the saved random state.
+
+Runtime overlays are installed on the initial baseline before applying lineage
+patches. Subsequent edits to `meta_agent.py`, `agent/llm_withtools.py` and
+`agent/tools/bash.py` survive reconstruction. Benchmark transport and contracts
+remain external fixed infrastructure.
+
+Upstream reference: `facebookresearch/HyperAgents` commit
+`59a68f672dfb92c74aeb7e61535d776fb36e172d` (`generate_loop.py` and
+`utils/gl_utils.py`). This restores the default individual-agent archive search,
+not the optional ensemble or evolved parent-selector modes. RSI-Bench still owns
+the game loop, paired same-task candidate evaluation, score normalization, API
+transport, multimodal evidence and resource limits. Archived scores come from
+the observed training tasks, not a newly added fixed upstream validation suite.
+Because the benchmark requires one final agent rather than an archive, the final
+round exports that round's valid candidate, retaining its parent if the candidate
+is invalid or unchanged; it does not select the historical highest score. Selection reports
+distinguish the archived candidate from the selected next parent.
+Trajectory analysis preserves that distinction: `accepted` means candidate
+admission to the archive, while `selected` means selection as the next parent.
+An admitted child can have `accepted: true` and `selected: false`. Its score
+still comes from its own saved candidate evaluation, not the sampled parent's
+score. Re-run analysis of existing artifacts to update previously generated
+statistics; saved analysis files are not retroactively rewritten.
+If the next parent is an older branch not evaluated on the current task,
+`post_refinement_score` is unavailable, rather than borrowed from another task
+or the newly evaluated child. Holdout scores still come from actual evaluation.
+
+Use a new run to evaluate the restored seed. Historical checkpoints with the old
+single-lineage search policy are rejected rather than silently migrated;
+historical scores are not reclassified. No paid training was run for this change.
 
 The adapter factory receives one `MethodContext` containing the run-local
-`artifact_dir`, `task_count`, `options`, `model`, `timeout`, and `resuming` flag.
+`artifact_dir`, `task_count`, `options`, `model`, `timeout`, `seed`, and `resuming` flag.
 Construction must not initialize/train/reset the method: the harness calls
 `init()` for fresh runs or `restore_state()` for checkpoint resumes.
 
@@ -242,8 +368,11 @@ chosen task manifest contains the required groups. For Minecraft/Astray, use
 the standard screenshot/action client is selected automatically. Browser-step
 recovery (`resumable_steps`/`RSI_STEP_RESUME`) and legacy copied-workspace
 `--target-dir` recovery remain built-in-only; external methods use task-level
-`--resume`. Bundled adapters retain their method-specific GameWorld clients and
-recovery support even when configured with `provider: "rsi"`. Existing run
+`--resume`. Bundled adapters use the shared GameWorld client while retaining
+their built-in recovery support even when configured with `provider: "rsi"`.
+Method-specific response compatibility, error handling and recovery rules live
+in each adapter's optional `runtime_policy` (`MethodRuntimePolicy`); the runner
+calls generic hooks rather than branching on method names. Existing run
 configurations must not be changed during an in-place resume: keep an old
 provider alias for an old run; use the migrated configs for fresh runs.
 
@@ -283,6 +412,7 @@ keeps its original license, which governs that directory:
 |---|---|---|
 | ACE | `rsi_methods/ACE/ace/` | Apache-2.0 ([LICENSE.txt](rsi_methods/ACE/ace/LICENSE.txt)); modified for this benchmark, see [MODIFICATIONS.md](rsi_methods/ACE/ace/MODIFICATIONS.md) |
 | AHE | `rsi_methods/AHE/agentic-harness-engineering/` | MIT ([LICENSE](rsi_methods/AHE/agentic-harness-engineering/LICENSE)) |
+| NexAU 0.3.9 runtime | `third_party/nexau/` | Apache-2.0; original license retained inside the bundled wheel |
 | HyperAgents | `rsi_methods/HyperAgents/hyperagents/` | **CC BY-NC-SA 4.0** ([LICENSE.md](rsi_methods/HyperAgents/hyperagents/LICENSE.md)): non-commercial use only; adaptations must be shared under the same license |
 | Hero's Journey | `benches/heros_journey/HerosJourney/` | MIT ([LICENSE](benches/heros_journey/HerosJourney/LICENSE)) |
 | GameWorld runtime and games | `benches/gameworld/assets/` | Adapted from [GameWorld](https://github.com/gameworld-project/gameworld) with some modifications; bundled game assets are for **research and educational use only**, see [benches/gameworld/README.md](benches/gameworld/README.md) |

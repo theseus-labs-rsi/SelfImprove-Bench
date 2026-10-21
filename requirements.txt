@@ -1,4 +1,5 @@
-nexau @ git+https://github.com/nex-agi/NexAU.git@35ee1861546db3cb280a6e17e38a74060d7c96c3
+./third_party/nexau/nexau-0.3.9-1rsibench-py3-none-any.whl
+ag-ui-protocol==0.1.22
 openai==2.54.0
 docker==7.1.0
 GitPython==3.1.44

@@ -1,6 +1,5 @@
 """Unified deterministic multi-game RSI benchmark."""
 
-from .config import BenchmarkConfig, load_config
 from .contracts import (
     AgentCallRecord,
     BackendRequest,
@@ -18,7 +17,11 @@ from .contracts import (
 
 
 def __getattr__(name: str):
-    """Load the runner only when requested, keeping contracts import-safe."""
+    """Keep method-side contract imports independent of game implementations."""
+    if name in {"BenchmarkConfig", "load_config"}:
+        from . import config
+
+        return getattr(config, name)
     if name == "run_benchmark":
         from .runner import run_benchmark
 

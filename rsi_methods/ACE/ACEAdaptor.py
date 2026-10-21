@@ -16,6 +16,7 @@ from benchmark.backend import BackendDispatcher, OpenAIBackend
 from benchmark.interfaces import MethodContext
 from benchmark.visual_evidence import frames, refinement_image_limit, sample, visual_note
 from rsi_methods.checkpoint import MethodCheckpointMixin
+from rsi_methods.ACE.runtime_policy import ACERuntimePolicy
 
 if __package__:
     from .ACEAgent import ACEAgent
@@ -162,6 +163,7 @@ class ACEAdaptor(MethodCheckpointMixin):
     """Expose ACE through the common RSI method lifecycle."""
 
     checkpoint_method = "ace"
+    runtime_policy = ACERuntimePolicy()
 
     def __init__(self, context: MethodContext | None = None) -> None:
         self.bind_context(context)

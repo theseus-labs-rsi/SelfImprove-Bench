@@ -64,6 +64,7 @@ def export_state(adaptor: object, method: str) -> dict:
                      refinement_round=adaptor._refinement_round,
                      observed_training_tasks=adaptor._observed_training_tasks,
                      ahe_policy=adaptor.checkpoint_policy(),
+                     evolution_history=_optional_json(adaptor.run_dir / "evolution_history.json") or [],
                      workspace_config_digest=_file_digest(adaptor.state.current_workspace / "code_agent.yaml"),
                      evolve_config_digest=_file_digest(adaptor.state.evolve_agent_dir / "evolve_agent.yaml"))
     elif method == "hyperagents":
@@ -73,7 +74,8 @@ def export_state(adaptor: object, method: str) -> dict:
         state.update(workspace_dir=str(adaptor.workspace_dir), snapshot=snapshot,
                      active_snapshot=_optional_json(adaptor.workspace_dir / "active_snapshot.json"),
                      workspace_selection=_optional_json(adaptor.workspace_dir / "selection.json"),
-                     refinement_round=adaptor._refinement_round)
+                     refinement_round=adaptor._refinement_round,
+                     search_archive=adaptor._archive.to_dict())
     else:
         raise RuntimeError(f"Resume unsupported for RSI method {method}")
     return state
@@ -84,7 +86,7 @@ def restore_state(adaptor: object, method: str, root: Path, state: dict) -> None
         adaptor._configure(adaptor._load_config())
     if method == "ahe" and state.get("ahe_policy") != adaptor.checkpoint_policy():
         raise RuntimeError(
-            "AHE checkpoint predates or differs from XBR-visual policy; "
+            "AHE checkpoint predates or differs from the active-lineage policy; "
             "do not mix old and new evolution schedules in one lineage"
         )
     if method == "ace":
@@ -125,9 +127,14 @@ def restore_state(adaptor: object, method: str, root: Path, state: dict) -> None
         adaptor.state = AHEState(run_dir, workspace, evolve_dir)
         adaptor._refinement_round = int(state["refinement_round"])
         adaptor._observed_training_tasks = observed
+        from rsi_methods.AHE.history import save_history
+        save_history(run_dir, state.get("evolution_history") or [])
     elif method == "hyperagents":
         import tomllib
         from rsi_methods.HyperAgents.candidate import CandidateSnapshot
+        from rsi_methods.HyperAgents.search_archive import SearchArchive
+        if "search_archive" not in state:
+            raise RuntimeError("HyperAgents checkpoint predates archive restoration; use the historical code for that run")
         raw = (root / "method_config.toml").read_bytes()
         if raw != adaptor.config_path.read_bytes():
             raise RuntimeError("HyperAgents method configuration changed since original run")
@@ -145,5 +152,10 @@ def restore_state(adaptor: object, method: str, root: Path, state: dict) -> None
             _path(data["workspace"], root, directory=True), data["root_commit"],
             data["parent_id"], tuple(patches))
         adaptor._refinement_round = int(state["refinement_round"])
+        adaptor._archive = SearchArchive.from_dict(state["search_archive"], root=root)
+        archived = adaptor._archive.nodes.get(str(adaptor.snapshot.candidate_id))
+        if archived is None or archived["snapshot"] != adaptor.snapshot:
+            raise RuntimeError("HyperAgents active snapshot does not match its archive")
+        adaptor._persist_search(adaptor.workspace_dir)
     else:
         raise RuntimeError(f"Resume unsupported for RSI method {method}")

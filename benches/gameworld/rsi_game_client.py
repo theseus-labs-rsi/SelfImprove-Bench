@@ -15,6 +15,8 @@ from .network_retry import call_with_connection_retry
 
 
 class RSIGameClient(BaseClient):
+    agent_label = "RSI agent"
+
     def __init__(self, config: Any, rsi_agent: Any, **shared_tools: Any) -> None:
         super().__init__(config, **shared_tools)
         self._rsi_agent = rsi_agent
@@ -58,8 +60,9 @@ class RSIGameClient(BaseClient):
                 "input_tokens", "cached_input_tokens", "output_tokens", "reasoning_tokens", "total_tokens")
         }
         return self._complete_action(
-            screenshot_path=screenshot_path, raw_message_sent=prompt, raw_response=response.text,
+            screenshot_path=screenshot_path, raw_message_sent=prompt,
+            raw_response=(response.metadata or {}).get("raw_response_text", response.text),
             system_prompt=system_prompt, user_prompt=USER_PROMPT, memory_entries=memory_entries,
             tool_call=action, reasoning=response.reasoning,
-            error=None if action is not None else "RSI agent returned no valid action JSON", usage=usage,
+            error=None if action is not None else f"{self.agent_label} returned no valid action JSON", usage=usage,
         )

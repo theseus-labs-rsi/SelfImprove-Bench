@@ -23,6 +23,8 @@ def _base_node(source: dict[str, Any], snapshot_ids: list[str]) -> dict[str, Any
         "parent_id": source["parent_id"],
         "task_id": source["task_id"],
         "selected": source["selected"],
+        "archived_candidate_id": source.get("archived_candidate_id"),
+        "next_parent_id": source.get("next_parent_id"),
         "accepted": source["accepted"],
         "changed": source["changed"],
         "artifact_path": source["artifact_path"],

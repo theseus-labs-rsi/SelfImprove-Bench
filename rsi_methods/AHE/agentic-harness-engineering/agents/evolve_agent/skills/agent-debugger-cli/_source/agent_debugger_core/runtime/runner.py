@@ -36,6 +36,7 @@ class RunnerResult:
     response: Optional[str] = None
     iterations: int = 0
     budget_exceeded: bool = False
+    usage_snapshot: Optional[dict] = None
 
 
 def _build_user_message(trace_paths: List[Path], mode: str, question: Optional[str]) -> str:
@@ -58,6 +59,7 @@ def _build_agent(llm_settings: dict) -> Any:
     import os as _os
     ensure_tools_importable()
     from nexau import Agent, AgentConfig  # noqa: WPS433 — deferred import
+    from nexau.archs.tracer.adapters.in_memory import InMemoryTracer
 
     # Populate env vars that agent_config.yaml references via ${env.LLM_*}.
     # AgentConfig.from_yaml substitutes env at load time, so we must set these
@@ -72,9 +74,25 @@ def _build_agent(llm_settings: dict) -> Any:
     config.llm_config.model = llm_settings["model"]
     config.llm_config.base_url = llm_settings["base_url"]
     config.llm_config.api_key = llm_settings["api_key"]
+    # Match the adapter's actor/evolver contract for reasoning-only models.
+    config.llm_config.temperature = None
+    config.tracers = [InMemoryTracer()]
     if "reasoning" in llm_settings:
         config.llm_config.reasoning = llm_settings["reasoning"]
     return Agent(config=config)
+
+
+def _usage_snapshot(agent: Any) -> Optional[dict]:
+    """Export provider usage for all diagnostic calls, including retries."""
+    try:
+        from benchmark.token_ledger import nexau_usage_snapshot
+        from nexau.archs.tracer.adapters.in_memory import InMemoryTracer
+    except ImportError:
+        # Standalone upstream CLI installations need not include the benchmark.
+        return None
+    tracers = [tracer for tracer in getattr(getattr(agent, "config", None), "tracers", [])
+               if isinstance(tracer, InMemoryTracer)]
+    return nexau_usage_snapshot(tracers[0].dump_traces()) if len(tracers) == 1 else None
 
 
 def _parse_inner_payload(raw: Any) -> dict:
@@ -185,19 +203,21 @@ def run_agent(
                 mode="ask",
                 answer=f"[budget-exceeded] {fallback_text}".strip(),
                 budget_exceeded=True,
+                usage_snapshot=_usage_snapshot(agent),
             )
         return RunnerResult(
             mode="check",
             issues=[],
             response=f"[budget-exceeded] {fallback_text}".strip(),
             budget_exceeded=True,
+            usage_snapshot=_usage_snapshot(agent),
         )
 
     if mode == "ask":
         answer = payload.get("answer")
         if not isinstance(answer, str):
             raise RunnerError("ask payload missing string `answer`")
-        return RunnerResult(mode="ask", answer=answer)
+        return RunnerResult(mode="ask", answer=answer, usage_snapshot=_usage_snapshot(agent))
 
     try:
         _validate_check_payload(payload)
@@ -217,6 +237,7 @@ def run_agent(
                 issues=[],
                 response=f"[budget-exceeded] {be.fallback_text}".strip(),
                 budget_exceeded=True,
+                usage_snapshot=_usage_snapshot(agent),
             )
         _validate_check_payload(payload)
 
@@ -224,4 +245,5 @@ def run_agent(
         mode="check",
         issues=payload["issues"],
         response=str(payload.get("response", "") or ""),
+        usage_snapshot=_usage_snapshot(agent),
     )

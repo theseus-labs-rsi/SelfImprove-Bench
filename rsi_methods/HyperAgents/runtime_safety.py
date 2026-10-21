@@ -1,8 +1,7 @@
 """Parent-owned, auditable transport fixes for the pinned HyperAgents source.
 
-The upstream gitlink is intentionally left untouched. Both fresh and restored
-candidate workspaces receive exactly the same fixed runtime modules. Runtime
-fixes are committed as an infrastructure baseline, never as a MetaAgent patch.
+The upstream gitlink is intentionally left untouched. Runtime fixes are installed
+on the seed before applying lineage patches. Evolved tools are never overwritten.
 """
 
 from __future__ import annotations
@@ -42,9 +41,7 @@ def stage_runtime_safety(root_dir: str | Path) -> None:
 
 
 def install_runtime_safety(container, commit_hash: str, repo_path: str) -> str:
-    """Upgrade an old checkpoint after lineage reconstruction, excluding the fix
-    from its evolution diff by committing it as the next infrastructure baseline.
-    """
+    """Install the audited seed baseline, before reconstructing evolution."""
     from .hyperagents.utils.docker_utils import copy_to_container
 
     changed = False

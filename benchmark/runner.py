@@ -17,7 +17,7 @@ from .config import BenchmarkConfig
 from .game_adapters import EvaluationOutcome, evaluate_task
 from .metrics import calculate_metrics, format_metrics, post_refinement_score
 from .tasks import GAMES, PlannedTask, TaskManifest, build_manifest
-from .methods import BUILTIN_METHODS, RSI_PROVIDERS, method_identity
+from .methods import BUILTIN_METHODS, RSI_PROVIDERS, method_identity, runtime_policy
 
 
 RSI_METHODS = frozenset(RSI_PROVIDERS)
@@ -56,9 +56,7 @@ def _token_total(metrics: dict[str, Any]) -> int:
 def _is_fatal_method_error(config: BenchmarkConfig, record: Mapping[str, Any]) -> bool:
     if record.get("status") in {"ok", "skipped"}:
         return False
-    if method_identity(config.agent) == "ahe":
-        return rsi_session.is_fatal_ahe_error(record.get("error"))
-    return False
+    return runtime_policy(config.agent).is_fatal_error(record.get("error"))
 
 
 def _must_stop_after_error(config: BenchmarkConfig, record: Mapping[str, Any]) -> bool:
@@ -91,6 +89,7 @@ class AgentController:
                 config.agent.provider,
                 output_dir / "rsi",
                 task_count=max(1, training_count),
+                seed=config.seed,
                 agent=config.agent,
                 batch_id=batch_id, resume=resume,
                 **resume_args,
@@ -172,9 +171,12 @@ class AgentController:
             task=task.task,
             trajectory=steps,
             execution_status=execution_status,
-            success=record.get("status") == "ok",
+            success=bool(record.get("success", False)),
             score=record.get("relative_score"),
-            feedback=record.get("error") or "Task completed.",
+            feedback=record.get("error") or (
+                "Reference objective score reached." if record.get("success")
+                else "Completed session scored below the reference objective."
+            ),
             metrics={
                 "game": task.game,
                 "difficulty": task.difficulty,
@@ -236,23 +238,8 @@ def _error_result(task: PlannedTask, exc: Exception) -> dict[str, Any]:
     return record
 
 
-def _ahe_skipped_result(result: dict[str, Any], controller: AgentController) -> dict[str, Any]:
-    """Score an AHE empty response as zero while preserving its evidence."""
-    error = str(result.get("error") or "").lower()
-    markers = ("no response content or tool calls from llm", "empty response from api")
-    if controller.provider != "ahe" or result.get("status") != "error":
-        return result
-    if not any(marker in error for marker in markers):
-        return result
-    return {
-        **result,
-        "status": "skipped",
-        "relative_score": 0.0,
-        "raw_score": 0.0,
-        "success": False,
-        "observed_relative_score": result.get("relative_score"),
-        "skip_reason": "ahe_empty_response",
-    }
+def _method_result(result: dict[str, Any], controller: AgentController) -> dict[str, Any]:
+    return runtime_policy(controller.config.agent).normalize_result(result)
 
 
 def _selection_evaluation(
@@ -392,7 +379,8 @@ def _run_one(
         reload_agent = (
             reload_active_agent
             if task.phase == "holdout" and task.game == "heros_journey"
-            and controller.provider == "ahe" and controller.session is not None
+            and runtime_policy(controller.config.agent).reload_holdout_agent
+            and controller.session is not None
             else None
         )
         outcome = _evaluate(
@@ -402,7 +390,7 @@ def _run_one(
             reload_agent=reload_agent,
             output_dir=output_dir,
         )
-        result = _ahe_skipped_result(outcome.record, controller)
+        result = _method_result(outcome.record, controller)
     except Exception as exc:
         result = _error_result(task, exc)
     execution_seconds = time.perf_counter() - started
@@ -469,7 +457,7 @@ def _run_one(
                 ),
             }
         except Exception as exc:
-            error = f"AHE selection failed: {exc}" if controller.provider == "ahe" else str(exc)
+            error = runtime_policy(controller.config.agent).selection_error(exc)
             selection_summary = {"status": "error", "error_type": type(exc).__name__, "error": error}
             result = {
                 **result,
@@ -676,8 +664,8 @@ def _finish_benchmark(config, output_dir, manifest, controller,
         "summary": {
             "scheduled_training_runs": len(manifest.training),
             "scheduled_refinements": (
-                refinement_count // controller.session.adaptor.refinement_every
-                if method_identity(config.agent) == "ahe" and controller.session is not None
+                runtime_policy(config.agent).scheduled_refinements(refinement_count, controller.session.adaptor)
+                if controller.session is not None
                 else refinement_count
             ),
             "completed_training_runs": len(training_records),
@@ -768,10 +756,7 @@ def _archive_interrupted(output_dir, controller, task, ordinal):
     if task.phase == "train" and not task.replay:
         session = controller.session
         paths.append(session.artifact_dir / f"task_{ordinal:04d}_{rsi_session._safe_name(task.run_id)}")
-        if session.method == "ahe":
-            iteration = session.adaptor._refinement_round + 1
-            paths.extend(session.adaptor.run_dir / kind / f"iteration_{iteration:03d}"
-                         for kind in ("runs", "candidates"))
+        paths.extend(runtime_policy(controller.config.agent).interrupted_paths(session.adaptor))
     existing = [path for path in paths if path.exists()]
     if not existing:
         return

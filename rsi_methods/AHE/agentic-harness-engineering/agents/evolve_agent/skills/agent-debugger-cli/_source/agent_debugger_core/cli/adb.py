@@ -55,6 +55,7 @@ def _emit_ask(trace_path: Path, trace_id: str, question: str,
             "question": question,
             "request_id": "trace",
             "response": result.answer or "",
+            "usage_snapshot": result.usage_snapshot,
         }
         print(json.dumps(payload, ensure_ascii=False, indent=2))
     else:
@@ -123,6 +124,7 @@ def _cmd_ask_records(args) -> int:
                 "trace_path": tmp.name, "trace_id": trace_id,
                 "question": queries[0], "request_id": "trace",
                 "response": result.answer or "",
+                "usage_snapshot": result.usage_snapshot,
             }
         except (TraceIOError, RunnerError, ADBError) as e:
             return {"status": "failed", "command": "ask", "error": str(e)}
@@ -189,6 +191,7 @@ def _cmd_check(args) -> int:
             "issues_count": len(result.issues),
             "issues": result.issues,
             "response": result.response or "",
+            "usage_snapshot": result.usage_snapshot,
         }
         print(json.dumps(payload, ensure_ascii=False, indent=2))
     else:

@@ -14,10 +14,10 @@ from unittest.mock import Mock, patch
 from benchmark import resume_state
 from benchmark.client import request_json
 from benchmark.config import AgentConfig, ReplayConfig, config_from_mapping, load_config
-from benchmark.contracts import BackendResponse, EvaluationOutcome, SelectionEvaluation
+from benchmark.contracts import BackendResponse, EvaluationOutcome, SelectionEvaluation, TokenUsage
 from benchmark.hci import calculate_hci
 from benchmark.interfaces import Candidate, CandidateBatch, MethodContext, SelectionResult
-from benchmark.methods import create_adaptor
+from benchmark.methods import create_adaptor, MethodRuntimePolicy, runtime_policy
 from benchmark.rsi_session import RSIBatchSession, make_feedback_result, ExecutionStatus
 from benchmark.runner import run_benchmark
 from benchmark.tasks import GAMES, build_manifest
@@ -46,6 +46,43 @@ class ExternalMethodTest(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
 
+    def test_external_runtime_policy_is_optional_and_method_owned(self):
+        default = runtime_policy(agent_config())
+        self.assertIsInstance(default, MethodRuntimePolicy)
+        self.assertFalse(default.is_fatal_error("AHE selection failed"))
+        self.assertFalse(default.reload_holdout_agent)
+        custom = MethodRuntimePolicy()
+        with patch.object(MinimalAdapter, "runtime_policy", custom, create=True):
+            self.assertIs(runtime_policy(agent_config()), custom)
+
+    def test_farm_combat_success_requires_reference_score(self):
+        from benchmark.game_adapters import evaluate_task, GAME_MODULES
+        for game in ("farm", "combat"):
+            for score, status, expected in ((0.4, "ok", False), (1.0, "ok", True),
+                                            (1.2, "ok", True), (1.2, "error", False)):
+                with self.subTest(game=game, score=score, status=status):
+                    record = {"status": status, "raw_score": score, "reference_score": 1.0,
+                              "relative_score": score, "success": True}
+                    with patch.object(GAME_MODULES[game], "evaluate", return_value=record):
+                        result = evaluate_task(game, {}, request=Mock())
+                    self.assertEqual(result.record["success"], expected)
+                    self.assertEqual(result.record["relative_score"], score)
+
+    def test_runner_keeps_task_success_distinct_from_execution_status(self):
+        from benchmark import rsi_session
+        from benchmark.runner import AgentController
+        from benchmark.tasks import PlannedTask
+        controller = AgentController.__new__(AgentController)
+        controller.session = object()
+        controller.bridge = rsi_session
+        task = PlannedTask("test", "train", "farm", 3, {"task_id": "test"}, 1, 0)
+        result = controller.make_feedback(task, {
+            "status": "ok", "success": False, "relative_score": 0.4,
+        })
+        self.assertEqual(result.evaluation.execution_status, ExecutionStatus.COMPLETED)
+        self.assertFalse(result.evaluation.success)
+        self.assertEqual(result.evaluation.score, 0.4)
+
     def test_config_requires_explicit_valid_adapter_without_importing_it(self):
         mapping = {"schedule": [], "holdout": [{"game": "farm", "difficulty": 1}],
                    "agent": {"provider": "rsi", "adapter": "not_installed.module:Adapter"}}
@@ -72,8 +109,10 @@ class ExternalMethodTest(unittest.TestCase):
 
     def test_factory_context_is_isolated_and_missing_hooks_fail_early(self):
         settings = replace(agent_config(), adapter_options={"action": {"days": []}}, model="test")
-        adapter = create_adaptor("rsi", artifact_dir=self.root, task_count=5, agent=settings, resuming=True)
+        adapter = create_adaptor("rsi", artifact_dir=self.root, task_count=5, agent=settings,
+                                 resuming=True, seed=73)
         self.assertTrue(adapter.context.resuming)
+        self.assertEqual(adapter.context.seed, 73)
         self.assertEqual(adapter.context.model, "test")
         self.assertEqual(adapter.context.task_count, 5)
         adapter.context.options["action"]["days"].append("changed")
@@ -85,6 +124,12 @@ class ExternalMethodTest(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "Cannot load RSI adapter"):
             create_adaptor("rsi", artifact_dir=self.root, task_count=1,
                            agent=agent_config("not_installed.module:Adapter"))
+
+    def test_session_passes_seed_to_method_context(self):
+        session = RSIBatchSession("rsi", self.root, task_count=5,
+                                  agent=agent_config(), seed=73)
+        self.addCleanup(session.close)
+        self.assertEqual(session.adaptor.context.seed, 73)
 
     def test_custom_agent_uses_json_validation_and_telemetry(self):
         metrics = {}
@@ -243,6 +288,77 @@ class ExternalMethodTest(unittest.TestCase):
 
 
 class VisualClientTest(unittest.TestCase):
+    def test_all_methods_use_shared_gameworld_transport(self):
+        from benches.gameworld.frameworks import SUPPORTED_FRAMEWORKS, client_import_spec
+        for method in SUPPORTED_FRAMEWORKS:
+            with self.subTest(method=method):
+                self.assertEqual(client_import_spec(method), (
+                    "benches.gameworld.rsi_game_client", "RSIGameClient"))
+
+    def test_method_unwraps_ace_answer_before_game_parsing(self):
+        from benches.sweepmine.play import extract_action
+        from rsi_methods.ACE.ACEAgent import ACEAgent
+
+        action = '{"act":"click","row":0,"col":0}'
+        raw = json.dumps({"final_answer": json.loads(action), "reasoning": "test"})
+        response = ACEAgent._unwrap_response(BackendResponse(raw))
+        self.assertEqual(json.loads(extract_action(response.text)), json.loads(action))
+        self.assertEqual(response.metadata["raw_response_text"], raw)
+        self.assertEqual(response.metadata["ace"]["raw_response_text"], raw)
+        # Games must not interpret a method's private response envelope.
+        self.assertEqual(extract_action(raw), raw)
+
+    def test_shared_transport_retains_raw_response_usage_and_legacy_constructors(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        screenshot = Path(directory.name) / "images/frame.png"
+        core = str(ROOT / "benches/gameworld/assets/core/code")
+        with patch.object(sys, "path", [core, *sys.path]):
+            from agents.mm_agents.base.base_client import BaseClientConfig
+            from benches.gameworld.rsi_game_client import RSIGameClient
+            from benches.gameworld.ace_game_client import ACEGameClient
+            from benches.gameworld.ahe_game_client import AHEGameClient
+            from benches.gameworld.hyperagents_game_client import HyperAgentsGameClient
+        action = '{"tool_name":"move","arguments":{}}'
+        actor = Mock()
+        actor.act.return_value = BackendResponse(
+            action, reasoning="test", usage=TokenUsage(input_tokens=2, output_tokens=3, total_tokens=5),
+            metadata={"raw_response_text": "original model output"})
+        config = BaseClientConfig(system_prompt="Game rules")
+        for client_type, keyword in (
+            (RSIGameClient, "rsi_agent"), (ACEGameClient, "ace_agent"),
+            (AHEGameClient, "ahe_agent"), (HyperAgentsGameClient, "runtime_agent"),
+        ):
+            with self.subTest(client=client_type.__name__):
+                client = client_type(config, **{keyword: actor},
+                                     semantic_controls_specs=[{"id": "move"}])
+                self.assertIs(client._rsi_agent, actor)
+                self.assertIs(client_type.get_action, RSIGameClient.get_action)
+                client._complete_action = Mock()
+                client.get_action(screenshot)
+                record = client._complete_action.call_args.kwargs
+                self.assertEqual(record["raw_response"], "original model output")
+                self.assertEqual(record["usage"]["total_tokens"], 5)
+                self.assertEqual(record["reasoning"], "test")
+                self.assertEqual(record["tool_call"], json.loads(action))
+
+    def test_ahe_step_recovery_uses_shared_agent_handle(self):
+        from benches.gameworld.astray_step_resume import AstrayTransaction
+        transaction = AstrayTransaction.__new__(AstrayTransaction)
+        transaction.framework = "ahe"
+        transaction._pack_worker = Mock(side_effect=lambda value: value)
+        transaction._unpack_worker = Mock(side_effect=lambda value: value)
+        actor = Mock()
+        actor.snapshot_session.return_value = {"history": ["saved message"]}
+        client = SimpleNamespace(_rsi_agent=actor, _runtime_advisory=None,
+                                 _runtime_reasoning_required=False, memory_store=None)
+        with patch("benches.gameworld.astray_step_resume._world.snapshot_memory", return_value=[]), \
+                patch("benches.gameworld.astray_step_resume._world.restore_memory"):
+            state = transaction._snapshot_client(client, 1)
+            transaction._restore_client(client, state)
+        self.assertEqual(state["schema"], 1)
+        actor.restore_session.assert_called_once_with({"history": ["saved message"]})
+
     def test_screenshot_and_game_prompt_reach_external_agent(self):
         # Load only the bundled client contract, not the browser or model backends.
         core = str(ROOT / "benches/gameworld/assets/core/code")

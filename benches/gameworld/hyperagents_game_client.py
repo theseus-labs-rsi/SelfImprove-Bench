@@ -1,96 +1,17 @@
-"""GameWorld client wrapper for a frozen HyperAgents RuntimeAgent."""
+"""Legacy import and constructor alias for the shared GameWorld transport."""
 
-from __future__ import annotations
-
-import json
-import os
-import re
-from pathlib import Path
 from typing import Any
 
-from agents.mm_agents.base.base_client import BaseClient, BaseClientConfig
-
-from benches.gameworld.actor_input import TRANSPORT_NOTE, USER_PROMPT, build_actor_input
-from benches.gameworld.network_retry import call_with_connection_retry
+from .actor_input import TRANSPORT_NOTE
+from .rsi_game_client import RSIGameClient
 
 
-class HyperAgentsGameClient(BaseClient):
-    def __init__(self, config: BaseClientConfig, runtime_agent: Any, **shared_tools: Any) -> None:
-        super().__init__(config, **shared_tools)
+class HyperAgentsGameClient(RSIGameClient):
+    agent_label = "HyperAgents"
+
+    def __init__(self, config: Any, runtime_agent: Any, **shared_tools: Any) -> None:
+        super().__init__(config, runtime_agent, **shared_tools)
         self._runtime_agent = runtime_agent
-
-    def _parse_action(self, text: str) -> dict[str, Any] | None:
-        candidates = [text.strip()]
-        candidates.extend(
-            match.group(1).strip()
-            for match in re.finditer(
-                r"```(?:json)?\s*(.*?)```", text, re.DOTALL | re.IGNORECASE
-            )
-        )
-        decoder = json.JSONDecoder()
-        for candidate in candidates:
-            for index, character in enumerate(candidate):
-                if character != "{":
-                    continue
-                try:
-                    payload, _ = decoder.raw_decode(candidate[index:])
-                except json.JSONDecodeError:
-                    continue
-                if not isinstance(payload, dict):
-                    continue
-                tool_name = (
-                    payload.get("tool_name")
-                    or payload.get("name")
-                    or payload.get("action")
-                )
-                if isinstance(tool_name, str) and tool_name.strip() in self._action_tool_names:
-                    arguments = payload.get("arguments")
-                    return {
-                        "tool_name": tool_name.strip(),
-                        "arguments": arguments if isinstance(arguments, dict) else {},
-                    }
-        stripped = text.strip().strip("`\"'")
-        if stripped in self._action_tool_names:
-            return {"tool_name": stripped, "arguments": {}}
-        return None
-
-    def get_action(self, screenshot_path: Path) -> dict[str, object] | None:
-        # Identical per-step environment input for every method (see actor_input).
-        system_prompt, memory_entries, prompt, image_paths = build_actor_input(
-            self, screenshot_path
-        )
-        response = call_with_connection_retry(
-            lambda: self._runtime_agent.act(prompt, image_paths=image_paths),
-            max_attempts=int(os.environ.get('GAMEWORLD_CONNECTION_MAX_ATTEMPTS', '4')),
-            audit_path=Path(os.environ["GAMEWORLD_ACTION_AUDIT_PATH"]) if os.environ.get("GAMEWORLD_ACTION_AUDIT_PATH") else screenshot_path.parent.parent / "token_attempts.jsonl",
-            invalidate_usage_on_retry=True,
-        )
-        action = self._parse_action(response.text)
-        error = None if action is not None else "HyperAgents returned no valid action JSON"
-        usage = None
-        if response.usage is not None:
-            usage = {
-                name: getattr(response.usage, name)
-                for name in (
-                    "input_tokens",
-                    "cached_input_tokens",
-                    "output_tokens",
-                    "reasoning_tokens",
-                    "total_tokens",
-                )
-            }
-        return self._complete_action(
-            screenshot_path=screenshot_path,
-            raw_message_sent=prompt,
-            raw_response=response.text,
-            system_prompt=system_prompt,
-            user_prompt=USER_PROMPT,
-            memory_entries=memory_entries,
-            tool_call=action,
-            reasoning=response.reasoning,
-            error=error,
-            usage=usage,
-        )
 
 
 __all__ = ["HyperAgentsGameClient", "TRANSPORT_NOTE"]

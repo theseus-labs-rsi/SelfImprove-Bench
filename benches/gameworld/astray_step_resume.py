@@ -111,7 +111,7 @@ class AstrayTransaction:
                  'runtime_reasoning_required': client._runtime_reasoning_required,
                  'worker': None}
         if self.framework == 'ahe':
-            state['worker'] = self._pack_worker(client._ahe_agent.snapshot_session())
+            state['worker'] = self._pack_worker(client._rsi_agent.snapshot_session())
         return state
 
     def _pack_worker(self, snapshot: dict) -> dict:
@@ -143,7 +143,7 @@ class AstrayTransaction:
         if state.get('schema') != 1 or not isinstance(state.get('memory'), list):
             raise UnsafeResume('Incomplete framework model history')
         if self.framework == 'ahe':
-            client._ahe_agent.restore_session(self._unpack_worker(state['worker']))
+            client._rsi_agent.restore_session(self._unpack_worker(state['worker']))
         memory = []
         for row in state['memory']:
             entries = []
@@ -365,7 +365,7 @@ class AstrayTransaction:
                 else:
                     # AHE's worker was restored to the receipted post-call
                     # history at initialization (restore_session is one-shot).
-                    actual = client._ahe_agent.snapshot_session()
+                    actual = client._rsi_agent.snapshot_session()
                     if actual['history'] != self._unpack_worker(
                             pending['agent_after_model']['client']['worker'])['history']:
                         raise UnsafeResume('AHE paid-response history differs')

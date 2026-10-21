@@ -13,6 +13,7 @@ import multiprocessing
 import mimetypes
 import os
 import shutil
+import subprocess
 import sys
 import traceback
 from contextlib import redirect_stderr, redirect_stdout
@@ -24,6 +25,7 @@ from uuid import uuid4
 
 from benchmark.contracts import BackendResponse, TokenUsage
 from benchmark.token_ledger import nexau_usage_snapshot
+from .sandbox import reject_symlinks, sandbox_command
 
 
 class AHEAgent:
@@ -46,6 +48,7 @@ class AHEAgent:
         agent_limits: Mapping[str, int] | None = None,
         llm_environment: Mapping[str, str] | None = None,
     ) -> None:
+        reject_symlinks(workspace)
         self.workspace = workspace.resolve()
         self.config_path = self.workspace / "code_agent.yaml"
         self.artifact_dir = artifact_dir.resolve()
@@ -68,7 +71,7 @@ class AHEAgent:
         parent, child = multiprocessing.Pipe()
         self._connection = parent
         self._process = multiprocessing.Process(
-            target=AHEAgent._worker,
+            target=AHEAgent._sandboxed_worker,
             args=(child, self.workspace, self.config_path, self.sandbox_dir,
                   self.upstream_root, self.artifact_dir / "agent.log", self.model,
                   self.reasoning_effort, self.agent_limits, self._llm_environment),
@@ -308,6 +311,39 @@ class AHEAgent:
                 path.write_text(json.dumps(cleaned, ensure_ascii=False, indent=2), encoding="utf-8")
                 return path
         raise RuntimeError("AHE coding agent has no InMemoryTracer")
+
+    @staticmethod
+    def _sandboxed_worker(
+        connection: Connection, workspace: Path, config_path: Path, sandbox_dir: Path,
+        upstream_root: Path, log_path: Path, model: str | None, reasoning_effort: str | None,
+        agent_limits: dict[str, int], llm_environment: Mapping[str, str],
+    ) -> None:
+        """Keep the trusted launcher outside; model tools only run inside bwrap."""
+        try:
+            request = {"workspace": str(workspace), "config_path": str(config_path),
+                       "sandbox_dir": str(sandbox_dir), "upstream_root": str(upstream_root),
+                       "log_path": str(log_path), "model": model,
+                       "reasoning_effort": reasoning_effort, "agent_limits": agent_limits}
+            command = sandbox_command(
+                [sys.executable, "-m", "rsi_methods.AHE.agent", "--worker-fd",
+                 str(connection.fileno()), json.dumps(request)],
+                readable=[workspace], writable=[log_path.parent], cwd=sandbox_dir,
+            )
+            env = os.environ.copy()
+            env.update(llm_environment)
+            result = subprocess.run(command, pass_fds=(connection.fileno(),), env=env,
+                                    capture_output=True, text=True)
+            if result.returncode:
+                with log_path.open("a", encoding="utf-8") as log:
+                    log.write(result.stdout + result.stderr)
+                connection.send({"ready": False, "error": "AHE sandbox worker failed; see agent.log"})
+        except BaseException as exc:
+            try:
+                connection.send({"ready": False, "error": str(exc)})
+            except (BrokenPipeError, EOFError, OSError):
+                pass
+        finally:
+            connection.close()
 
     @staticmethod
     def _worker(
@@ -612,3 +648,12 @@ def configure_reasoning_effort(config: object, effort: str | None) -> None:
     if not hasattr(llm_config, "reasoning_effort"):
         raise RuntimeError("Installed NexAU LLM config does not support reasoning_effort")
     setattr(llm_config, "reasoning_effort", normalized)
+
+
+if __name__ == "__main__":
+    if len(sys.argv) != 4 or sys.argv[1] != "--worker-fd":
+        raise SystemExit("usage: python -m rsi_methods.AHE.agent --worker-fd FD CONFIG_JSON")
+    settings = json.loads(sys.argv[3])
+    for key in ("workspace", "config_path", "sandbox_dir", "upstream_root", "log_path"):
+        settings[key] = Path(settings[key])
+    AHEAgent._worker(Connection(int(sys.argv[2])), **settings, llm_environment={})

@@ -24,22 +24,11 @@ from .contracts import (
 )
 
 
-from .methods import RSI_PROVIDERS, create_adaptor, method_identity
-AHE_FATAL_ERROR_MARKERS = (
-    "ahe selection",
-    "ahe candidate generation failed",
-    "ahe refine needs a trace",
-    "budget has been exceeded",
-    "context too full",
-    "pending rsi candidate batch",
-    "prompt too long",
-)
-
-
+from .methods import RSI_PROVIDERS, create_adaptor, method_identity, runtime_policy
 def is_fatal_ahe_error(value: Any) -> bool:
-    """Identify AHE errors for which retrying is inappropriate."""
-    message = str(value or "").lower()
-    return any(marker in message for marker in AHE_FATAL_ERROR_MARKERS)
+    """Compatibility alias; the method owns its error classification."""
+    from rsi_methods.AHE.runtime_policy import is_fatal_error
+    return is_fatal_error(value)
 
 
 def _copy_resume_workspace(source: Path, target: Path, method: str) -> tuple[Path, Path, int, str]:
@@ -77,42 +66,9 @@ def _copy_resume_workspace(source: Path, target: Path, method: str) -> tuple[Pat
     return source_batch, target / "rsi" / method / source_batch.name, before, phase
 
 
-def _extract_json_object(text: str) -> dict[str, Any]:
-    fenced = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL | re.IGNORECASE)
-    candidates = [fenced.group(1)] if fenced else []
-    candidates.append(text)
-    decoder = json.JSONDecoder()
-    for candidate in candidates:
-        for index, char in enumerate(candidate):
-            if char != "{":
-                continue
-            try:
-                value, _ = decoder.raw_decode(candidate[index:])
-            except json.JSONDecodeError:
-                continue
-            if isinstance(value, dict):
-                return value
-    raise ValueError("RSI agent response does not contain a JSON object")
-
-
 def extract_rsi_answer(method: str, response: BackendResponse) -> str:
     """Return the benchmark answer carried by an RSI backend response."""
-    if method.strip().lower() != "ace":
-        return response.text
-    ace_metadata = response.metadata.get("ace") if isinstance(response.metadata, Mapping) else None
-    if isinstance(ace_metadata, Mapping) and "raw_response_text" in ace_metadata:
-        if not isinstance(response.text, str) or not response.text.strip():
-            raise ValueError("ACE unwrapped response text is empty or not text")
-        return response.text
-    envelope = _extract_json_object(response.text)
-    if "final_answer" not in envelope:
-        raise ValueError("ACE response is missing final_answer")
-    answer = envelope["final_answer"]
-    if isinstance(answer, str):
-        return answer
-    if isinstance(answer, (dict, list)):
-        return json.dumps(answer, ensure_ascii=False)
-    raise ValueError("ACE final_answer must be a string, object, or array")
+    return runtime_policy(method).answer(response)
 
 
 def backend_response_record(
@@ -121,15 +77,7 @@ def backend_response_record(
     response: BackendResponse,
 ) -> dict[str, Any]:
     """Create a JSON-safe record used by telemetry and later refinement."""
-    reasoning = response.reasoning
-    if method.strip().lower() == "ace":
-        try:
-            envelope = _extract_json_object(response.text)
-            outer_reasoning = envelope.get("reasoning")
-            if not reasoning and isinstance(outer_reasoning, str):
-                reasoning = outer_reasoning
-        except ValueError:
-            pass
+    reasoning = runtime_policy(method).reasoning(response)
     return {
         "prompt": prompt,
         "response_text": response.text,
@@ -265,6 +213,7 @@ class RSIBatchSession:
         resume_from: str | Path | None = None,
         target_dir: str | Path | None = None,
         resume: bool = False,
+        seed: int = 0,
     ) -> None:
         normalized = method.strip().lower()
         if normalized not in RSI_PROVIDERS:
@@ -279,6 +228,7 @@ class RSIBatchSession:
         if resume_from is not None and identity == "rsi":
             raise ValueError("External RSI adapters use --resume in place; --target-dir is built-in only")
         self.resuming = resume
+        self.seed = seed
         self.method = identity
         self._provider = normalized
         source_batch = None
@@ -369,7 +319,7 @@ class RSIBatchSession:
 
     def _create_adaptor(self, task_count: int) -> Any:
         """Construct a method without depending on any game's implementation."""
-        return create_adaptor(self._provider, artifact_dir=self.artifact_dir,
+        return create_adaptor(self._provider, seed=self.seed, artifact_dir=self.artifact_dir,
                               task_count=task_count, agent=self.agent_config,
                               resuming=self.resuming)
 
@@ -556,6 +506,7 @@ def create_rsi_batch(
     resume_from: str | Path | None = None,
     target_dir: str | Path | None = None,
     resume: bool = False,
+    seed: int = 0,
 ) -> RSIBatchSession:
     return RSIBatchSession(
         method,
@@ -566,6 +517,7 @@ def create_rsi_batch(
         resume_from=resume_from,
         target_dir=target_dir,
         resume=resume,
+        seed=seed,
     )
 
 

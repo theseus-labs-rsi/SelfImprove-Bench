@@ -26,6 +26,37 @@ def load_overlay(name: str, relative: str):
 
 
 class RuntimeSafetyTests(unittest.TestCase):
+    def test_text_protocol_executes_one_tool_and_returns_text_feedback(self):
+        llm = load_overlay("test_restored_protocol", "agent/llm_withtools.py")
+        usage = SimpleNamespace(input_tokens=1, output_tokens=1, total_tokens=2,
+                                cached_input_tokens=0, reasoning_tokens=0)
+        executed = []
+        tool = {
+            "info": {"name": "bash", "input_schema": {"type": "object"}},
+            "function": lambda command: executed.append(command) or "file contents",
+        }
+        tool_text = (
+            '<json>{"tool_name":"bash","tool_input":{"command":"first"}}</json>'
+            '<json>{"tool_name":"bash","tool_input":{"command":"second"}}</json>'
+        )
+        responses = [
+            (SimpleNamespace(text=tool_text, usage=usage),
+             [{"role": "assistant", "text": tool_text}]),
+            (SimpleNamespace(text="done", usage=usage),
+             [{"role": "assistant", "text": "done"}]),
+        ]
+        with patch.object(llm, "load_tools", return_value=[tool]), \
+                patch.object(llm, "generate_response", side_effect=responses) as send, \
+                patch.dict("os.environ", {"HYPERAGENTS_META_MAX_TOKENS": "0"}):
+            llm.chat_with_agent("edit", tools_available="all", image_paths=["step.png"],
+                                logging=lambda *_: None)
+        self.assertEqual(executed, ["first"])
+        self.assertIn("ONLY USE ONE TOOL PER RESPONSE", send.call_args_list[0].args[0])
+        self.assertIn("file contents", send.call_args_list[1].args[0])
+        self.assertNotIn("tools", send.call_args_list[0].kwargs)
+        self.assertEqual(send.call_args_list[0].kwargs["image_paths"], ["step.png"])
+        self.assertIsNone(send.call_args_list[1].kwargs["image_paths"])
+
     def test_bash_heredoc_without_trailing_newline(self):
         bash = load_overlay("test_safe_bash_heredoc", "agent/tools/bash.py")
 
@@ -57,7 +88,7 @@ class RuntimeSafetyTests(unittest.TestCase):
         output, _ = asyncio.run(run('python3 -c \'import sys; sys.stderr.write("e"*1800000); print("ok")\''))
         self.assertIn("ok", output)
 
-    def test_tool_cap_returns_candidate_without_extra_model_call(self):
+    def test_tool_cap_preserves_upstream_final_response(self):
         llm = load_overlay("test_safe_llm", "agent/llm_withtools.py")
         calls = []
         logs = []
@@ -68,9 +99,9 @@ class RuntimeSafetyTests(unittest.TestCase):
 
         def respond(*args, **kwargs):
             calls.append(1)
-            response = SimpleNamespace(text="", usage=usage, tool_calls=[
-                {"id": str(len(calls)), "function": {"name": "bash", "arguments": "{}"}}
-            ])
+            response = SimpleNamespace(
+                text='<json>{"tool_name":"bash","tool_input":{}}</json>', usage=usage,
+            )
             return response, [{"role": "assistant", "text": "", "content": ""}]
 
         with tempfile.TemporaryDirectory() as directory:
@@ -81,9 +112,9 @@ class RuntimeSafetyTests(unittest.TestCase):
                 history = llm.chat_with_agent("edit", tools_available=["bash"],
                                                logging=logs.append, max_tool_calls=2)
             records = [json.loads(line) for line in ledger.read_text().splitlines()]
-        self.assertEqual(len(calls), 2)  # No doomed 3rd paid response.
-        self.assertEqual(len(records), 2)
-        self.assertEqual(history[-1]["usage"]["total_tokens"], 24)
+        self.assertEqual(len(calls), 3)
+        self.assertEqual(len(records), 3)
+        self.assertEqual(history[-1]["usage"]["total_tokens"], 36)
         self.assertTrue(any("saving the current candidate" in line for line in logs))
 
     def test_meta_cap_across_visual_and_edit_calls_with_live_ledger(self):
@@ -93,8 +124,9 @@ class RuntimeSafetyTests(unittest.TestCase):
                                 cached_input_tokens=0, reasoning_tokens=0)
         def respond(*args, **kwargs):
             count.append(1)
-            response = SimpleNamespace(text="", usage=usage, tool_calls=[
-                {"id": str(len(count)), "function": {"name": "bash", "arguments": "{}"}}])
+            response = SimpleNamespace(
+                text='<json>{"tool_name":"bash","tool_input":{}}</json>', usage=usage,
+            )
             return response, [{"role": "assistant", "content": "done"}]
         tool = {"info": {"name": "bash", "input_schema": {"type": "object"}},
                 "function": lambda **kwargs: "edited"}
@@ -106,8 +138,6 @@ class RuntimeSafetyTests(unittest.TestCase):
                                         "HYPERAGENTS_META_LIVE_LEDGER": str(live),
                                         "HYPERAGENTS_META_MAX_TOKENS": "28"}):
                 llm.chat_with_agent("visual", tools_available=["bash"], logging=lambda *a: None,
-                                    max_tool_calls=1)
-                llm.chat_with_agent("edit", tools_available=["bash"], logging=lambda *a: None,
                                     max_tool_calls=40)
                 with self.assertRaisesRegex(RuntimeError, "cap exhausted"):
                     llm.chat_with_agent("extra", tools_available=["bash"], logging=lambda *a: None)

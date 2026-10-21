@@ -188,17 +188,8 @@ def play(task: SweepmineCore, agent: Any) -> dict[str, Any]:
 
 
 def extract_action(response_text: str) -> str:
-    """Extract the benchmark action from either plain or ACE-wrapped JSON."""
-    try:
-        payload = json.loads(response_text.strip())
-    except (TypeError, json.JSONDecodeError):
-        return response_text
-    if not isinstance(payload, dict) or "final_answer" not in payload:
-        return response_text
-    final_answer = payload["final_answer"]
-    if isinstance(final_answer, dict):
-        return json.dumps(final_answer, separators=(",", ":"))
-    return str(final_answer).strip()
+    """Accept game action text; method envelopes belong to method adapters."""
+    return response_text
 
 
 def _call_agent(agent: Any, prompt: str) -> tuple[str, AgentCallRecord | None]:

@@ -26,6 +26,8 @@ from benchmark.token_ledger import nexau_usage_snapshot
 from .agent import AHEAgent, configure_reasoning_effort
 from .build import build
 from .init import AHEState, apply_agent_limits
+from .history import load_history, save_history
+from .sandbox import reject_symlinks, sandbox_command, training_history_paths
 
 
 @dataclass(frozen=True, slots=True)
@@ -179,6 +181,7 @@ def _write_task_trace(trial_dir: Path, trace_path: Path) -> None:
     if not trajectory:
         return
     target = trial_dir / "agent" / "nexau_in_memory_tracer.cleaned.json"
+    shutil.copy2(target, target.with_name("nexau_native_trace.json"))
     try:
         trace = json.loads(target.read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -208,6 +211,11 @@ def _write_task_trace(trial_dir: Path, trace_path: Path) -> None:
             "screenshot reference and one agent reply per game step. During play the "
             "agent's own context kept only the most recent turns."
         ),
+        native_evidence={
+            "last_step": "agent/nexau_native_trace.json",
+            "all_steps": "agent/all_step_traces.json",
+            "path_base": "trial_dir",
+        },
     )
     target.write_text(json.dumps(trace, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -218,19 +226,21 @@ def _write_analysis(
     task_name: str,
     feedback: dict[str, Any],
     score: float,
+    *,
+    model: str | None = None,
+    llm_environment: Mapping[str, str] | None = None,
 ) -> str:
-    """Provide sourced evidence; use Agent Debugger when already installed.
-
-    If ``adb`` is unavailable, the report says so and points the Evolve Agent
-    to the raw trace.  It does not claim a root cause without analysis.
-    """
+    """Require a successful Debugger diagnosis before candidate generation."""
 
     trace_path = trial_dir / "agent" / "nexau_in_memory_tracer.cleaned.json"
     analysis_dir = iteration_dir / "input" / "analysis"
     detail_dir = analysis_dir / "detail"
     detail_dir.mkdir(parents=True)
     evaluator_note = str(feedback["evaluation"].get("feedback") or "")
-    diagnosis = _ask_debugger(trace_path, score, evaluator_note)
+    diagnosis = _ask_debugger(
+        trace_path, score, evaluator_note, model=model, llm_environment=llm_environment,
+        output_dir=analysis_dir,
+    )
     relative_trace = trace_path.relative_to(iteration_dir.parent.parent).as_posix()
     overview = (
         f"# Benchmark evidence for {task_name}\n\n"
@@ -251,36 +261,87 @@ def _write_analysis(
     return overview
 
 
-def _ask_debugger(trace_path: Path, score: float, evaluator_note: str) -> str:
-    """Run an installed Agent Debugger without installing software implicitly."""
+def _ask_debugger(
+    trace_path: Path, score: float, evaluator_note: str, *,
+    model: str | None = None,
+    llm_environment: Mapping[str, str] | None = None,
+    output_dir: Path | None = None,
+) -> str:
+    """Run the bundled Debugger in this interpreter; never skip diagnosis."""
 
-    adb = shutil.which("adb")
-    if adb is None:
-        return "Agent Debugger is unavailable. Inspect the linked raw trace directly."
+    upstream = Path(__file__).resolve().parent / "agentic-harness-engineering"
+    source = upstream / "agents/evolve_agent/skills/agent-debugger-cli/_source"
+    if not (source / "agent_debugger_core/cli/adb.py").is_file():
+        raise RuntimeError("AHE Agent Debugger source is required; refinement stopped")
+    env = os.environ.copy()
+    env.update(llm_environment or {})
+    if model:
+        env["LLM_MODEL"] = model
+    for target, fallback in (
+        ("LLM_BASE_URL", "OPENAI_BASE_URL"), ("LLM_API_KEY", "OPENAI_API_KEY"),
+    ):
+        if not env.get(target) and env.get(fallback):
+            env[target] = env[fallback]
+    env["AHE_HOME"] = str(upstream)
+    env["AHE_DEBUGGER_SCOPED_LLM"] = "1"
+    env["PYTHONPATH"] = os.pathsep.join((str(source), str(upstream)))
     question = (
         f"Analyze this agent trace against benchmark score {score}. "
         f"Evaluator feedback: {evaluator_note}. Identify evidence-backed causes; "
-        "do not infer task success from process completion."
+        "do not infer task success from process completion. Read the trial's "
+        "feedback.json and agent/all_step_traces.json for native tool calls and "
+        "runtime evidence; the cleaned conversation is a benchmark reconstruction. "
+        "Identify the earliest supported failure, relevant harness component, "
+        "concrete evidence and an actionable correction. Separate observed facts "
+        "from hypotheses; do not invent missing runtime logs."
     )
     try:
-        completed = subprocess.run(
-            [adb, "ask", "-t", str(trace_path), "-q", question, "--format", "json"],
-            capture_output=True, text=True, timeout=600,
+        command = sandbox_command(
+            [sys.executable, "-m", "agent_debugger_core.cli.adb", "ask",
+             "-t", str(trace_path.resolve()), "-q", question, "--format", "json"],
+            readable=[trace_path.parent.parent], cwd=trace_path.parent.parent,
+            python_paths=[source, upstream],
         )
-    except subprocess.TimeoutExpired:
-        return "Agent Debugger timed out; inspect the raw trace directly."
+        completed = subprocess.run(
+            command,
+            env=env, capture_output=True, text=True, timeout=600,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError("AHE Agent Debugger timed out; refinement stopped") from exc
+    except OSError as exc:
+        raise RuntimeError("AHE Agent Debugger could not start; refinement stopped") from exc
     if completed.returncode != 0:
-        return f"Agent Debugger failed; inspect the raw trace. Error: {completed.stderr[-1000:]}"
+        raise RuntimeError(
+            "AHE Agent Debugger failed; refinement stopped. "
+            f"Check Debugger dependencies and LLM configuration. "
+            f"Details: {(completed.stderr or completed.stdout)[-1000:]}"
+        )
     try:
         result = json.loads(completed.stdout)
-    except json.JSONDecodeError:
-        return f"Agent Debugger returned non-JSON output: {completed.stdout[-1000:]}"
-    return str(result.get("response") or result.get("answer") or "No diagnosis returned.")
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("AHE Agent Debugger returned invalid JSON; refinement stopped") from exc
+    if not isinstance(result, dict) or result.get("status") != "success":
+        raise RuntimeError("AHE Agent Debugger did not report success; refinement stopped")
+    if output_dir is not None:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        (output_dir / "debugger_result.json").write_text(
+            json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8",
+        )
+        (output_dir / "debugger_usage_snapshot.json").write_text(
+            json.dumps(result.get("usage_snapshot"), ensure_ascii=False, indent=2), encoding="utf-8",
+        )
+    diagnosis = result.get("response") or result.get("answer")
+    if not isinstance(diagnosis, str) or not diagnosis.strip():
+        raise RuntimeError("AHE Agent Debugger returned no diagnosis; refinement stopped")
+    if diagnosis.lstrip().startswith("[budget-exceeded]"):
+        raise RuntimeError("AHE Agent Debugger exhausted its budget; refinement stopped")
+    return diagnosis.strip()
 
 
 def _prepare_candidate(parent: Path, candidate_root: Path) -> Path:
     """Copy the parent and give this variant its own Git history for AHE edits."""
 
+    reject_symlinks(parent)
     workspace = candidate_root / "workspace"
     shutil.copytree(parent, workspace, ignore=shutil.ignore_patterns(".git"))
     for command in (
@@ -308,11 +369,18 @@ def _evolution_query(
     lines = [
         f"Iteration {iteration_dir.name} evaluation completed.",
         f"Your writable harness is `{workspace_rel}/`.",
-        f"Read `{analysis_rel}/overview.md` and its detail file, then inspect the linked trace.",
+        f"Read `{analysis_rel}/overview.md` and its detail file first. "
+        "Inspect linked native traces when the diagnosis lacks evidence for a specific question.",
         f"The benchmark's objective is relative_score; parent score is {score}.",
         "The reward file contains that continuous score. Execution completion is not a task pass.",
         "Make evidence-backed harness changes in your writable workspace only.",
         "Do not run Harbor or select a winner. The benchmark evaluates returned candidates later.",
+        "Read `evolution_history.md` and linked change_evaluation.json files when present. "
+        "These record same-task parent/candidate comparisons, not a fixed-dataset trend.",
+        "There is no comparable global best score because each round can use a different "
+        "training task. Continue the active workspace; do not rank snapshots across tasks.",
+        f"Write the change manifest to "
+        f"`{workspace.parent.relative_to(state.run_dir).as_posix()}/change_manifest.json`.",
     ]
     if best_ever is not None:
         lines.append(f"Historical best metadata for context: {json.dumps(best_ever, ensure_ascii=False)}")
@@ -365,13 +433,33 @@ def _run_evolver(
     env["PYTHONPATH"] = os.pathsep.join(filter(None, (str(code_root), env.get("PYTHONPATH"))))
     if model:
         env["LLM_MODEL"] = model
-    completed = subprocess.run(
+    # Bind individual result files, not candidate_root: evaluation state is host-owned.
+    worker_outputs = [result_path, candidate_root / "evolve_trace.json",
+                      candidate_root / "evolve_usage_snapshot.json", candidate_root / "change_manifest.json"]
+    for path in worker_outputs:
+        path.touch(exist_ok=False)
+    runtime_dir = candidate_root / "evolve_agent_runtime"
+    config_path = _prepare_evolve_runtime(state.evolve_agent_dir, runtime_dir)
+    prompt_path = config_path.parent / "evolve_prompt.md"
+    manifest_rel = (candidate_root / "change_manifest.json").relative_to(state.run_dir).as_posix()
+    prompt_path.write_text(prompt_path.read_text(encoding="utf-8").replace(
+        "Write to experiment root directory (NOT inside workspace/).",
+        f"Write to `{manifest_rel}` (NOT inside the writable harness).",
+    ), encoding="utf-8")
+    command = sandbox_command(
         [sys.executable, "-m", "rsi_methods.AHE.refine", "--worker", str(request_path), str(result_path)],
+        readable=[request_path, runtime_dir, iteration_dir / "input", state.evolve_agent_dir,
+                  *training_history_paths(state.run_dir)],
+        writable=[workspace, *worker_outputs], cwd=state.run_dir,
+    )
+    completed = subprocess.run(
+        command,
         env=env, capture_output=True, text=True, timeout=timeout_seconds,
     )
     (candidate_root / "evolve.log").write_text(completed.stdout + "\n" + completed.stderr, encoding="utf-8")
     if completed.returncode != 0 or not result_path.is_file():
         raise RuntimeError(f"AHE candidate generation failed; inspect {candidate_root / 'evolve.log'}")
+    reject_symlinks(workspace)
     return json.loads(result_path.read_text(encoding="utf-8"))
 
 
@@ -387,21 +475,27 @@ def _strategy_hints() -> list[str]:
 
 def _evolve_token_report(
     candidates: list[dict[str, Any]], *, debugger_invoked: bool, source_path: Path,
+    debugger_usage: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Sum provider-reported NexAU spans; do not invent missing subfield usage."""
 
-    complete = not debugger_invoked and bool(candidates) and all(
+    components = list(candidates)
+    if debugger_invoked:
+        components.append({"role": "debugger", "usage": debugger_usage})
+    complete = bool(candidates) and all(
         isinstance(item.get("usage"), dict)
         and isinstance(item["usage"].get("total_tokens"), int)
         and not isinstance(item["usage"]["total_tokens"], bool)
-        for item in candidates
+        and item["usage"]["total_tokens"] >= 0
+        and item["usage"].get("model_calls", 1) != 0
+        for item in components
     )
 
     def total(field: str) -> int | None:
         if not complete:
             return None
-        values = [item["usage"].get(field) for item in candidates]
-        if not all(isinstance(value, int) and not isinstance(value, bool) for value in values):
+        values = [item["usage"].get(field) for item in components]
+        if not all(isinstance(value, int) and not isinstance(value, bool) and value >= 0 for value in values):
             return None
         return sum(values)
 
@@ -412,7 +506,7 @@ def _evolve_token_report(
         "prompt_num_tokens": total("input_tokens"),
         "response_num_tokens": total("output_tokens"),
         "reasoning_num_tokens": total("reasoning_tokens"),
-        "candidates": candidates,
+        "candidates": candidates, "debugger_usage": debugger_usage,
     }
 
 
@@ -439,12 +533,24 @@ def refine(
     trace_path = _trace_from_feedback(feedback, parent_agent)
     iteration_dir = state.run_dir / "runs" / f"iteration_{iteration:03d}"
     iteration_dir.mkdir(parents=True, exist_ok=False)
+    history = load_history(state.run_dir)
+    history.append({
+        "refinement_id": iteration_dir.name,
+        "task_id": feedback["task_id"],
+        "parent_score": score,
+    })
+    save_history(state.run_dir, history)
     trial_dir, task_name = _prepare_evidence(
         parent, feedback, score, trace_path, iteration_dir,
         parent_agent.trace_paths,
     )
-    debugger_invoked = shutil.which("adb") is not None
-    _write_analysis(iteration_dir, trial_dir, task_name, feedback, score)
+    _write_analysis(
+        iteration_dir, trial_dir, task_name, feedback, score,
+        model=model, llm_environment=llm_environment,
+    )
+    debugger_invoked = True
+    debugger_usage_path = iteration_dir / "input/analysis/debugger_usage_snapshot.json"
+    debugger_usage = json.loads(debugger_usage_path.read_text(encoding="utf-8")) if debugger_usage_path.is_file() else None
     work_dir = state.run_dir / "candidates" / f"iteration_{iteration:03d}"
     hints = _strategy_hints() if candidate_count > 1 else []
     candidates: list[CandidateSpec] = []
@@ -480,7 +586,8 @@ def refine(
         for candidate in candidates:
             candidate.agent.close()
         raise
-    usage_report = _evolve_token_report(evolve_usage, debugger_invoked=debugger_invoked, source_path=Path(output_dir) / "ahe_refine.json")
+    usage_report = _evolve_token_report(evolve_usage, debugger_invoked=debugger_invoked,
+                                       debugger_usage=debugger_usage, source_path=Path(output_dir) / "ahe_refine.json")
     batch = CandidateBatch(f"iteration_{iteration:03d}", work_dir, parent, score, tuple(candidates), {"total_num_tokens": usage_report["total_tokens"]})
     output = Path(output_dir).expanduser().resolve()
     output.mkdir(parents=True, exist_ok=True)
@@ -488,10 +595,7 @@ def refine(
         "refinement_id": batch.refinement_id, "parent_workspace": str(parent),
         "parent_score": score, "candidate_ids": [c.candidate_id for c in candidates],
         "work_dir": str(work_dir),
-        "token_usage_report": _evolve_token_report(
-            evolve_usage, debugger_invoked=debugger_invoked,
-            source_path=output / "ahe_refine.json",
-        ),
+        "token_usage_report": usage_report,
     }, ensure_ascii=False, indent=2), encoding="utf-8")
     return batch
 
@@ -516,16 +620,10 @@ def _adapt_score_prompt(prompt_path: Path) -> None:
             "**The sole optimization target is mean benchmark score per attempt.** Compare numeric scores; do not infer task success from execution status. Analyze timeouts as evidence of a possible regression. Exclude only genuine infrastructure failures.",
         "When the experiment runs k>1 rollouts (indicated in the query), use the extra signal to diagnose:\n- **Partial-pass tasks** (some rollouts pass, some fail) are the most valuable. Compare the passing and failing rollouts of the *same task*, find the divergence point, and make the successful strategy the *reliable default*.\n- **pass@k** gauges capability ceiling but is NOT the target. Your goal is to turn pass@k successes into pass@1 successes by making the winning strategy consistent.":
             "When multiple rollouts are available, compare their numeric scores and traces. Find the divergence behind higher and lower scores on the same task; improve the reliability of the higher-scoring behavior. Do not optimize a binary pass@k metric.",
-        "Check which tasks flipped (fail→pass) and which regressed (pass→fail). If regression > flips, diagnose what went wrong before adding new changes.":
-            "Compare per-task score changes and investigate regressions before adding new changes.",
-        "The analysis reports are pre-built summaries of all task failures with root causes already identified. They save you significant time — do NOT skip them to read raw traces directly.":
-            "The analysis files summarize available benchmark evidence; they may not contain a root-cause diagnosis. Read the linked raw trace when the summary is insufficient, and distinguish observation from hypothesis.",
-        "this is your primary information source. It contains pre-analyzed root causes, failure patterns, and strategies for every task":
-            "this points to the benchmark score, evaluator feedback, and available trace for each task",
-        "detailed per-task analysis with specific failure points and successful strategies":
-            "per-task evidence and any available diagnosis",
-        "Only fall back to reading raw `nexau_in_memory_tracer.cleaned.json` when analysis is missing or insufficient for a specific question — this should be rare":
-            "Read the linked raw `nexau_in_memory_tracer.cleaned.json` whenever the summary does not establish a root cause",
+        "**For iteration 2+:** Compare task results across iterations. Check which tasks flipped (fail→pass) and which regressed (pass→fail). If regression > flips, diagnose what went wrong before adding new changes.":
+            "**For iteration 2+:** Review recorded same-task parent/candidate score "
+            "comparisons and investigate regressions before adding changes. Do not "
+            "compare different training tasks as if they were the same evaluation set.",
         "After creating or modifying middleware**, read at least one `agent/nexau.txt` from a failed task — it contains runtime logs (middleware init errors, warnings, crashes) that static validation cannot catch":
             "After creating or modifying middleware**, inspect available runtime logs or traces for init errors, warnings, and crashes",
     }
@@ -533,18 +631,27 @@ def _adapt_score_prompt(prompt_path: Path) -> None:
         if original not in prompt:
             raise RuntimeError(f"Cannot adapt an unexpected AHE prompt: {original[:60]}")
         prompt = prompt.replace(original, adapted, 1)
+    convention_start = prompt.index("> **Loop convention")
+    convention_end = prompt.index("\n```", convention_start)
+    prompt = (
+        prompt[:convention_start]
+        + "> **Benchmark loop convention:** You are producing iteration `{{ iteration }}`. "
+        "Its `input/` contains the active parent's evaluation on the current training task. "
+        "After your edits, the benchmark evaluates your candidate on this SAME task. "
+        "The next iteration may use a DIFFERENT task; do not infer regressions from "
+        "cross-task score changes. Prior same-task comparisons and archived manifests "
+        "are linked in `evolution_history.md`. The directory layout below is the "
+        "upstream reference: this adapter stores candidate outputs under "
+        "`candidates/iteration_NNN/variant_N/`, not `runs/.../evolve/`. "
+        "Use the exact evidence and manifest paths in the user query. The initial "
+        "configuration is `method_config.toml`, not `config_snapshot.yaml`.\n"
+        + prompt[convention_end:]
+    )
     prompt_path.write_text(f"{marker}\n{prompt}", encoding="utf-8")
 
 
 def _prepare_evolve_runtime(source_dir: Path, runtime_dir: Path) -> Path:
-    """Create a candidate-local Evolve Agent compatible with host NexAU.
-
-    Upstream AHE pins NexAU 0.3.9, while the benchmark environment currently
-    uses 0.4.1. Its bundled ContextCompactionMiddleware imports an AG-UI event
-    absent from this environment. Context compaction is a long-run safeguard,
-    not part of candidate editing, so omit only that middleware in this local
-    runtime copy. LongToolOutputMiddleware and all evolution tools remain.
-    """
+    """Keep upstream middleware and add the benchmark's visual reader."""
 
     import yaml
 
@@ -553,11 +660,9 @@ def _prepare_evolve_runtime(source_dir: Path, runtime_dir: Path) -> Path:
     config_path = runtime_dir / "evolve_agent.yaml"
     config = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
     middlewares = config.get("middlewares", [])
-    incompatible = "middleware.context_compaction:ContextCompactionMiddleware"
-    retained = [item for item in middlewares if item.get("import") != incompatible]
-    if len(retained) == len(middlewares):
-        raise RuntimeError("AHE Evolve config has no expected context-compaction middleware")
-    config["middlewares"] = retained
+    for middleware in middlewares:
+        if middleware.get("import") == "middleware.context_compaction:ContextCompactionMiddleware":
+            middleware.setdefault("params", {})["max_context_tokens"] = config["max_context_tokens"]
     # Enable the already-vendored visual reader; keep binary output untruncated.
     if not any(t.get("name") == "read_visual_file" for t in config.get("tools", [])):
         config.setdefault("tools", []).append({
@@ -565,7 +670,7 @@ def _prepare_evolve_runtime(source_dir: Path, runtime_dir: Path) -> Path:
             "yaml_path": "./tool_descriptions/read_visual_file.tool.yaml",
             "binding": "tools.file_tools:read_visual_file",
         })
-    for middleware in retained:
+    for middleware in middlewares:
         if middleware.get("import") == "middleware.long_tool_output:LongToolOutputMiddleware":
             bypass = middleware.setdefault("params", {}).setdefault("bypass_tool_names", [])
             if "read_visual_file" not in bypass:
@@ -581,9 +686,8 @@ def _worker(request_path: Path, result_path: Path) -> None:
 
     request = json.loads(request_path.read_text(encoding="utf-8"))
     run_dir = Path(request["run_dir"])
-    evolve_source = Path(request["evolve_agent_dir"])
     evolve_dir = request_path.parent / "evolve_agent_runtime"
-    config_path = _prepare_evolve_runtime(evolve_source, evolve_dir)
+    config_path = evolve_dir / "evolve_agent.yaml"
     upstream_root = Path(__file__).resolve().parent / "agentic-harness-engineering"
     sys.path.insert(0, str(upstream_root))
     sys.path.insert(0, str(evolve_dir))

@@ -37,26 +37,19 @@ COPY . .
 
 CMD ["tail", "-f", "/dev/null"]
 """
-_INITIAL_README = """# Self-Improving HyperAgent
+_INITIAL_README = """# Self-Improving AI
 
-This repository contains the mutable MetaAgent and TaskAgent implementation.
-Previous generations and their evaluation results are available through the
-evaluation-history path passed to the MetaAgent. Each generation stores a
-`result.json` containing `valid`, `selection_score`, task-specific `metrics`,
-`feedback`, and optional `artifacts`.
+This system is designed to automatically produce agents for solving downstream tasks. The system iteratively improves the generated agents through code editing. To enable continuous improvement, the system should look at its code repository and the provided path to previously generated agents and their evaluation results, and then edit and enhance its own mechanisms for generating agents. This process creates a recursive loop of self-improvement.
+
+## Benchmark Evidence
+
+The evaluation-history path contains current training feedback in `result.json`
+and previous generations in `archive/`. `archive/archive.json` records candidate
+scores, parent identifiers and parent eligibility. Per-candidate folders contain
+training evidence, editing histories, code patches and candidate evaluations.
+The current `result.json` contains `valid`, `selection_score`, task-specific
+`metrics`, `feedback`, and optional `artifacts`.
 """
-_SEED_META_INSTRUCTION = (
-    '        instruction = f"Modify any part of the codebase at `{repo_path}`."'
-)
-_GENERIC_META_INSTRUCTION = '''        instruction = f"""Modify any part of the codebase at `{repo_path}`.
-Recursively inspect evaluation evidence at `{eval_path}`. Read
-`evidence_manifest.json` when present, then `result.json` and relevant artifacts.
-Artifact paths in `result.json` are relative to `{eval_path}`. Verify referenced
-files and ground failure diagnoses in concrete actions and observations.
-A batch result contains aggregate metrics and a `cases` list. Inspect the cases
-and artifacts, identify recurring failures, and do not optimize for one case ID
-or stochastic trace.
-There are `{iterations_left}` self-improvement iterations remaining after this call."""'''
 
 
 def _copy_framework_backend(root_dir):
@@ -187,21 +180,6 @@ def _validate_agent_source(source_dir):
         raise FileNotFoundError(f"Initial HyperAgent source is missing: {missing}")
 
 
-def _adapt_seed_meta_agent(root_dir):
-    meta_agent_path = os.path.join(root_dir, "meta_agent.py")
-    with open(meta_agent_path, "r", encoding="utf-8") as meta_agent_file:
-        source = meta_agent_file.read()
-    if _SEED_META_INSTRUCTION not in source:
-        return
-    source = source.replace(
-        _SEED_META_INSTRUCTION,
-        _GENERIC_META_INSTRUCTION,
-        1,
-    )
-    with open(meta_agent_path, "w", encoding="utf-8") as meta_agent_file:
-        meta_agent_file.write(source)
-
-
 def _adapt_runtime_boundaries(root_dir):
     run_meta_agent_path = os.path.join(root_dir, "run_meta_agent.py")
     with open(run_meta_agent_path, "r", encoding="utf-8") as run_meta_file:
@@ -213,21 +191,6 @@ def _adapt_runtime_boundaries(root_dir):
     )
     with open(run_meta_agent_path, "w", encoding="utf-8") as run_meta_file:
         run_meta_file.write(source)
-
-
-_VENDORED_IMAGE_SAMPLE = (
-    "        if len(references) > 8:\n"
-    "            references = [references[round(i * (len(references) - 1) / 7)] for i in range(8)]\n"
-)
-_CONFIGURED_IMAGE_SAMPLE = (
-    "        limit_path = Path(__file__).resolve().parent / \"visual_evidence_limit.json\"\n"
-    "        limit = json.loads(limit_path.read_text())[\"max_refinement_images\"] if limit_path.is_file() else 8\n"
-    "        if limit is not None and len(references) > limit:\n"
-    "            references = ([references[-1]] if limit == 1 else\n"
-    "                          [references[round(i * (len(references) - 1) / (limit - 1))] for i in range(limit)])\n"
-)
-_SCREENSHOT_PROMPT = "These are ordered screenshots from an agent's completed game evaluation. "
-_SCREENSHOT_TIMING = "Each image is the observation shown to the agent before that step's action. "
 
 
 def _install_visual_evidence_hook(root_dir):
@@ -242,35 +205,24 @@ def _install_visual_evidence_hook(root_dir):
     meta_path = os.path.join(root_dir, "meta_agent.py")
     with open(meta_path, encoding="utf-8") as stream:
         source = stream.read()
-    # Local vendored sources may already carry the equivalent helper. Do not
-    # double-call the visual model; still bundle the pinned parent-owned hook.
-    if "visual_observations = self._inspect_game_screenshots(eval_path)" in source:
-        if _CONFIGURED_IMAGE_SAMPLE in source:
-            return
-        if source.count(_VENDORED_IMAGE_SAMPLE) != 1 or source.count(_SCREENSHOT_PROMPT) != 1:
-            raise RuntimeError("Cannot apply the shared image budget to this MetaAgent version")
-        source = source.replace(_VENDORED_IMAGE_SAMPLE, _CONFIGURED_IMAGE_SAMPLE)
-        source = source.replace(_SCREENSHOT_PROMPT, _SCREENSHOT_PROMPT + _SCREENSHOT_TIMING)
-        with open(meta_path, "w", encoding="utf-8") as stream:
-            stream.write(source)
-        return
-    if "visual_observations = inspect_game_screenshots(self, eval_path)" in source:
+    if "image_paths, image_context = collect_game_screenshots(eval_path)" in source:
         return
     marker = "        new_msg_history = chat_with_agent("
-    if source.count(marker) != 1:
+    if source.count(marker) != 1 or source.count("            instruction,") != 1:
         raise RuntimeError("Cannot install visual evidence hook in this MetaAgent version")
-    insertion = r'''        from visual_evidence import inspect_game_screenshots
-        visual_observations = inspect_game_screenshots(self, eval_path)
-        if visual_observations:
-            instruction += (
-                "\nThese evaluation screenshots were inspected in a separate "
-                "multimodal call. Visual observations (not ground truth) follow; "
-                "check against the scored trajectory before editing code:\n"
-                + visual_observations[:6000]
-            )
+    insertion = '''        from visual_evidence import collect_game_screenshots
+        image_paths, image_context = collect_game_screenshots(eval_path)
+        instruction += "\\n\\n" + (
+            image_context or f"Evaluation records: {eval_path}/result.json"
+        )
 '''
+    source = source.replace(marker, insertion + marker, 1)
+    source = source.replace(
+        "            instruction,",
+        "            instruction,\n            image_paths=image_paths,", 1,
+    )
     with open(meta_path, "w", encoding="utf-8") as stream:
-        stream.write(source.replace(marker, insertion + marker, 1))
+        stream.write(source)
 
 
 def _remove_generated_tree(path):
@@ -313,7 +265,6 @@ def setup_initial_candidate(
     )
     shutil.copytree(source_dir, root_dir, ignore=ignored)
     _copy_framework_backend(root_dir)
-    _adapt_seed_meta_agent(root_dir)
     _adapt_runtime_boundaries(root_dir)
     _install_visual_evidence_hook(root_dir)
     from .runtime_safety import stage_runtime_safety
@@ -503,21 +454,25 @@ def _child_counts(archive, output_dir, candidates):
 def _score_weights(candidates):
     scores = list(candidates.values())
     midpoint = sum(sorted(scores, reverse=True)[:3]) / min(3, len(scores))
-    return {
-        generation_id: 1 / (1 + math.exp(-10 * (score - midpoint)))
-        for generation_id, score in candidates.items()
-    }
+    weights = {}
+    for generation_id, score in candidates.items():
+        value = 10 * (score - midpoint)
+        # Algebraically the upstream sigmoid, without overflow for low scores.
+        exponential = math.exp(-abs(value))
+        weights[generation_id] = (1 if value >= 0 else exponential) / (1 + exponential)
+    return weights
 
 
 def select_parent_from_candidates(
-    candidates, method="best", child_counts=None
+    candidates, method="best", child_counts=None, *, rng=None
 ):
     """Select a parent from an ID-to-selection-score mapping."""
     if not candidates:
         raise ValueError("No valid evaluated candidate is available for parent selection.")
     generation_ids = list(candidates)
+    rng = rng or random
     if method == "random":
-        return random.choice(generation_ids)
+        return rng.choice(generation_ids)
     if method == "latest":
         return generation_ids[-1]
     if method == "best":
@@ -532,9 +487,12 @@ def select_parent_from_candidates(
         }
     elif method != "score_prop":
         raise ValueError(f"Unknown parent selection method: {method}")
-    return random.choices(
+    values = [weights[generation_id] for generation_id in generation_ids]
+    if not any(values):
+        values = [1.0] * len(generation_ids)
+    return rng.choices(
         generation_ids,
-        weights=[weights[generation_id] for generation_id in generation_ids],
+        weights=values,
     )[0]
 
 

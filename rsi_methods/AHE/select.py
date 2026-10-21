@@ -14,6 +14,7 @@ from typing import Any, Mapping
 
 from .init import AHEState
 from .refine import CandidateBatch, CandidateSpec
+from .history import load_history, save_history
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,8 +83,8 @@ def select(
 ) -> SelectionOutcome:
     """Persist a score-based decision, then point state at the accepted copy.
 
-    The parent remains untouched when every valid candidate regresses. On a
-    tie, the first candidate is accepted, matching AHE's variant ordering.
+    Like upstream's default active-workspace loop, a valid candidate advances
+    even when its score regresses. On ties, the first variant is accepted.
     Files for rejected variants stay on disk for auditing; the adaptor closes
     their live Agent processes after this function succeeds.
     """
@@ -107,15 +108,11 @@ def select(
 
     # max() is stable: an equal-scoring variant earlier in the batch wins.
     winner, best_score = max(eligible, key=lambda item: item[1]) if eligible else (None, None)
-    accepted = winner is not None and (
-        selection_mode == "online" or parent_status != "ok" or best_score >= parent_score
-    )
+    accepted = winner is not None
     chosen = winner if accepted else None
     reason = (
-        "candidate_execution_valid" if accepted and selection_mode == "online" else
-        "candidate_recovers_failed_parent" if accepted and parent_status != "ok" else
-        "candidate_not_below_parent" if accepted else
-        "no_successful_candidates" if not eligible else "all_candidates_below_parent"
+        "valid_candidate_advances_active_lineage" if accepted else
+        "no_successful_candidates"
     )
     report_path = Path(output_dir).expanduser().resolve() / "ahe_selection.json"
     if report_path.exists():
@@ -141,4 +138,49 @@ def select(
     }, ensure_ascii=False, indent=2), encoding="utf-8")
     if chosen is not None:
         state.current_workspace = chosen.workspace.resolve()
+    records = load_history(state.run_dir)
+    record = next((r for r in records if r["refinement_id"] == batch.refinement_id), None)
+    if record is not None:
+        evidence = []
+        for candidate in batch.candidates:
+            manifest_path = candidate.workspace.parent / "change_manifest.json"
+            manifest = None
+            manifest_error = None
+            if manifest_path.is_file():
+                try:
+                    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                except ValueError as exc:
+                    manifest_error = str(exc)
+            status, candidate_score = _evaluation(
+                candidate_evaluations[candidate.candidate_id], candidate.candidate_id,
+            )
+            evidence.append({
+                "candidate_id": candidate.candidate_id,
+                "evaluation_status": status,
+                "score": candidate_score,
+                "same_task_score_delta": (
+                    candidate_score - parent_score
+                    if status == "ok" and parent_status == "ok" else None
+                ),
+                "manifest": manifest,
+                "manifest_error": manifest_error,
+                "manifest_path": str(manifest_path.relative_to(state.run_dir)),
+            })
+        evaluation_path = batch.work_dir / "change_evaluation.json"
+        evaluation_path.write_text(json.dumps({
+            "task_id": record["task_id"],
+            "scope": "same_task_parent_vs_candidate",
+            "causal_limit": "Whole-candidate comparison, not per-change causal attribution.",
+            "candidates": evidence,
+        }, ensure_ascii=False, indent=2), encoding="utf-8")
+        record.update(
+            status=outcome.status, candidate_scores=scores,
+            committed_candidate_id=outcome.committed_candidate_id,
+            score_delta=(
+                outcome.selected_score - parent_score
+                if accepted and parent_status == "ok" else None
+            ),
+            change_evaluation=str(evaluation_path.relative_to(state.run_dir)),
+        )
+        save_history(state.run_dir, records)
     return outcome

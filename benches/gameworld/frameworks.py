@@ -14,18 +14,8 @@ from benchmark.methods import RSI_PROVIDERS
 
 
 SUPPORTED_FRAMEWORKS = RSI_PROVIDERS
-CLIENT_MODULES = {
-    "ace": "benches.gameworld.ace_game_client",
-    "hyperagents": "benches.gameworld.hyperagents_game_client",
-    "ahe": "benches.gameworld.ahe_game_client",
-    "rsi": "benches.gameworld.rsi_game_client",
-}
-CLIENT_CLASSES = {
-    "ace": "ACEGameClient",
-    "hyperagents": "HyperAgentsGameClient",
-    "ahe": "AHEGameClient",
-    "rsi": "RSIGameClient",
-}
+CLIENT_MODULES = {name: "benches.gameworld.rsi_game_client" for name in SUPPORTED_FRAMEWORKS}
+CLIENT_CLASSES = {name: "RSIGameClient" for name in SUPPORTED_FRAMEWORKS}
 ADAPTOR_IMPORTS = {
     "ace": "rsi_methods.ACE.ACEAdaptor.ACEAdaptor",
     "hyperagents": "rsi_methods.HyperAgents.HyperAgentsAdaptor.HyperAgentsAdaptor",

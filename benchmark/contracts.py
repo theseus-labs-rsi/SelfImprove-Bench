@@ -49,6 +49,8 @@ class ToolCall:
 
 @dataclass(frozen=True, slots=True)
 class BackendResponse:
+    """Task-facing text; metadata may retain raw_response_text before unwrapping."""
+
     text: str
     reasoning: str | None = None
     usage: TokenUsage | None = None

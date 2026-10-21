@@ -77,6 +77,7 @@ class ACEAgent:
         }
         metadata = dict(response.metadata or {})
         metadata["ace"] = ace_metadata
+        metadata["raw_response_text"] = response.text
         return replace(
             response,
             text=answer,

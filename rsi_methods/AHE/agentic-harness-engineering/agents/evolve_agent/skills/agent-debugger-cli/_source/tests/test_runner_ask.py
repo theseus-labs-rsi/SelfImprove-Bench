@@ -1,5 +1,7 @@
 import json
 from pathlib import Path
+import sys
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -46,3 +48,29 @@ def test_ask_mode_happy_path(tmp_path, monkeypatch):
     assert result.mode == "ask"
     assert result.answer == "42"
     assert result.budget_exceeded is False
+
+
+@pytest.mark.parametrize("budget_exceeded", [False, True])
+def test_runner_exports_tracer_usage(monkeypatch, budget_exceeded):
+    from agent_debugger_core.runtime import runner
+
+    traces = {"test": "provider spans"}
+    usage = {"total_tokens": 13, "input_tokens": 8, "output_tokens": 5, "model_calls": 1}
+
+    class Tracer:
+        def dump_traces(self):
+            return traces
+
+    monkeypatch.setitem(sys.modules, "nexau.archs.tracer.adapters.in_memory",
+                        SimpleNamespace(InMemoryTracer=Tracer))
+    fake_agent = _scripted_agent({"mode": "ask", "answer": "diagnosis"})
+    fake_agent.config = SimpleNamespace(tracers=[Tracer()])
+    if budget_exceeded:
+        fake_agent.run.return_value = runner.BUDGET_MARKER + " unfinished"
+    with patch.object(runner, "resolve_llm_settings", return_value={}), patch.object(
+        runner, "_build_agent", return_value=fake_agent,
+    ), patch("benchmark.token_ledger.nexau_usage_snapshot", return_value=usage) as export:
+        result = runner.run_agent(trace_paths=[Path("/fake/trace.json")], mode="ask")
+    export.assert_called_once_with(traces)
+    assert result.usage_snapshot == usage
+    assert result.budget_exceeded is budget_exceeded

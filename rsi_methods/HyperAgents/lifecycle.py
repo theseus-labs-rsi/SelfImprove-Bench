@@ -182,11 +182,12 @@ def reconstruct_agent(
         repo_path,
         "Candidate clean",
     )
+    from .runtime_safety import install_runtime_safety
+    # Transport fixes belong to the seed, not to each evolved candidate.
+    install_runtime_safety(agent.container, snapshot.root_commit, repo_path)
     agent.commit_hash = apply_diffs_checked(
         agent.container, list(snapshot.lineage_patches)
     )
-    from .runtime_safety import install_runtime_safety
-    agent.commit_hash = install_runtime_safety(agent.container, agent.commit_hash, repo_path)
     agent.snapshot = snapshot
     if artifact_dir is not None:
         agent.artifact_dir = Path(artifact_dir).resolve()
@@ -232,6 +233,7 @@ def refine(
     history_path: str | None = None,
     evidence_source_dir: str | Path | None = None,
     run_workdir: str | None = None,
+    search_archive: Any | None = None,
 ) -> RefineOutput:
     """Improve one candidate; legacy callers may request immediate evaluation."""
     resolved_output = Path(output_dir).resolve()
@@ -242,6 +244,12 @@ def refine(
             metadata=metadata,
             evidence_source_dir=evidence_source_dir,
         )
+        if search_archive is not None:
+            archive_history = resolved_output / "archive_history"
+            if archive_history.exists():
+                shutil.rmtree(archive_history)
+            search_archive.stage_history(archive_history)
+            copy_to_container(agent.container, archive_history, f"{history_path}/archive")
     agent_output = posixpath.join("/tmp", "agent_output")
     cleared = agent.container.exec_run(
         ["sh", "-lc", f"rm -rf {agent_output} && mkdir -p {agent_output}"],
@@ -267,11 +275,6 @@ def refine(
         metadata["refinement_usage"] = usage
     if usage and usage.get("tool_budget_exhausted"):
         metadata["tool_budget_exhausted"] = True
-        metadata["refine_successful"] = False
-        return RefineOutput(
-            agent=agent, changed=False, patch_path=None, result=None,
-            metadata=metadata,
-        )
     if execution.exit_code != 0:
         output = execution.output.decode("utf-8", errors="replace")
         raise RuntimeError(f"MetaAgent command failed: {output}")
@@ -381,19 +384,15 @@ def _stage_direct_evidence(
         "evidence_kind": "rsi_evaluation_evidence",
         "metadata": dict(metadata),
         "result_schema": {
-            "selection_score": "Normalized scalar in [0, 1]; higher is better.",
+            "selection_score": "Scalar benchmark score; higher is better.",
             "cases": "List of per-case results; each case carries its own metrics, feedback, and artifacts.",
             "case_id": "Stable identifier for one evaluated case.",
         },
-        "analysis_instruction": (
-            "Inspect result.json and its cases and artifacts. Infer recurring "
-            "failure patterns across cases; do not optimize for one case_id or "
-            "one stochastic trace."
-        ),
         "artifact_resolution": (
             "During MetaAgent execution, artifact paths in result.json are relative "
             "to /tmp/evaluation_history. Game screenshots are copied to "
-            "artifacts/bench_screenshots and also passed to a multimodal inspection call."
+            "artifacts/bench_screenshots; a bounded sample is attached directly "
+            "to the MetaAgent editing request."
         ),
         "game_screenshot_count": len(screenshots),
         "canonical_source": (
@@ -422,6 +421,9 @@ def _stage_direct_evidence(
         copy_to_container(
             agent.container, source_artifacts, f"{container_history}/artifacts"
         )
+    staged_artifacts = local_history / "artifacts"
+    if staged_artifacts.is_dir():
+        copy_to_container(agent.container, staged_artifacts, f"{container_history}/artifacts")
     return container_history
 
 
@@ -446,8 +448,6 @@ def tracked_chat(*args, **kwargs):
         usage["tool_call_limit"] = last["tool_call_limit"]
     if usage.get("total_tokens", 0) > 0 or usage.get("tool_budget_exhausted"):
         usage_path.write_text(json.dumps(usage), encoding="utf-8")
-    if last.get("tool_budget_exhausted"):
-        raise SystemExit(0)
     return history
 
 meta_agent.chat_with_agent = tracked_chat

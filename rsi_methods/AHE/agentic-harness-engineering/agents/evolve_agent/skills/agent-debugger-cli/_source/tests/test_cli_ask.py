@@ -23,7 +23,8 @@ def test_cli_ask_json_format(tmp_path, monkeypatch, capsys):
     from agent_debugger_core.runtime.runner import RunnerResult
     from agent_debugger_core.cli import adb as adb_cli
 
-    fake_result = RunnerResult(mode="ask", answer="because", iterations=3)
+    usage = {"total_tokens": 13, "input_tokens": 8, "output_tokens": 5, "model_calls": 1}
+    fake_result = RunnerResult(mode="ask", answer="because", iterations=3, usage_snapshot=usage)
     with patch("agent_debugger_core.cli.adb.run_agent", return_value=fake_result):
         rc = adb_cli.main(["ask", "-t", str(trace), "-q", "why?", "--format", "json"])
     assert rc == 0
@@ -33,6 +34,7 @@ def test_cli_ask_json_format(tmp_path, monkeypatch, capsys):
     assert payload["command"] == "ask"
     assert payload["response"] == "because"
     assert payload["question"] == "why?"
+    assert payload["usage_snapshot"] == usage
 
 
 def test_cli_ask_text_format(tmp_path, monkeypatch, capsys):

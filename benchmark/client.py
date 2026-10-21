@@ -614,9 +614,8 @@ def request_json(
             if "rsi_agent_call" in telemetry:
                 record["rsi_agent_call"] = telemetry["rsi_agent_call"]
             attempts.append(record)
-            non_retryable = (
-                normalized == "ahe" and rsi_session.is_fatal_ahe_error(answer)
-            )
+            from .methods import runtime_policy
+            non_retryable = runtime_policy(normalized).is_fatal_error(answer)
             if attempt == max_attempts or non_retryable:
                 if metrics is not None:
                     metrics.update(

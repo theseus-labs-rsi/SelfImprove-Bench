@@ -12,8 +12,13 @@ class LLMSettingsError(Exception):
 
 def resolve_llm_settings() -> Dict[str, str]:
     cfg_llm = (load_config().get("llm") or {}) if isinstance(load_config().get("llm"), dict) else {}
+    if os.environ.get("AHE_DEBUGGER_SCOPED_LLM") == "1":
+        # Benchmark runs must not inherit an unrelated interactive adb profile.
+        cfg_llm = {}
 
     def pick(cfg_key: str, qa_env: str, llm_env: str) -> str:
+        if os.environ.get("AHE_DEBUGGER_SCOPED_LLM") == "1":
+            return os.environ.get(llm_env) or ""
         return (
             cfg_llm.get(cfg_key)
             or os.environ.get(qa_env)

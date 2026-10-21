@@ -24,6 +24,7 @@ class MethodContext:
     model: str | None = None
     timeout: float = 300.0
     resuming: bool = False
+    seed: int = 0
 
 
 class ActingAgent(Protocol):

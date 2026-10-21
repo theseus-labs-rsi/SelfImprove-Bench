@@ -178,4 +178,12 @@ def evaluate_task(
         return evaluate_hero_journey(task, agent, reload_agent=reload_agent)
     if request is None:
         raise TypeError(f"{game} evaluation requires a request callback")
-    return EvaluationOutcome(GAME_MODULES[game].evaluate(task, request))
+    record = GAME_MODULES[game].evaluate(task, request)
+    raw, reference = record.get("raw_score"), record.get("reference_score")
+    record["success"] = (
+        record.get("status") == "ok"
+        and isinstance(raw, (int, float)) and not isinstance(raw, bool)
+        and isinstance(reference, (int, float)) and not isinstance(reference, bool)
+        and raw >= reference
+    )
+    return EvaluationOutcome(record)

@@ -23,6 +23,7 @@ from .build import build as build_agent
 from .init import AHEState, apply_agent_limits, initialize
 from .refine import CandidateBatch, refine as generate_candidates
 from .select import SelectionOutcome, select as select_candidate
+from .runtime_policy import AHERuntimePolicy
 
 CONFIG_PATH = Path(__file__).with_name("config.toml")
 _SECRET_ASSIGNMENT = re.compile(
@@ -56,6 +57,7 @@ class AHEAdaptor(MethodCheckpointMixin):
     """Hold one AHE lineage across benchmark tasks and generations."""
 
     checkpoint_method = "ahe"
+    runtime_policy = AHERuntimePolicy()
 
     def __init__(
         self,
@@ -108,7 +110,9 @@ class AHEAdaptor(MethodCheckpointMixin):
     def checkpoint_policy(self) -> dict[str, Any]:
         """Persist method changes that would make old checkpoints incomparable."""
         return {
-            "version": "xbr-visual-v1",
+            "version": "upstream-active-lineage-v3",
+            "filesystem_isolation": "bubblewrap-allowlist-v1",
+            "refinement_usage": "debugger-and-evolver-tracers-v1",
             "game_history_turns": 8,
             "refinement_every": self.refinement_every,
             "candidate_count": self.candidate_count,
@@ -141,6 +145,9 @@ class AHEAdaptor(MethodCheckpointMixin):
         (self.run_dir / "method_config.toml").write_text(
             self._redacted_config_text(), encoding="utf-8"
         )
+        (self.run_dir / "ahe_policy.json").write_text(
+            json.dumps(self.checkpoint_policy(), indent=2), encoding="utf-8",
+        )
 
     def resume(
         self, previous_batch: str | Path, *, source_batch: str | Path,
@@ -154,6 +161,12 @@ class AHEAdaptor(MethodCheckpointMixin):
         if self.state is not None or not copied_state.is_dir() or target.exists():
             raise ValueError("AHE resume requires a copied state and a fresh target")
         self._configure(self._load_config())
+        policy_path = copied_state / "ahe_policy.json"
+        if (
+            not policy_path.is_file()
+            or json.loads(policy_path.read_text(encoding="utf-8")) != self.checkpoint_policy()
+        ):
+            raise RuntimeError("AHE resume policy differs; use historical code for old runs")
         reports = sorted(previous.glob("task_*/selection_stage_*/ahe_selection.json"))
         selected = (
             json.loads(reports[-1].read_text(encoding="utf-8"))["selected_workspace"]

@@ -152,7 +152,8 @@ def _score_fields(
     scores = report.get("candidate_scores", {})
     current = scores.get(candidate_id) if isinstance(scores, dict) else None
     if "candidate_score" in report and (
-        candidate_id is None or report.get("selected_candidate_id") == candidate_id
+        candidate_id is None
+        or report.get("archived_candidate_id", report.get("selected_candidate_id")) == candidate_id
     ):
         current = report["candidate_score"]
     valid = lambda value: isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
@@ -383,16 +384,26 @@ def _build_hyper_node(
     patch_path = task_dir / "candidates" / candidate_id / "agent_output" / "model_patch.diff"
     selected_id = selection.get("selected_candidate_id") if selection else None
     selected = candidate_id == selected_id if selected_id else None
-    accepted = selection.get("accepted") if selected is True else (False if selected_id else None)
+    archived_id = selection.get("archived_candidate_id") if selection else None
+    if archived_id is not None:
+        accepted = selection.get("accepted") if candidate_id == archived_id else None
+    else:
+        # Legacy single-lineage reports used selection as acceptance.
+        accepted = selection.get("accepted") if selected is True else (False if selected_id else None)
+    candidate_dir = patch_path.parent.parent
+    # Current runners save evaluation beside agent_output; accept old exports too.
+    evaluation_dir = candidate_dir if (candidate_dir / "evaluation/result.json").is_file() else patch_path.parent
     return {
         "node_id": candidate_id,
-        **_evaluation_scores(patch_path.parent, task_dir.parents[3],
+        **_evaluation_scores(evaluation_dir, task_dir.parents[3],
                              _score_fields(selection, candidate_id)),
         "parent_id": parent_id,
         "task_id": task_dir.name,
         "run_id": run_id,
         "changed": bool(candidate.get("changed")),
         "selected": selected,
+        "archived_candidate_id": archived_id,
+        "next_parent_id": selection.get("next_parent_id", selected_id) if selection else None,
         "accepted": accepted,
         "artifact_path": str(patch_path),
         "artifact": read_hyperagent_patch(patch_path) if patch_path.is_file() else None,

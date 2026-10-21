@@ -20,6 +20,46 @@ RSI_PROVIDERS = (*BUILTIN_METHODS, "rsi")
 REQUIRED_HOOKS = ("init", "load", "refine", "export_state", "restore_state", "close")
 
 
+class MethodRuntimePolicy:
+    """Optional method-owned behavior; games and the runner use generic hooks."""
+
+    reload_holdout_agent = False
+
+    def answer(self, response: Any) -> str:
+        return response.text
+
+    def reasoning(self, response: Any) -> str | None:
+        return response.reasoning
+
+    def is_fatal_error(self, value: Any) -> bool:
+        return False
+
+    def normalize_result(self, result: dict[str, Any]) -> dict[str, Any]:
+        return result
+
+    def selection_error(self, error: Exception) -> str:
+        return str(error)
+
+    def scheduled_refinements(self, count: int, adaptor: Any) -> int:
+        return count
+
+    def interrupted_paths(self, adaptor: Any) -> list[Path]:
+        return []
+
+
+DEFAULT_RUNTIME_POLICY = MethodRuntimePolicy()
+
+
+def runtime_policy(agent: Any) -> MethodRuntimePolicy:
+    provider = agent.strip().lower() if isinstance(agent, str) else getattr(agent, "provider", None)
+    spec = BUILTIN_ADAPTERS.get(provider) if provider != "rsi" else getattr(agent, "adapter", None)
+    if not spec:
+        return DEFAULT_RUNTIME_POLICY
+    module, name = validate_adapter_spec(spec).split(":")
+    factory = getattr(importlib.import_module(module), name)
+    return getattr(factory, "runtime_policy", DEFAULT_RUNTIME_POLICY)
+
+
 def validate_adapter_spec(spec: Any) -> str:
     if not isinstance(spec, str) or spec.count(":") != 1:
         raise ValueError("agent.adapter must be an import path: package.module:AdapterClass")
@@ -42,7 +82,7 @@ def method_identity(agent: Any) -> str:
 
 
 def create_adaptor(method: str, *, artifact_dir: Path, task_count: int,
-                   agent: Any, resuming: bool = False) -> Any:
+                   agent: Any, resuming: bool = False, seed: int = 0) -> Any:
     """Load external code only when starting a run, never when parsing configs."""
     if method in BUILTIN_ADAPTERS:
         spec = BUILTIN_ADAPTERS[method]
@@ -62,6 +102,7 @@ def create_adaptor(method: str, *, artifact_dir: Path, task_count: int,
         options=deepcopy(getattr(agent, "adapter_options", {})),
         model=getattr(agent, "model", None),
         timeout=float(getattr(agent, "timeout", 300.0)), resuming=resuming,
+        seed=seed,
     ))
     missing = [name for name in REQUIRED_HOOKS if not callable(getattr(adaptor, name, None))]
     if missing:

@@ -1,9 +1,10 @@
-"""Native tool-call loop used by HyperAgents TaskAgent and MetaAgent."""
+"""Upstream text-tool protocol with benchmark transport and usage accounting."""
 
 from __future__ import annotations
 
 import json
 import os
+import re
 from pathlib import Path
 
 from agent.llm import MAX_TOKENS, generate_response
@@ -19,46 +20,45 @@ _USAGE_FIELDS = (
 )
 
 
-def _native_tools(tool_infos) -> list[dict]:
-    return [
-        {
-            "type": "function",
-            "function": {
-                "name": info["name"],
-                "description": info.get("description", ""),
-                "parameters": info["input_schema"],
-            },
-        }
-        for info in tool_infos
-    ]
+def get_tooluse_prompt(tool_infos=()):
+    if not tool_infos:
+        return ""
+    tools_available = "\n\n".join(str(info) for info in tool_infos)
+    return """Here are the available tools:
+```
+{tools_available}
+```
+
+Use only one tool (if needed) in this format:
+<json>
+{{
+    "tool_name": ...,
+    "tool_input": ...
+}}
+</json>
+
+ONLY USE ONE TOOL PER RESPONSE, AND STRICTLY FOLLOW THE FORMAT OF TOOL_NAME AND TOOL_INPUT ABOVE.
+DO NOT HALLUCINATE OR MAKE UP ANYTHING.
+""".format(tools_available=tools_available).strip()
 
 
-def _parse_tool_calls(tool_calls) -> list[dict]:
+def check_for_tool_uses(response):
     parsed = []
-    for tool_call in tool_calls:
-        if hasattr(tool_call, "name"):
-            tool_id = getattr(tool_call, "id", None)
-            tool_name = tool_call.name
-            arguments = tool_call.arguments
-        elif isinstance(tool_call, dict):
-            function = tool_call.get("function", {})
-            tool_id = tool_call.get("id")
-            tool_name = function.get("name")
-            arguments = function.get("arguments", "{}")
-        else:
-            raise TypeError(f"Unsupported tool call type: {type(tool_call)!r}")
+    for match in re.findall(r"<json>\s*(\{.*?\})\s*</json>", response, re.DOTALL):
         try:
-            tool_input = json.loads(arguments) if isinstance(arguments, str) else arguments
+            call = json.loads(match)
         except json.JSONDecodeError:
-            tool_input = None
-        parsed.append(
-            {
-                "id": tool_id,
-                "name": tool_name,
-                "input": tool_input,
-            }
-        )
-    return parsed
+            continue
+        if isinstance(call, dict) and "tool_name" in call and "tool_input" in call:
+            parsed.append(call)
+    return parsed or None
+
+
+def should_retry_tool_use(response, tool_uses=None):
+    if tool_uses:
+        return False
+    positions = [response.find(marker) for marker in ("<json>", "tool_name", "tool_input")]
+    return positions[0] >= 0 and positions[0] < positions[1] < positions[2] and len(response) >= 2000
 
 
 def _execute_tool(tools, name, tool_input):
@@ -116,7 +116,7 @@ def chat_with_agent(
     """Run one model turn, including any native tool-call round trips."""
     loaded_tools = load_tools(logging=logging, names=tools_available or [])
     tools = {tool["info"]["name"]: tool for tool in loaded_tools}
-    tool_schemas = _native_tools(tool["info"] for tool in loaded_tools)
+    system_msg = get_tooluse_prompt([tool["info"] for tool in loaded_tools]) + "\n\n"
     history = list(msg_history or ())
     usage_total = {field: 0 for field in _USAGE_FIELDS}
     usage_complete = True
@@ -125,8 +125,7 @@ def chat_with_agent(
     meta_cap = int(os.environ.get("HYPERAGENTS_META_MAX_TOKENS", "0"))
     if meta_cap < 0:
         raise ValueError("HYPERAGENTS_META_MAX_TOKENS cannot be negative")
-    # Screenshot inspection and editing are two chat_with_agent invocations in
-    # the SAME MetaAgent process. Include their earlier calls in one cap.
+    # Include earlier calls in the process-wide accounting cap.
     meta_spent = 0
     ledger_path = os.environ.get("HYPERAGENTS_TOKEN_LEDGER")
     if meta_cap and ledger_path and Path(ledger_path).exists():
@@ -139,38 +138,24 @@ def chat_with_agent(
     if meta_cap and meta_spent >= meta_cap:
         raise RuntimeError("MetaAgent token cap exhausted before next model call")
 
-    current_prompt = prompt
-    if tool_schemas:
-        current_prompt = [
-            {
-                "role": "system",
-                "content": (
-                    "Use the supplied tools to inspect and edit the repository. "
-                    "Do not claim that tool access is unavailable."
-                ),
-            },
-            {"role": "user", "content": prompt},
-        ]
+    current_prompt = system_msg + prompt
     tool_call_count = 0
 
     while True:
         logging(f"Input: {current_prompt!r}")
         try:
             response, history = generate_response(
-            current_prompt,
-            model=model,
-            msg_history=history,
-            tools=tool_schemas,
-            tool_choice="auto" if tool_schemas else None,
-            reasoning_effort=reasoning_effort,
-            backend=backend,
-            api_mode=api_mode,
-            api_key_env=api_key_env,
-            base_url_env=base_url_env,
-            max_tokens=max_tokens,
-            parallel_tool_calls=multiple_tool_calls,
-            image_paths=image_paths if not history else None,
-        )
+                current_prompt,
+                model=model,
+                msg_history=history,
+                reasoning_effort=reasoning_effort,
+                backend=backend,
+                api_mode=api_mode,
+                api_key_env=api_key_env,
+                base_url_env=base_url_env,
+                max_tokens=max_tokens,
+                image_paths=image_paths if not history else None,
+            )
         except Exception as exc:
             _record_model_attempt(None, error=exc)
             raise
@@ -184,13 +169,11 @@ def chat_with_agent(
                     "saving current candidate without further tools or model calls.")
             break
 
-        tool_calls = _parse_tool_calls(response.tool_calls)
-        if not tool_calls:
+        tool_calls = check_for_tool_uses(response.text)
+        retry_tool_use = should_retry_tool_use(response.text, tool_calls)
+        if not tool_calls and not retry_tool_use:
             break
-        if max_tool_calls > 0 and tool_call_count + len(tool_calls) > max_tool_calls:
-            # Do not discard an already-edited candidate just because the model
-            # requested one more tool. The caller can still save and evaluate the
-            # current repository diff. Do not execute the over-budget calls.
+        if max_tool_calls > 0 and tool_call_count >= max_tool_calls:
             history[-1]["tool_budget_exhausted"] = True
             history[-1]["tool_calls_executed"] = tool_call_count
             history[-1]["tool_call_limit"] = max_tool_calls
@@ -199,34 +182,25 @@ def chat_with_agent(
             break
 
         tool_messages = []
-        for tool_call in tool_calls:
+        for tool_call in (tool_calls or []) if multiple_tool_calls else (tool_calls or [])[:1]:
             tool_output = _execute_tool(
                 tools,
-                tool_call["name"],
-                tool_call["input"],
+                tool_call["tool_name"],
+                tool_call["tool_input"],
             )
             tool_call_count += 1
             logging(
-                f"Tool output: {tool_call['name']}({tool_call['input']!r}) "
+                f"Tool output: {tool_call['tool_name']}({tool_call['tool_input']!r}) "
                 f"-> {tool_output!r}"
             )
             tool_messages.append(
-                {
-                    "role": "tool",
-                    "tool_call_id": tool_call["id"],
-                    "content": str(tool_output),
-                }
+                f'<json>\n    {{\n        "tool_name": "{tool_call["tool_name"]}",\n'
+                f'        "tool_input": {tool_call["tool_input"]},\n'
+                f'        "tool_output": "{tool_output}"\n    }}\n</json>'
             )
-        current_prompt = tool_messages
-        if max_tool_calls > 0 and tool_call_count >= max_tool_calls:
-            # Stop before paying for another model turn that would be unable to
-            # use tools. run_meta_agent.py persists the diff after this return.
-            history[-1]["tool_budget_exhausted"] = True
-            history[-1]["tool_calls_executed"] = tool_call_count
-            history[-1]["tool_call_limit"] = max_tool_calls
-            logging(f"Tool-call limit ({max_tool_calls}) reached; "
-                    "saving the current candidate for evaluation without further tools.")
-            break
+        if retry_tool_use:
+            tool_messages.append("Error: Output context exceeded. Please try again.")
+        current_prompt = system_msg + "\n\n".join(tool_messages)
 
     if history and history[-1].get("role") == "assistant":
         history[-1]["usage"] = usage_total if usage_complete else None
