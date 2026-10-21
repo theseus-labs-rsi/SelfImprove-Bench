@@ -21,14 +21,9 @@ the task's duration.
 }
 ```
 
-Rules: seeds bought on day `day` can only be planted on that day or later; the harvest
-day is the plant day plus `maturity_days`; each day's operation order is buy, plant,
-harvest, sell; farmland stays occupied until harvest; unsold fruit and remaining seeds
-do not count toward profit; you cannot overdraw funds, plant unknown crops, or sell
-unharvested fruit.
+Rules: seeds bought on day `day` can only be planted on that day or later; the harvest day is the plant day plus `maturity_days`; farmland stays occupied until harvest; unsold fruit and remaining seeds do not count toward profit; you cannot overdraw funds, plant unknown crops, or sell unharvested fruit.
 
-The task JSON contains only the rules, funds, farmland, and crop information needed to
-build a plan; maximize the actual simulated profit.
+The task JSON contains only the rules, funds, farmland, and crop information needed to build a plan; maximize the actual simulated profit.
 
 ## Output template
 
@@ -40,17 +35,17 @@ Output valid JSON only, with no Markdown fences or explanatory text:
   "days": [
     {
       "day": 1,
-      "buy_seeds": [{"crop": "wheat", "quantity": 4}],
-      "plant": [{"crop": "wheat", "quantity": 4}],
       "harvest": [],
-      "sell": []
+      "sell": [],
+      "buy_seeds": [{"crop": "wheat", "quantity": 4}],
+      "plant": [{"crop": "wheat", "quantity": 4}]
     },
     {
       "day": 3,
-      "buy_seeds": [],
-      "plant": [],
       "harvest": [{"crop": "wheat", "quantity": 4}],
-      "sell": [{"crop": "wheat", "quantity": 12}]
+      "sell": [{"crop": "wheat", "quantity": 12}],
+      "buy_seeds": [],
+      "plant": []
     }
   ]
 }
