@@ -1,3 +1,4 @@
+import json
 import unittest
 
 from farm_planner import FarmError, calculate_reference_profit, generate_task, load_crops, simulate_plan
@@ -12,6 +13,7 @@ class FarmPlannerTests(unittest.TestCase):
         self.assertEqual(a["initial_money"], 200)
         self.assertEqual(a["farmland_count"], 12)
         self.assertEqual(a["duration_days"], 12)
+        self.assertEqual(a["rules"]["daily_operation_order"], ["harvest", "sell", "buy_seeds", "plant"])
         self.assertIsInstance(a["reference_profit"], int)
         self.assertEqual(a["reference_method"], "greedy_daily_profit_lookahead")
         self.assertEqual(set(a["reference_daily_profits"]), set(a["available_crops"]))
@@ -38,7 +40,7 @@ class FarmPlannerTests(unittest.TestCase):
     def test_reference_profit_and_score(self):
         task = {
             "task_id": "reference",
-            "initial_money": 100,
+            "initial_money": 10,
             "farmland_count": 1,
             "duration_days": 3,
             "available_crops": ["fast"],
@@ -53,6 +55,78 @@ class FarmPlannerTests(unittest.TestCase):
         result = simulate_plan(task, {"task_id": "reference", "days": []})
         self.assertEqual(result["reference_profit"], 20)
         self.assertEqual(result["score"], 0.0)
+        plan = {"task_id": "reference", "days": [
+            {"day": 1, "buy_seeds": [{"crop": "fast", "quantity": 1}],
+             "plant": [{"crop": "fast", "quantity": 1}]},
+            {"day": 2, "harvest": [{"crop": "fast", "quantity": 1}],
+             "sell": [{"crop": "fast", "quantity": 1}],
+             "buy_seeds": [{"crop": "fast", "quantity": 1}],
+             "plant": [{"crop": "fast", "quantity": 1}]},
+            {"day": 3, "harvest": [{"crop": "fast", "quantity": 1}],
+             "sell": [{"crop": "fast", "quantity": 1}]},
+        ]}
+        result = simulate_plan(task, plan)
+        self.assertEqual(result["profit"], result["reference_profit"])
+        self.assertEqual(result["relative_score"], 1.0)
+
+    def test_daily_actions_follow_json_field_order(self):
+        task = {
+            "task_id": "ordered", "initial_money": 2, "farmland_count": 2,
+            "duration_days": 3, "available_crops": ["fast"],
+            "crop_catalog": {
+                "fast": {"id": "fast", "name": "Fast", "seed_price": 1,
+                         "maturity_days": 1, "yield_per_harvest": 1, "fruit_price": 2}
+            },
+        }
+        first_day = {"day": 1, "buy_seeds": [{"crop": "fast", "quantity": 1}],
+                     "plant": [{"crop": "fast", "quantity": 1}]}
+        second_day = {
+            "day": 2,
+            "buy_seeds": [{"crop": "fast", "quantity": 1}],
+            "plant": [{"crop": "fast", "quantity": 1}],
+            "harvest": [{"crop": "fast", "quantity": 1}],
+            "sell": [{"crop": "fast", "quantity": 1}],
+        }
+        plan = json.loads(json.dumps({"days": [first_day, second_day]}))
+        result = simulate_plan(task, plan)
+        self.assertEqual(result["final_money"], 2)
+        self.assertEqual(sum(batch["quantity"] for batch in result["growing_crops"]), 1)
+        with self.assertRaisesRegex(FarmError, "Not enough farmland"):
+            simulate_plan({**task, "farmland_count": 1}, plan)
+
+        with self.assertRaisesRegex(FarmError, "Not enough fast fruit"):
+            simulate_plan(task, {"days": [first_day, {
+                "day": 2, "sell": [{"crop": "fast", "quantity": 1}],
+                "harvest": [{"crop": "fast", "quantity": 1}],
+            }]})
+        with self.assertRaisesRegex(FarmError, "Not enough fast seeds"):
+            simulate_plan(task, {"days": [{
+                "day": 1, "plant": [{"crop": "fast", "quantity": 1}],
+                "buy_seeds": [{"crop": "fast", "quantity": 1}],
+            }]})
+
+    def test_buying_before_sale_cannot_spend_future_proceeds(self):
+        task = {
+            "task_id": "cash-flow", "initial_money": 1, "farmland_count": 1,
+            "duration_days": 3, "available_crops": ["fast"],
+            "crop_catalog": {
+                "fast": {"id": "fast", "name": "Fast", "seed_price": 1,
+                         "maturity_days": 1, "yield_per_harvest": 1, "fruit_price": 2}
+            },
+        }
+        first_day = {"day": 1, "buy_seeds": [{"crop": "fast", "quantity": 1}],
+                     "plant": [{"crop": "fast", "quantity": 1}]}
+        second_day = {"day": 2, "buy_seeds": [{"crop": "fast", "quantity": 1}],
+                      "harvest": [{"crop": "fast", "quantity": 1}],
+                      "sell": [{"crop": "fast", "quantity": 1}],
+                      "plant": [{"crop": "fast", "quantity": 1}]}
+        with self.assertRaisesRegex(FarmError, "Insufficient funds"):
+            simulate_plan(task, {"days": [first_day, second_day]})
+        second_day = {"day": 2, "harvest": second_day["harvest"],
+                      "sell": second_day["sell"], "buy_seeds": second_day["buy_seeds"],
+                      "plant": second_day["plant"]}
+        result = simulate_plan(task, {"days": [first_day, second_day]})
+        self.assertEqual(result["final_money"], 1)
 
     def test_reference_lookahead_reinvests_after_short_cycle(self):
         task = {
@@ -97,6 +171,29 @@ class FarmPlannerTests(unittest.TestCase):
         crop = task["available_crops"][0]
         with self.assertRaises(FarmError):
             simulate_plan(task, {"days": [{"day": 1, "buy_seeds": [{"crop": crop, "quantity": 999}]}]})
+
+    def test_rejects_overplanting_across_batches(self):
+        task = {
+            "task_id": "capacity", "initial_money": 10, "farmland_count": 2,
+            "duration_days": 3, "available_crops": ["fast"],
+            "crop_catalog": {
+                "fast": {"id": "fast", "name": "Fast", "seed_price": 1,
+                         "maturity_days": 1, "yield_per_harvest": 1, "fruit_price": 2}
+            },
+        }
+        day_one = {"day": 1, "buy_seeds": [{"crop": "fast", "quantity": 3}],
+                   "plant": [{"crop": "fast", "quantity": 2}]}
+        with self.assertRaises(FarmError):
+            simulate_plan(task, {"days": [
+                {**day_one, "plant": [*day_one["plant"], {"crop": "fast", "quantity": 1}]}
+            ]})
+        result = simulate_plan(task, {"days": [
+            day_one,
+            {"day": 2, "harvest": [{"crop": "fast", "quantity": 1}],
+             "sell": [{"crop": "fast", "quantity": 1}],
+             "plant": [{"crop": "fast", "quantity": 1}]},
+        ]})
+        self.assertEqual(sum(batch["quantity"] for batch in result["growing_crops"]), 2)
 
     def test_zero_difficulty_is_valid(self):
         task = generate_task(0, seed=9, task_id="zero")
