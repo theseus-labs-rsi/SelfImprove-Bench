@@ -5,6 +5,7 @@ from pathlib import Path
 import os
 import tarfile
 import tempfile
+import threading
 import unittest
 from unittest.mock import Mock, patch
 
@@ -91,6 +92,47 @@ class DockerBuildContextTests(unittest.TestCase):
         with patch.object(docker_utils, "_build_image", return_value=(Mock(), [])):
             with self.assertRaisesRegex(RuntimeError, "Docker container creation failed: network unavailable"):
                 docker_utils.build_container(client, verbose=False)
+
+    def test_build_and_cleanup_share_image_lock(self):
+        client = Mock()
+        client.images.list.return_value = []
+        client.containers.get.side_effect = docker_utils.docker.errors.NotFound("missing")
+        container = Mock()
+        container.name = "test-container"
+        container.image.tags = []
+        build_started = threading.Event()
+        release_build = threading.Event()
+        cleanup_started = threading.Event()
+        cleanup_done = threading.Event()
+
+        def slow_build(*args, **kwargs):
+            build_started.set()
+            release_build.wait(2)
+            return Mock(), []
+
+        def build():
+            docker_utils.build_container(client, verbose=False)
+
+        def cleanup():
+            cleanup_started.set()
+            docker_utils.cleanup_container(container, verbose=False)
+            cleanup_done.set()
+
+        with patch.object(docker_utils, "_build_image", side_effect=slow_build):
+            build_thread = threading.Thread(target=build)
+            cleanup_thread = threading.Thread(target=cleanup)
+            build_thread.start()
+            self.assertTrue(build_started.wait(1))
+            cleanup_thread.start()
+            self.assertTrue(cleanup_started.wait(1))
+            self.assertFalse(cleanup_done.wait(0.1))
+            release_build.set()
+            build_thread.join(2)
+            cleanup_thread.join(2)
+
+        self.assertFalse(build_thread.is_alive())
+        self.assertFalse(cleanup_thread.is_alive())
+        self.assertTrue(cleanup_done.is_set())
 
 
 if __name__ == "__main__":
