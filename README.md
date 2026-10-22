@@ -73,30 +73,49 @@ and the [resume guide](benchmark/RESUME.md) for checkpoint recovery.
 
 ### Experiment Configuration
 
-Experiment JSON files control tasks, execution, and outputs:
+Training, held-out evaluation, and replay are configured in one JSON file:
 
-| Field | Meaning |
-|---|---|
-| `seed` | Seed for training task generation and method initialization. |
-| `schedule` | Ordered training groups, each with `game`, `difficulty`, `count`, and optional `replay`. `count` excludes inserted replay runs. |
-| `holdout` | Evaluation groups, each with `game`, `difficulty`, and `count`. These tasks do not trigger refinement. |
-| `holdout_seed` | Separate seed for generating held-out tasks. |
-| `holdout_tasks_per_difficulty` | Pool size per requested game/difficulty pair; must cover each holdout group's `count`. |
-| `replay.every` / `replay.lag` | Insert a replay every N normal training tasks, revisiting the task L training rounds earlier. Both must be positive when a schedule group enables `replay`. |
-| `agent.provider` / `agent.adapter` | Set `provider` to `rsi` and `adapter` to the method's Python import path. |
-| `agent.adapter_options` | Method-specific options for external adapters. |
-| `agent.timeout` / `agent.max_attempts` | Acting request timeout in seconds and maximum attempts. |
-| `agent.model` | Model setting for external adapters; bundled methods use their own `config.toml`. |
-| `evolution_window` | Number of early/late training scores used for evolution metrics, not the number of training rounds. |
-| `output_dir` | Directory for results, trajectories, and checkpoints. Use a separate directory for each experiment. |
-| `continue_on_error` | Continue after recoverable task failures; fatal method errors still stop the run. |
-| `game_options` | Game-specific settings. Minecraft/Astray use `game_options.gameworld` for task lists and interaction settings. |
+```json
+{
+  "seed": 20260915,
+  "schedule": [
+    {"game": "farm", "difficulty": 3, "count": 20, "replay": true}
+  ],
+  "holdout": [
+    {"game": "farm", "difficulty": 3, "count": 20},
+    {"game": "farm", "difficulty": 5, "count": 20},
+    {"game": "combat", "difficulty": 3, "count": 20}
+  ],
+  "replay": {"every": 5, "lag": 3},
+  "holdout_seed": 100,
+  "holdout_tasks_per_difficulty": 20,
+  "agent": {
+    "provider": "rsi",
+    "adapter": "rsi_methods.ACE.ACEAdaptor:ACEAdaptor",
+    "timeout": 1800,
+    "max_attempts": 3
+  },
+  "output_dir": "outputs/my_farm_ace",
+  "continue_on_error": true
+}
+```
 
-Game IDs are `farm`, `combat`, `sweepmine`, `heros_journey`, and `gameworld`
-(Minecraft/Astray). For example, `schedule: [{"game": "farm", "difficulty": 3,
-"count": 20, "replay": true}]` trains on 20 difficulty-3 Farm tasks.
-With `replay: {"every": 5, "lag": 3}`, it also replays training tasks 2, 7,
-12, and 17 after rounds 5, 10, 15, and 20, without refinement on those replays.
+- **Training (`schedule`):** each entry specifies a game, difficulty, and task
+  count. This example runs 20 difficulty-3 Farm tasks with refinement.
+- **Evaluation (`holdout`):** entries use the same game/difficulty/count format.
+  This example evaluates 20 tasks each for same-difficulty, harder, and
+  cross-game performance, without refinement. `holdout_seed` controls task
+  generation; `holdout_tasks_per_difficulty` must cover each group's count.
+- **Replay (`replay`):** enable it with `"replay": true` in a training entry.
+  Here, every 5 normal training tasks, the framework revisits the task from
+  3 training rounds earlier: tasks 2, 7, 12, and 17 after rounds 5, 10, 15,
+  and 20. Replays reuse the original tasks without refinement and do not
+  count toward the 20 training tasks. To disable replay, omit both replay settings.
+
+`agent` selects the method and request limits; `output_dir` selects where the run
+is saved. Use `--initial` with the same config to evaluate the untrained framework
+on the same holdouts. Game IDs are `farm`, `combat`, `sweepmine`,
+`heros_journey`, and `gameworld` (Minecraft/Astray).
 
 For Minecraft/Astray, `game_options.gameworld.train` and `.holdout` specify the
 actual game/task IDs, and `max_steps` limits actions per episode. Start from a
