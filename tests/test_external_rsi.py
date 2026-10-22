@@ -243,6 +243,54 @@ class ExternalMethodTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "--resume"):
             run_benchmark(config, target_dir=self.root / "copy")
 
+    def test_checkpoint_chain_continues_after_nonfatal_training_error(self):
+        config = replace(
+            load_config(ROOT / "configs/examples/minimal_rsi.json"),
+            output_dir=str(self.root / "error-run"),
+            continue_on_error=True,
+        )
+        calls = 0
+
+        def generate(difficulty, *, seed, task_id):
+            return {"difficulty": difficulty, "seed": seed, "task_id": task_id}
+
+        def evaluate(task, request=None, agent=None, reload_agent=None, output_dir=None):
+            nonlocal calls
+            calls += 1
+            agent.act("observation")
+            failed = calls == 1
+            return EvaluationOutcome({
+                "status": "error" if failed else "ok",
+                "game": task.game,
+                "difficulty": task.difficulty,
+                "relative_score": 0 if failed else 0.4,
+                "success": not failed,
+                "error_type": "FarmError" if failed else None,
+                "error": "ordinary task failure" if failed else None,
+                "interactions": [],
+                "llm_metrics": {},
+            })
+
+        with patch.object(GAMES["farm"], "generate", side_effect=generate), \
+                patch("benchmark.runner._evaluate", side_effect=evaluate), \
+                redirect_stdout(io.StringIO()):
+            result = run_benchmark(config)
+
+        self.assertEqual(result["training_runs"][0]["status"], "error")
+        self.assertEqual(result["summary"]["completed_training_runs"], 6)
+        self.assertEqual(result["summary"]["completed_holdout_runs"], 1)
+        self.assertTrue(result["summary"]["checkpoint_chain_complete"])
+        self.assertEqual(len(list((self.root / "error-run/checkpoints").glob("train_*.json"))), 6)
+        self.assertFalse((self.root / "error-run/inflight.json").exists())
+
+        with patch.object(GAMES["farm"], "generate", side_effect=generate), \
+                patch("benchmark.runner._evaluate", side_effect=evaluate), \
+                patch.object(MinimalAdapter, "init", side_effect=AssertionError("Must not re-init")), \
+                redirect_stdout(io.StringIO()):
+            resumed = run_benchmark(config, resume=True)
+        self.assertEqual(resumed["training_runs"], result["training_runs"])
+        self.assertEqual(resumed["holdout_runs"], result["holdout_runs"])
+
     def test_hci_accepts_external_method_with_matching_initial(self):
         config = replace(load_config(ROOT / "configs/main/farm_ace.json"), agent=agent_config())
         initial_config = replace(config, schedule=(), replay=ReplayConfig())
