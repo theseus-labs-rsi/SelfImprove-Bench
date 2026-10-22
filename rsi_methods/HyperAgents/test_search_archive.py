@@ -2,6 +2,7 @@
 
 import json
 import math
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -311,6 +312,36 @@ class SearchArchiveTests(unittest.TestCase):
         self.assertTrue(any(staged == call.args[1] and call.args[2].endswith("/artifacts")
                             for call in copy.call_args_list))
 
+    def test_reconstruction_trusts_only_candidate_repo_before_reset(self):
+        from . import lifecycle
+
+        container = Mock()
+        container.exec_run.return_value = SimpleNamespace(exit_code=0, output=b"")
+        agent = SimpleNamespace(container=container)
+        with patch.object(lifecycle, "log_container_output"), \
+                patch.object(lifecycle, "apply_diffs_checked", return_value="commit"), \
+                patch("rsi_methods.HyperAgents.runtime_safety.install_runtime_safety"):
+            lifecycle.reconstruct_agent(agent, self.initial)
+        first, second = container.exec_run.call_args_list[:2]
+        repo_path = f"/{lifecycle.REPO_NAME}"
+        self.assertEqual(first.args[0], [
+            "git", "config", "--global", "--replace-all",
+            "safe.directory", repo_path, f"^{repo_path}$",
+        ])
+        self.assertEqual(first.kwargs["workdir"], "/")
+        self.assertEqual(second.args[0][:3], ["git", "reset", "--hard"])
+
+    def test_reconstruction_stops_if_repo_trust_configuration_fails(self):
+        from . import lifecycle
+
+        container = Mock()
+        container.exec_run.return_value = SimpleNamespace(
+            exit_code=1, output=b"cannot write config",
+        )
+        with self.assertRaisesRegex(RuntimeError, "trust configuration failed"):
+            lifecycle.reconstruct_agent(SimpleNamespace(container=container), self.initial)
+        self.assertEqual(container.exec_run.call_count, 1)
+
     def test_tool_and_meta_edits_survive_real_git_reconstruction(self):
         from . import archive_utils, lifecycle, runtime_safety
 
@@ -339,7 +370,10 @@ class SearchArchiveTests(unittest.TestCase):
         class LocalContainer:
             def exec_run(inner, command, *, workdir, **kwargs):
                 translated = [arg.replace(f"/{lifecycle.REPO_NAME}/", f"{repo}/") for arg in command]
-                output = subprocess.run(translated, cwd=repo, capture_output=True)
+                output = subprocess.run(
+                    translated, cwd=repo, capture_output=True,
+                    env={**os.environ, "GIT_CONFIG_GLOBAL": str(self.root / "container.gitconfig")},
+                )
                 return SimpleNamespace(exit_code=output.returncode, output=output.stdout + output.stderr)
 
         def copy_file(container, source, destination):

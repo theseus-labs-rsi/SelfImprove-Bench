@@ -170,6 +170,16 @@ def reconstruct_agent(
 ) -> InstantiatedAgent:
     """Deterministically load a candidate into an existing container."""
     repo_path = f"/{REPO_NAME}"
+    # Bind mounts retain host ownership, which can differ from the container user.
+    _run_candidate_command(
+        agent.container,
+        [
+            "git", "config", "--global", "--replace-all",
+            "safe.directory", repo_path, f"^{repo_path}$",
+        ],
+        "/",
+        "Candidate repository trust configuration",
+    )
     _run_candidate_command(
         agent.container,
         ["git", "reset", "--hard", snapshot.root_commit],
