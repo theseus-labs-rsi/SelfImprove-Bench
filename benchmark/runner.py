@@ -66,6 +66,18 @@ def _must_stop_after_error(config: BenchmarkConfig, record: Mapping[str, Any]) -
     return not config.continue_on_error or _is_fatal_method_error(config, record)
 
 
+def _checkpoint_is_stable(config: BenchmarkConfig, task: PlannedTask,
+                          record: Mapping[str, Any]) -> bool:
+    """A failed task attempt can still have a valid post-refinement RSI state."""
+    if task.phase == "train" and not task.replay:
+        status = (record.get("selection") or {}).get("status")
+        if status not in {"committed", "completed", "unchanged", "skipped"}:
+            return False
+    if record.get("status") in {"ok", "skipped"}:
+        return True
+    return record.get("status") == "error" and not _is_fatal_method_error(config, record)
+
+
 class AgentController:
     """Own one method lineage through the shared RSI lifecycle."""
 
@@ -721,7 +733,8 @@ def _restore_checkpoint_chain(output_dir, manifest, initial, controller, records
         record = _read_json(_run_path(output_dir, phase, index, task))
         if (checkpoint.get("config_hash") != manifest.config_hash
                 or checkpoint.get("phase") != phase or checkpoint.get("ordinal") != index
-                or checkpoint.get("run_id") != task.run_id or record.get("status") not in {"ok", "skipped"}
+                or checkpoint.get("run_id") != task.run_id
+                or not _checkpoint_is_stable(controller.config, task, record)
                 or record.get("run_id") != task.run_id or record.get("phase") != phase
                 or checkpoint.get("record_digest") != resume_state.digest(record)
                 or checkpoint.get("parent_digest") != resume_state.digest(previous)):
@@ -811,10 +824,7 @@ def _run_checkpoint_task(config, output_dir, manifest, controller, task, index, 
             "parent_digest": resume_state.digest(cursor["previous"]), "cost_if_interrupted": "unknown",
         })
     record = _run_one(task, controller=controller, ordinal=index, output_dir=output_dir)
-    stable = record["status"] in {"ok", "skipped"}
-    if task.phase == "train" and not task.replay:
-        stable = stable and (record.get("selection") or {}).get("status") in {
-            "committed", "completed", "unchanged", "skipped"}
+    stable = _checkpoint_is_stable(config, task, record)
     if cursor["committable"] and stable:
         cursor["previous"] = _commit_checkpoint(
             output_dir, manifest, controller, task, index, record, cursor["previous"])
