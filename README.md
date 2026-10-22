@@ -71,6 +71,37 @@ saved under the configured `output_dir`.
 See the [experiment guide](configs/main/README.md) for task groups and metrics,
 and the [resume guide](benchmark/RESUME.md) for checkpoint recovery.
 
+### Experiment Configuration
+
+Experiment JSON files control tasks, execution, and outputs:
+
+| Field | Meaning |
+|---|---|
+| `seed` | Seed for training task generation and method initialization. |
+| `schedule` | Ordered training groups, each with `game`, `difficulty`, `count`, and optional `replay`. `count` excludes inserted replay runs. |
+| `holdout` | Evaluation groups, each with `game`, `difficulty`, and `count`. These tasks do not trigger refinement. |
+| `holdout_seed` | Separate seed for generating held-out tasks. |
+| `holdout_tasks_per_difficulty` | Pool size per requested game/difficulty pair; must cover each holdout group's `count`. |
+| `replay.every` / `replay.lag` | Insert a replay every N normal training tasks, revisiting the task L training rounds earlier. Both must be positive when a schedule group enables `replay`. |
+| `agent.provider` / `agent.adapter` | Set `provider` to `rsi` and `adapter` to the method's Python import path. |
+| `agent.adapter_options` | Method-specific options for external adapters. |
+| `agent.timeout` / `agent.max_attempts` | Acting request timeout in seconds and maximum attempts. |
+| `agent.model` | Model setting for external adapters; bundled methods use their own `config.toml`. |
+| `evolution_window` | Number of early/late training scores used for evolution metrics, not the number of training rounds. |
+| `output_dir` | Directory for results, trajectories, and checkpoints. Use a separate directory for each experiment. |
+| `continue_on_error` | Continue after recoverable task failures; fatal method errors still stop the run. |
+| `game_options` | Game-specific settings. Minecraft/Astray use `game_options.gameworld` for task lists and interaction settings. |
+
+Game IDs are `farm`, `combat`, `sweepmine`, `heros_journey`, and `gameworld`
+(Minecraft/Astray). For example, `schedule: [{"game": "farm", "difficulty": 3,
+"count": 20, "replay": true}]` trains on 20 difficulty-3 Farm tasks.
+With `replay: {"every": 5, "lag": 3}`, it also replays training tasks 2, 7,
+12, and 17 after rounds 5, 10, 15, and 20, without refinement on those replays.
+
+For Minecraft/Astray, `game_options.gameworld.train` and `.holdout` specify the
+actual game/task IDs, and `max_steps` limits actions per episode. Start from a
+matching config in `configs/main/` rather than changing only the top-level game ID.
+
 ## Analyze Results
 
 ```bash
