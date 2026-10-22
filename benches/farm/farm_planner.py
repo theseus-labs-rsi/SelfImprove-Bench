@@ -120,7 +120,6 @@ def generate_task(
         "crop_catalog": {crop_id: asdict(crops[crop_id]) | {"id": crop_id} for crop_id in selected},
         "rules": {
             "day_numbering": "1-based",
-            "daily_operation_order": ["harvest", "sell", "buy_seeds", "plant"],
             "harvest_day": "plant_day + maturity_days",
             "unsold_fruit_has_no_value": True,
         },

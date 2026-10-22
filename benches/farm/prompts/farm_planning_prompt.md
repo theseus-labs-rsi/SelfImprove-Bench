@@ -23,6 +23,9 @@ the task's duration.
 
 Rules: seeds bought on day `day` can only be planted on that day or later; the harvest day is the plant day plus `maturity_days`; farmland stays occupied until harvest; unsold fruit and remaining seeds do not count toward profit; you cannot overdraw funds, plant unknown crops, or sell unharvested fruit.
 
+Within each day, operations execute in the order their keys appear in your JSON object.
+There is no fixed operation order; put each prerequisite before the operation that needs it.
+
 The task JSON contains only the rules, funds, farmland, and crop information needed to build a plan; maximize the actual simulated profit.
 
 ## Output template

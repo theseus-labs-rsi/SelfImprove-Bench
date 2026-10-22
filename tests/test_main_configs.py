@@ -46,6 +46,28 @@ class MainConfigurationsTest(unittest.TestCase):
     def test_gameworld_manifests_and_initial_holdout_identity(self):
         self._check_manifests(('minecraft', 'astray'))
 
+    def test_small_text_holdouts_always_use_seeded_generation(self):
+        for game in ('farm', 'combat'):
+            with self.subTest(game=game):
+                config = load_config(CONFIGS / f'{game}_ace.json')
+                config = replace(
+                    config, schedule=(), replay=ReplayConfig(),
+                    holdout=(replace(config.holdout[0], count=1),),
+                    holdout_seed=100, holdout_tasks_per_difficulty=1,
+                )
+                module = GAME_MODULES[game]
+                with patch.object(module, 'generate', wraps=module.generate) as generate:
+                    manifest = build_manifest(config)
+                generate.assert_called_once()
+                task = manifest.holdout[0]
+                self.assertEqual(generate.call_args.kwargs['seed'], task.task_seed)
+                self.assertEqual(generate.call_args.kwargs['task_id'], task.task['task_id'])
+                self.assertEqual(manifest, build_manifest(config))
+                changed_seed = build_manifest(replace(config, holdout_seed=101))
+                self.assertNotEqual(task.task_seed, changed_seed.holdout[0].task_seed)
+                restored = type(manifest).from_mapping(manifest.as_dict())
+                self.assertEqual(restored, manifest)
+
     def _check_manifests(self, games):
         self.assertEqual(len(list(CONFIGS.glob('*.json'))), 18)
         signatures = {}
@@ -65,6 +87,9 @@ class MainConfigurationsTest(unittest.TestCase):
                     self.assertEqual(manifest.holdout, legacy_manifest.holdout)
                     normal = [task for task in manifest.training if not task.replay]
                     replay = [task for task in manifest.training if task.replay]
+                    for task in (*manifest.training, *manifest.holdout_pool, *manifest.holdout):
+                        if task.game == 'farm':
+                            self.assertNotIn('daily_operation_order', task.task['rules'])
                     self.assertEqual(len(normal), 20)
                     self.assertEqual(len(replay), 4)
                     self.assertEqual([task.replay_of for task in replay],

@@ -22,6 +22,14 @@ from benches.combat import game as combat_game
 
 
 class GameActionContractTest(unittest.TestCase):
+    def test_farm_generated_prompt_matches_json_operation_order(self):
+        task = farm_game.generate(1, seed=42, task_id="farm-order")
+        self.assertNotIn("daily_operation_order", task["rules"])
+        prompt = farm_game.build_prompt(task)
+        self.assertNotIn("daily_operation_order", prompt)
+        self.assertIn("operations execute in the order their keys appear", prompt)
+        self.assertIn("There is no fixed operation order", prompt)
+
     def test_prompts_exclude_reference_answers(self):
         for game, hidden in (
             (farm_game, ("reference_daily_profits", "reference_profit", "reference_method")),

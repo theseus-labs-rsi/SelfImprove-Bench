@@ -185,7 +185,10 @@ class ExternalMethodTest(unittest.TestCase):
                                       "relative_score": 0.7 if len(calls) == 2 else 0.4,
                                       "success": True, "interactions": [], "llm_metrics": {}})
 
-        with patch.object(GAMES["farm"], "generate", return_value={"difficulty": 1}), \
+        def generate(difficulty, *, seed, task_id):
+            return {"difficulty": difficulty, "seed": seed, "task_id": task_id}
+
+        with patch.object(GAMES["farm"], "generate", side_effect=generate), \
                 patch("benchmark.runner._evaluate", side_effect=evaluate), \
                 redirect_stdout(io.StringIO()):
             result = run_benchmark(config)

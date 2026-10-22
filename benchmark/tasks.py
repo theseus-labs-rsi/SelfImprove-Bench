@@ -140,40 +140,6 @@ def _make_task(
             raise RuntimeError(f"unable to generate a unique {game} difficulty {difficulty} task")
 
 
-def _stored_holdout(
-    config: BenchmarkConfig,
-    game: str,
-    difficulty: int,
-    local_index: int,
-    used: set[str],
-) -> PlannedTask | None:
-    """Reuse the original seed-100 holdout files when they match the config."""
-    if config.holdout_seed != 100 or config.holdout_tasks_per_difficulty > 5:
-        return None
-    if game not in {"farm", "combat"}:
-        return None
-    game_dir = Path(GAMES[game].__file__).resolve().parent
-    path = game_dir / "task" / f"difficulty_{difficulty}_task_{local_index + 1:02d}.json"
-    if not path.is_file():
-        return None
-    task = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(task, dict) or task.get("difficulty") != difficulty:
-        return None
-    fingerprint = task_fingerprint(task)
-    if fingerprint in used:
-        return None
-    used.add(fingerprint)
-    return PlannedTask(
-        run_id=f"holdout-{game}-d{difficulty}-{local_index + 1:02d}",
-        phase="holdout",
-        game=game,
-        difficulty=difficulty,
-        task=task,
-        task_seed=100 + (difficulty - 1) * 5 + local_index,
-        group_index=difficulty - 1,
-    )
-
-
 def build_manifest(config: BenchmarkConfig) -> TaskManifest:
     """Build the full benchmark deterministically, creating holdouts first."""
     config_hash = _hash(config.as_dict())
@@ -198,9 +164,7 @@ def build_manifest(config: BenchmarkConfig) -> TaskManifest:
             key = (game, difficulty)
             pool_lookup[key] = []
             for local_index in range(config.holdout_tasks_per_difficulty):
-                item = _stored_holdout(
-                    config, game, difficulty, local_index, used
-                ) or _make_task(
+                item = _make_task(
                     phase="holdout",
                     game=game,
                     difficulty=difficulty,

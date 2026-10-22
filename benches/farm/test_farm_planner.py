@@ -13,7 +13,7 @@ class FarmPlannerTests(unittest.TestCase):
         self.assertEqual(a["initial_money"], 200)
         self.assertEqual(a["farmland_count"], 12)
         self.assertEqual(a["duration_days"], 12)
-        self.assertEqual(a["rules"]["daily_operation_order"], ["harvest", "sell", "buy_seeds", "plant"])
+        self.assertNotIn("daily_operation_order", a["rules"])
         self.assertIsInstance(a["reference_profit"], int)
         self.assertEqual(a["reference_method"], "greedy_daily_profit_lookahead")
         self.assertEqual(set(a["reference_daily_profits"]), set(a["available_crops"]))
