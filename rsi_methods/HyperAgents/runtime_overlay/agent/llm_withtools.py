@@ -51,6 +51,17 @@ def check_for_tool_uses(response):
             continue
         if isinstance(call, dict) and "tool_name" in call and "tool_input" in call:
             parsed.append(call)
+    if parsed:
+        return parsed
+
+    decoder = json.JSONDecoder()
+    for match in re.finditer(r"\{", response):
+        try:
+            call, _ = decoder.raw_decode(response, match.start())
+        except json.JSONDecodeError:
+            continue
+        if isinstance(call, dict) and "tool_name" in call and "tool_input" in call:
+            parsed.append(call)
     return parsed or None
 
 
