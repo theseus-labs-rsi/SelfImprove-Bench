@@ -17,6 +17,46 @@ from benchmark.contracts import EvaluationOutcome
 from benchmark.metrics import calculate_metrics, post_refinement_score
 from benchmark.runner import _run_one
 from benchmark.tasks import PlannedTask
+from benches.farm import game as farm_game
+from benches.combat import game as combat_game
+
+
+class GameActionContractTest(unittest.TestCase):
+    def test_prompts_exclude_reference_answers(self):
+        for game, hidden in (
+            (farm_game, ("reference_daily_profits", "reference_profit", "reference_method")),
+            (combat_game, ("reference_score", "reference_method", "solvability")),
+        ):
+            with self.subTest(game=game.GAME_NAME):
+                task = {"task_id": "visible-task", **dict.fromkeys(hidden, "hidden-reference-answer")}
+                prompt = game.build_prompt(task)
+                self.assertIn("visible-task", prompt)
+                self.assertNotIn("hidden-reference-answer", prompt)
+
+    def test_farm_validates_task_identity_and_plan_shape(self):
+        task = {"task_id": "farm-test"}
+        action = {"task_id": "farm-test", "days": []}
+        self.assertIs(farm_game.validate_action(action, task), action)
+        for invalid in ({"task_id": "other", "days": []}, {"days": {}}):
+            with self.subTest(action=invalid), self.assertRaises(ValueError):
+                farm_game.validate_action(invalid, task)
+
+    def test_combat_validates_stage_identity_and_decision_shape(self):
+        for decision_type, action, invalid in (
+            ("combat", {"turns": []}, {"turns": {}}),
+            ("shop", {"buy_cards": [], "heal": False}, {"buy_cards": [], "heal": "false"}),
+        ):
+            stage = {"task_id": "combat-test", "stage_id": "current", "decision_type": decision_type}
+            valid = {"task_id": "combat-test", "stage_id": "current", **action}
+            with self.subTest(decision_type=decision_type):
+                self.assertIs(combat_game.validate_action(valid, stage), valid)
+                for bad in (
+                    {**valid, "task_id": "other"},
+                    {**valid, "stage_id": "other"},
+                    {**valid, **invalid},
+                ):
+                    with self.subTest(action=bad), self.assertRaises(ValueError):
+                        combat_game.validate_action(bad, stage)
 
 
 def write_json(path, value):
