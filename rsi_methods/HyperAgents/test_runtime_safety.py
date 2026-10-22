@@ -57,6 +57,31 @@ class RuntimeSafetyTests(unittest.TestCase):
         self.assertEqual(send.call_args_list[0].kwargs["image_paths"], ["step.png"])
         self.assertIsNone(send.call_args_list[1].kwargs["image_paths"])
 
+    def test_bare_json_tool_calls_are_recovered(self):
+        llm = load_overlay("test_bare_json_protocol", "agent/llm_withtools.py")
+        usage = SimpleNamespace(input_tokens=1, output_tokens=1, total_tokens=2,
+                                cached_input_tokens=0, reasoning_tokens=0)
+        executed = []
+        tool = {
+            "info": {"name": "bash", "input_schema": {"type": "object"}},
+            "function": lambda command: executed.append(command) or "file contents",
+        }
+        tool_text = (
+            '{"tool_name":"bash","tool_input":{"command":"first"}}'
+            '{"tool_name":"bash","tool_input":{"command":"second"}}'
+        )
+        responses = [
+            (SimpleNamespace(text=tool_text, usage=usage),
+             [{"role": "assistant", "text": tool_text}]),
+            (SimpleNamespace(text="done", usage=usage),
+             [{"role": "assistant", "text": "done"}]),
+        ]
+        with patch.object(llm, "load_tools", return_value=[tool]), \
+                patch.object(llm, "generate_response", side_effect=responses), \
+                patch.dict("os.environ", {"HYPERAGENTS_META_MAX_TOKENS": "0"}):
+            llm.chat_with_agent("edit", tools_available="all", logging=lambda *_: None)
+        self.assertEqual(executed, ["first"])
+
     def test_bash_heredoc_without_trailing_newline(self):
         bash = load_overlay("test_safe_bash_heredoc", "agent/tools/bash.py")
 
