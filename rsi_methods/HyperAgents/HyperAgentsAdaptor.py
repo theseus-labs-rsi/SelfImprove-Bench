@@ -31,6 +31,8 @@ from .lifecycle import (
     refine as refine_candidate,
 )
 from .runtime_agent import RuntimeAgent
+from .runtime_policy import HyperAgentsRuntimePolicy
+from .network_preflight import container_model_environment
 from .search_archive import SearchArchive
 
 
@@ -56,6 +58,8 @@ _LLM_ENVIRONMENT_NAMES = {
     "HTTPS_PROXY",
     "http_proxy",
     "https_proxy",
+    "ALL_PROXY",
+    "all_proxy",
     "NO_PROXY",
     "no_proxy",
 }
@@ -137,6 +141,7 @@ class HyperAgentsAdaptor(MethodCheckpointMixin):
     """Expose HyperAgents through the common RSIMethod lifecycle."""
 
     checkpoint_method = "hyperagents"
+    runtime_policy = HyperAgentsRuntimePolicy()
 
     def __init__(
         self,
@@ -635,11 +640,11 @@ class HyperAgentsAdaptor(MethodCheckpointMixin):
             raise ValueError(
                 f"Unsupported model environment names: {sorted(unsupported)}"
             )
-        return {
+        return container_model_environment({
             name: os.environ[name]
             for name in requested_names
-            if os.environ.get(name)
-        }
+            if name in os.environ
+        })
 
     @classmethod
     def _feedback_to_result(cls, feedback_results: Sequence[FeedbackResult]) -> dict:

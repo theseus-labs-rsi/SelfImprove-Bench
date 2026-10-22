@@ -19,6 +19,7 @@ from .archive_utils import (
 from .candidate import CandidateSnapshot, with_lineage
 from .result_store import result_is_valid, save_result
 from .runtime_agent import RuntimeAgent
+from .network_preflight import check_model_network, container_model_environment
 from .hyperagents.utils.common import file_exist_and_not_empty
 from .hyperagents.utils.constants import REPO_NAME
 from .hyperagents.utils.docker_utils import (
@@ -132,7 +133,8 @@ def instantiate_agent(
         runtime.docker_client.ping()
     except Exception as exc:
         raise RuntimeError(
-            "Docker daemon is unavailable. Start Docker Desktop and retry."
+            "Docker daemon is unavailable. Check DOCKER_HOST, socket permissions, "
+            "and whether your Docker daemon is running."
         ) from exc
     image_name = f"{REPO_NAME}:run-{run_id}"
     container_name = f"{REPO_NAME}-gl-container-{run_id}"
@@ -145,21 +147,29 @@ def instantiate_agent(
     )
     if container is None:
         raise RuntimeError("Docker container creation failed.")
-    container.start()
-    if preserve_unmodified_copy:
-        copied = container.exec_run(
-            ["cp", "-r", f"/{REPO_NAME}", f"/DONOTTOUCH_{REPO_NAME}"],
-            workdir="/",
+    try:
+        container.start()
+        check_model_network(container, runtime)
+        if preserve_unmodified_copy:
+            copied = container.exec_run(
+                ["cp", "-r", f"/{REPO_NAME}", f"/DONOTTOUCH_{REPO_NAME}"],
+                workdir="/",
+            )
+            log_container_output(copied)
+        agent = InstantiatedAgent(
+            snapshot=snapshot,
+            runtime=runtime,
+            container=container,
+            commit_hash=snapshot.root_commit,
+            artifact_dir=resolved_artifacts,
         )
-        log_container_output(copied)
-    agent = InstantiatedAgent(
-        snapshot=snapshot,
-        runtime=runtime,
-        container=container,
-        commit_hash=snapshot.root_commit,
-        artifact_dir=resolved_artifacts,
-    )
-    return reconstruct_agent(agent, snapshot)
+        return reconstruct_agent(agent, snapshot)
+    except Exception:
+        try:
+            container.remove(force=True)
+        except Exception:
+            pass
+        raise
 
 
 def reconstruct_agent(
@@ -277,7 +287,7 @@ def refine(
     execution = agent.container.exec_run(
         command,
         workdir=run_workdir or f"/{REPO_NAME}",
-        environment=agent.runtime.llm_environment,
+        environment=container_model_environment(agent.runtime.llm_environment),
     )
     metadata["meta_agent_command_successful"] = execution.exit_code == 0
     usage = _read_refinement_usage(agent, agent_output)

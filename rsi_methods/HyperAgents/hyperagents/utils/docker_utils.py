@@ -100,6 +100,24 @@ def log_container_output(exec_result, verbose=True):
         raise Exception(error_msg)
 
 
+def _build_image(client, repo_path, *, dockerfile="Dockerfile", **kwargs):
+    # Bind-mounted candidates acquire container-owned bytecode between builds.
+    # Exclude it before tar packing, rather than trying to read or chmod it.
+    ignore_file = Path(repo_path) / ".dockerignore"
+    lines = ignore_file.read_text().splitlines() if ignore_file.exists() else []
+    excludes = [
+        line.strip() for line in lines
+        if line.strip() and not line.strip().startswith("#")
+    ]
+    excludes.extend(["**/__pycache__", "**/*.pyc", "**/*.pyo"])
+    with docker.utils.tar(
+        repo_path, exclude=excludes, dockerfile=(dockerfile, None)
+    ) as context:
+        return client.images.build(
+            fileobj=context, custom_context=True, dockerfile=dockerfile, **kwargs
+        )
+
+
 def build_container(
     client,
     repo_path="./",
@@ -124,8 +142,8 @@ def build_container(
                     f"Building reusable runtime image '{runtime_image_name}'...",
                     verbose=verbose,
                 )
-                client.images.build(
-                    path=repo_path,
+                _build_image(
+                    client, repo_path,
                     dockerfile=runtime_dockerfile,
                     tag=runtime_image_name,
                     rm=True,
@@ -141,8 +159,8 @@ def build_container(
                 "Building the Docker image with Docker default networking...",
                 verbose=verbose,
             )
-            image, logs = client.images.build(
-                path=repo_path,  # <-- This points to the directory containing Dockerfile
+            image, logs = _build_image(
+                client, repo_path,
                 tag=image_name,
                 rm=True,
                 nocache=force_rebuild,
@@ -362,7 +380,7 @@ def build_container(
         return container
     except Exception as e:
         safe_log(f"Error while starting the container: {e}", verbose=verbose)
-        return None
+        raise RuntimeError(f"Docker container creation failed: {e}") from e
 
 
 def create_archive(path: Union[str, Path], data: Optional[bytes] = None) -> bytes:

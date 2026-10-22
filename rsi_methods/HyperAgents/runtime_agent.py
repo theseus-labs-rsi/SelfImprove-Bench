@@ -8,6 +8,7 @@ import uuid
 from collections.abc import Sequence
 
 from benchmark.contracts import BackendResponse, TokenUsage
+from .network_preflight import container_model_environment
 
 
 _RESULT_MARKER = "__RUNTIME_AGENT_RESULT__"
@@ -125,7 +126,7 @@ class RuntimeAgent:
             history_path,
             encoded_inputs,
         ]
-        environment = dict(self.llm_environment)
+        environment = container_model_environment(self.llm_environment)
         for name in ("RSI_OPENAI_REQUEST_TIMEOUT", "RSI_OPENAI_MAX_RETRIES"):
             if os.environ.get(name):
                 environment[name] = os.environ[name]
