@@ -1,15 +1,22 @@
 import io
+import functools
 import logging
 import os
 import tarfile
 import threading
 import warnings
+from contextlib import contextmanager
 from pathlib import Path, PurePosixPath
 from typing import Optional, Union
 
 import docker
 from docker.models.containers import Container
 from docker.types import Mount
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - Docker benchmark hosts are POSIX.
+    fcntl = None
 
 from .constants import REPO_NAME
 
@@ -21,6 +28,31 @@ warnings.filterwarnings(
 
 # Thread-local storage for loggers
 _thread_local = threading.local()
+_docker_image_thread_lock = threading.Lock()
+_docker_image_lock_path = Path("/tmp/rsi-bench-docker-images.lock")
+
+
+@contextmanager
+def _docker_image_guard():
+    """Serialize image build/removal across threads and benchmark processes."""
+    with _docker_image_thread_lock:
+        with _docker_image_lock_path.open("a+b") as stream:
+            if fcntl is not None:
+                fcntl.flock(stream.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                if fcntl is not None:
+                    fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
+
+
+def _serialize_image_operation(function):
+    @functools.wraps(function)
+    def wrapper(*args, **kwargs):
+        with _docker_image_guard():
+            return function(*args, **kwargs)
+
+    return wrapper
 
 
 def get_thread_logger():
@@ -118,6 +150,7 @@ def _build_image(client, repo_path, *, dockerfile="Dockerfile", **kwargs):
         )
 
 
+@_serialize_image_operation
 def build_container(
     client,
     repo_path="./",
@@ -678,6 +711,7 @@ def verify_gpu_in_container(container, verbose=True) -> bool:
         return False
 
 
+@_serialize_image_operation
 def cleanup_container(container, verbose=True):
     """
     Stop and remove a container cleanly.
