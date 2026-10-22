@@ -54,3 +54,39 @@ def test_legacy_single_lineage_selection_remains_supported(tmp_path):
     assert node["accepted"] is True
     assert node["selected"] is True
     assert node["current_score"] == 0.2
+
+
+def hyper_source(node_id, *, artifact):
+    return {
+        "node_id": node_id, "parent_id": None, "task_id": "task_0001", "run_id": "run",
+        "selected": False, "accepted": True, "changed": True,
+        "artifact": artifact, "artifact_path": None,
+        "parent_score": None, "current_score": None, "score_delta": None,
+    }
+
+
+def test_missing_patch_marks_hyper_analysis_incomplete(tmp_path):
+    from unittest.mock import patch
+
+    from analyze.hyper import run_hyper_analysis
+
+    with patch("analyze.hyper.collect_hyperagent_artifacts",
+               return_value=[hyper_source("new", artifact=None)]), \
+            patch("analyze.hyper.analyze_artifact", side_effect=AssertionError("No model allowed")):
+        state = run_hyper_analysis(tmp_path, tmp_path / "analysis.json")
+    assert state["status"] == "incomplete"
+    assert state["missing_artifact_count"] == 1
+    assert json.loads((tmp_path / "analysis.json").read_text())["status"] == "incomplete"
+
+
+def test_incomplete_hyper_cli_returns_failure(tmp_path, monkeypatch):
+    import sys
+    from unittest.mock import patch
+
+    from analyze.__main__ import main as analyze_main
+
+    monkeypatch.setattr(sys, "argv", ["analyze", "hyper", str(tmp_path), "--model", "offline"])
+    with patch("analyze.__main__.run_hyper_analysis", return_value={
+        "status": "incomplete", "missing_artifact_count": 1, "nodes": [],
+    }), pytest.raises(SystemExit, match="1 missing artifacts"):
+        analyze_main()

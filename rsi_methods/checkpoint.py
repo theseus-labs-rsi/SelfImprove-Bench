@@ -55,6 +55,7 @@ def export_state(adaptor: object, method: str) -> dict:
     state: dict = {}
     if method == "ace":
         state.update(workspace=str(adaptor.workspace_dir), playbook=adaptor.playbook,
+                     ace_policy=adaptor.checkpoint_policy(),
                      workspace_selection=_optional_json(adaptor.workspace_dir / "selection.json"),
                      version=adaptor._version, next_global_id=adaptor._next_global_id,
                      refinement_round=adaptor._refinement_round,
@@ -90,6 +91,11 @@ def restore_state(adaptor: object, method: str, root: Path, state: dict) -> None
             "do not mix old and new evolution schedules in one lineage"
         )
     if method == "ace":
+        if state.get("ace_policy") != adaptor.checkpoint_policy():
+            raise RuntimeError(
+                "ACE checkpoint policy is missing or differs from current prompts/evolution rules; "
+                "use historical code for old runs"
+            )
         # Configure from the original snapshot; never start a new lineage.
         import tomllib
         raw = (root / "method_config.toml").read_bytes()

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import os
@@ -19,7 +20,9 @@ from rsi_methods.checkpoint import MethodCheckpointMixin
 from rsi_methods.ACE.runtime_policy import ACERuntimePolicy
 
 if __package__:
-    from .ACEAgent import ACEAgent
+    from .ACEAgent import ACEAgent, ACE_AGENT_PROMPT
+    from .ace.ace.prompts.reflector import REFLECTOR_PROMPT, REFLECTOR_PROMPT_NO_GT
+    from .ace.ace.prompts.curator import CURATOR_PROMPT, CURATOR_PROMPT_NO_GT
     from .ace.ace.core.curator import Curator
     from .ace.ace.core.reflector import Reflector
     from .ace.playbook_utils import (
@@ -29,7 +32,9 @@ if __package__:
         update_bullet_counts,
     )
 else:  # Support direct imports from this adaptor directory.
-    from ACEAgent import ACEAgent
+    from ACEAgent import ACEAgent, ACE_AGENT_PROMPT
+    from ace.ace.prompts.reflector import REFLECTOR_PROMPT, REFLECTOR_PROMPT_NO_GT
+    from ace.ace.prompts.curator import CURATOR_PROMPT, CURATOR_PROMPT_NO_GT
     from ace.ace.core.curator import Curator
     from ace.ace.core.reflector import Reflector
     from ace.playbook_utils import (
@@ -282,6 +287,24 @@ class ACEAdaptor(MethodCheckpointMixin):
         """Return the committed playbook version."""
         return self._version
 
+    def checkpoint_policy(self) -> dict[str, str]:
+        """Identify prompts and evolution semantics required for safe resume."""
+        prompts = [ACE_AGENT_PROMPT, REFLECTOR_PROMPT, REFLECTOR_PROMPT_NO_GT,
+                   CURATOR_PROMPT, CURATOR_PROMPT_NO_GT]
+        return {
+            "evolution_policy": "accept-valid-candidates-v1",
+            "prompt_digest": hashlib.sha256(json.dumps(prompts).encode("utf-8")).hexdigest(),
+        }
+
+    def _persist_checkpoint_policy(self) -> None:
+        roots = {self.workspace_dir}
+        if self._method_context is not None:
+            roots.add(self._method_context.artifact_dir)
+        for root in roots:
+            (root / "checkpoint_policy.json").write_text(
+                json.dumps(self.checkpoint_policy(), indent=2), encoding="utf-8",
+            )
+
     def init(self) -> None:
         """Load method configuration and construct the initial playbook."""
         self._initialized = False
@@ -292,6 +315,7 @@ class ACEAdaptor(MethodCheckpointMixin):
         (self.workspace_dir / "method_config.toml").write_bytes(
             self._config_snapshot
         )
+        self._persist_checkpoint_policy()
         (self.workspace_dir / "playbook.txt").write_text(
             self._playbook,
             encoding="utf-8",
@@ -328,6 +352,10 @@ class ACEAdaptor(MethodCheckpointMixin):
             raise FileNotFoundError(f"ACE batch manifest is missing: {root}")
         if source_batch.resolve() == root:
             raise ValueError("ACE resume source and target batch must differ")
+        policy_path = root / "checkpoint_policy.json"
+        if (not policy_path.is_file()
+                or json.loads(policy_path.read_text(encoding="utf-8")) != self.checkpoint_policy()):
+            raise RuntimeError("ACE resume policy differs; use historical code for old runs")
         self._config_snapshot = (root / "method_config.toml").read_bytes()
         self._configure(tomllib.loads(self._config_snapshot.decode("utf-8")))
         self._validate_config()
@@ -350,6 +378,7 @@ class ACEAdaptor(MethodCheckpointMixin):
             self._refinement_round += 1
         self.workspace_dir = Path(target_dir).resolve()
         self.workspace_dir.mkdir(parents=True, exist_ok=False)
+        self._persist_checkpoint_policy()
         (self.workspace_dir / "playbook.txt").write_text(self._playbook, encoding="utf-8")
         self._next_global_id = get_next_global_id(self._playbook)
         self._processed_feedback_count = self._refinement_round

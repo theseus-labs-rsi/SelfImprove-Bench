@@ -94,6 +94,48 @@ class UnifiedMethodsTest(unittest.TestCase):
                         changed["adapter_state"]["ahe_policy"]["refinement_every"] += 1
                         with self.assertRaisesRegex(RuntimeError, "policy"):
                             resume_state.restore(resumed, changed)
+                    if method == "ace":
+                        policy_path = original.adaptor.workspace_dir / "checkpoint_policy.json"
+                        self.assertEqual(json.loads(policy_path.read_text()),
+                                         state["adapter_state"]["ace_policy"])
+                        for field in (None, "evolution_policy", "prompt_digest"):
+                            changed = json.loads(json.dumps(state))
+                            if field is None:
+                                changed["adapter_state"].pop("ace_policy")
+                            else:
+                                changed["adapter_state"]["ace_policy"][field] = "old"
+                            with self.subTest(policy_field=field):
+                                with self.assertRaisesRegex(RuntimeError, "ACE checkpoint policy"):
+                                    resume_state.restore(resumed, changed)
+                        self.assertEqual(resume_state.export(resumed), state)
+                        with patch("rsi_methods.ACE.ACEAdaptor.ACE_AGENT_PROMPT", "changed prompt"):
+                            with self.assertRaisesRegex(RuntimeError, "ACE checkpoint policy"):
+                                resume_state.restore(resumed, state)
+                        copied_batch = self.root / "copied_ace_batch"
+                        copied_batch.mkdir()
+                        (copied_batch / "batch_manifest.json").write_text("{}")
+                        for policy in (None, {"evolution_policy": "old"}):
+                            if policy is not None:
+                                (copied_batch / "checkpoint_policy.json").write_text(json.dumps(policy))
+                            with self.assertRaisesRegex(RuntimeError, "ACE resume policy"):
+                                resumed.adaptor.resume(
+                                    copied_batch, source_batch=original.artifact_dir,
+                                    before_task_index=1, target_dir=self.root / "resumed_ace",
+                                )
+                        self.assertFalse((self.root / "resumed_ace").exists())
+                        (copied_batch / "checkpoint_policy.json").write_text(
+                            json.dumps(original.adaptor.checkpoint_policy()))
+                        (copied_batch / "method_config.toml").write_bytes(
+                            original.adaptor._config_snapshot)
+                        resumed.adaptor.resume(
+                            copied_batch, source_batch=original.artifact_dir,
+                            before_task_index=1, target_dir=self.root / "resumed_ace",
+                        )
+                        self.assertEqual(
+                            json.loads((original.artifact_dir / "checkpoint_policy.json").read_text()),
+                            original.adaptor.checkpoint_policy(),
+                        )
+                        self.assertEqual(resumed.adaptor.version, 0)
                     if method == "hyperagents":
                         self.assertEqual(resumed.adaptor.max_refinement_rounds, 5)
 

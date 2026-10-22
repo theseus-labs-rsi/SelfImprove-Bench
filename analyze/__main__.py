@@ -104,6 +104,13 @@ def main() -> None:
             timeout=args.timeout,
             on_node=_print_node,
         )
+        if state["status"] != "completed":
+            raise SystemExit(
+                f"HyperAgents analysis {state['status']}: "
+                f"{state.get('missing_artifact_count', 0)} missing artifacts, "
+                f"{state.get('skipped_analysis_error_count', 0)} skipped analysis errors; "
+                f"partial results saved to {args.output}"
+            )
         print(f"Done: {len(state['nodes'])} nodes written to {args.output}")
     elif args.command == "ahe":
         if not args.model:

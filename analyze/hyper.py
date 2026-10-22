@@ -170,9 +170,15 @@ def run_hyper_analysis(
         _write_state(destination, state)
         if on_node:
             on_node(node)
-    has_skipped = any(
-        node["status"] == "skipped_analysis_error" for node in state["nodes"]
-    )
-    state["status"] = "completed_with_errors" if has_skipped else "completed"
+    missing = sum(node["status"] == "missing_artifact" for node in state["nodes"])
+    skipped = sum(node["status"] == "skipped_analysis_error" for node in state["nodes"])
+    state["missing_artifact_count"] = missing
+    state["skipped_analysis_error_count"] = skipped
+    if missing:
+        state["status"] = "incomplete"
+    elif skipped:
+        state["status"] = "completed_with_errors"
+    else:
+        state["status"] = "completed"
     _write_state(destination, state)
     return state
