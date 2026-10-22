@@ -1,4 +1,0 @@
-networkx==3.5
-pygraphviz==1.14
-plotly==6.1.2
-scikit-learn==1.7.0
