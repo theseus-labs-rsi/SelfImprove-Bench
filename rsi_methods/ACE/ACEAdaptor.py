@@ -503,14 +503,8 @@ class ACEAdaptor(MethodCheckpointMixin):
         )
         if candidate_status != "ok":
             accepted, reason = False, "candidate_status_not_ok"
-        elif selection_mode == "online":
-            accepted, reason = True, "candidate_execution_valid"
-        elif parent_score is None or candidate_score is None:
-            accepted, reason = False, "selection_score_missing"
-        elif candidate_score < parent_score:
-            accepted, reason = False, "selection_score_regressed"
         else:
-            accepted, reason = True, "candidate_score_not_below_parent"
+            accepted, reason = True, "candidate_execution_valid"
         selected_candidate_id = candidate.candidate_id if accepted else None
         report = ACESelectionReport(
             refinement_id=batch.refinement_id,

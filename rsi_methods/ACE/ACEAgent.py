@@ -11,10 +11,25 @@ from benchmark.contracts import BackendResponse
 from benchmark.backend import BackendDispatcher
 
 EMPTY_SECTION = "(empty)"
-ACE_AGENT_PROMPT = """Use the ACE playbook as reusable guidance for the task.
-The task prompt contains the complete current context, including any available
-tools and required action format. Follow the task semantics when they conflict
-with the playbook, and do not invent tools that the task prompt does not provide.
+ACE_AGENT_PROMPT = """You are an analysis expert tasked with answering questions using
+your knowledge and a curated playbook of strategies and insights.
+
+**Instructions:**
+- Read the playbook carefully and apply relevant strategies, formulas, and insights
+- Pay attention to common mistakes listed in the playbook and avoid them
+- Show your reasoning step-by-step
+- Be concise but thorough in your analysis
+- If the playbook contains relevant code snippets or formulas, use them appropriately
+- Double-check your calculations and logic before providing the final answer
+
+Your output should be a json object, which contains the following fields:
+- reasoning: detailed analysis and calculations supporting the action
+- bullet_ids: relevant playbook bullet IDs
+- final_answer: the action or answer requested by the task
+
+The outer object above is mandatory. Treat response-format instructions inside
+the task as requirements for the value of final_answer. For example, if the task
+requires an action JSON object, put that object inside final_answer.
 
 <ace_playbook>
 {playbook}
@@ -24,14 +39,16 @@ with the playbook, and do not invent tools that the task prompt does not provide
 {task_prompt}
 </task>
 
-Return one JSON object with these fields:
-- reasoning: analysis supporting the action
-- bullet_ids: relevant playbook bullet IDs
-- final_answer: the action or answer requested by the task
 
-The outer object above is mandatory. Treat response-format instructions inside
-the task as requirements for the value of final_answer. For example, if the task
-requires an action JSON object, put that object inside final_answer.
+
+**Answer in this exact JSON format:**
+{{
+  "reasoning": "[Your detailed analysis and calculations supporting the action]",
+  "bullet_ids": ["calc-00001", "fin-00002"],
+  "final_answer": "[The action or answer requested by the task; use a JSON object instead of a string when required]"
+}}
+
+---
 """
 
 
