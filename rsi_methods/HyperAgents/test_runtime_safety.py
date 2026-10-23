@@ -11,7 +11,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 
 ROOT = Path(__file__).resolve().parent
@@ -81,6 +81,121 @@ class RuntimeSafetyTests(unittest.TestCase):
                 patch.dict("os.environ", {"HYPERAGENTS_META_MAX_TOKENS": "0"}):
             llm.chat_with_agent("edit", tools_available="all", logging=lambda *_: None)
         self.assertEqual(executed, ["first"])
+
+    def test_malformed_tool_protocol_retries_twice_then_records_failure(self):
+        llm = load_overlay("test_bounded_tool_protocol", "agent/llm_withtools.py")
+        usage = SimpleNamespace(input_tokens=1, output_tokens=1, total_tokens=2,
+                                cached_input_tokens=0, reasoning_tokens=0)
+        malformed = '<json>{"tool_name":"bash","tool_input": }</json>'
+        responses = [
+            (SimpleNamespace(text=malformed, usage=usage),
+             [{"role": "assistant", "text": malformed}])
+            for _ in range(3)
+        ]
+        tool = {
+            "info": {"name": "bash", "input_schema": {"type": "object"}},
+            "function": lambda **_: "unused",
+        }
+        with patch.object(llm, "load_tools", return_value=[tool]), \
+                patch.object(llm, "generate_response", side_effect=responses) as send, \
+                patch.dict("os.environ", {"HYPERAGENTS_META_MAX_TOKENS": "0"}):
+            history = llm.chat_with_agent(
+                "edit", tools_available=["bash"], logging=lambda *_: None
+            )
+
+        self.assertEqual(send.call_count, 3)
+        self.assertIn("valid JSON", send.call_args_list[1].args[0])
+        self.assertEqual(history[-1]["tool_protocol_error"], {
+            "type": "invalid_tool_call_format",
+            "attempts": 3,
+            "max_retries": 2,
+            "retry_blocked": "retry_limit",
+        })
+
+    def test_malformed_tool_protocol_recovers_within_retry_budget(self):
+        llm = load_overlay("test_tool_protocol_recovery", "agent/llm_withtools.py")
+        usage = SimpleNamespace(input_tokens=1, output_tokens=1, total_tokens=2,
+                                cached_input_tokens=0, reasoning_tokens=0)
+        malformed = '<json>{"tool_name":"bash","tool_input": }</json>'
+        valid = '<json>{"tool_name":"bash","tool_input":{"command":"repair"}}</json>'
+        responses = [
+            (SimpleNamespace(text=malformed, usage=usage),
+             [{"role": "assistant", "text": malformed}]),
+            (SimpleNamespace(text=malformed, usage=usage),
+             [{"role": "assistant", "text": malformed}]),
+            (SimpleNamespace(text=valid, usage=usage),
+             [{"role": "assistant", "text": valid}]),
+            (SimpleNamespace(text="done", usage=usage),
+             [{"role": "assistant", "text": "done"}]),
+        ]
+        executed = []
+        tool = {
+            "info": {"name": "bash", "input_schema": {"type": "object"}},
+            "function": lambda command: executed.append(command) or "ok",
+        }
+        with patch.object(llm, "load_tools", return_value=[tool]), \
+                patch.object(llm, "generate_response", side_effect=responses) as send, \
+                patch.dict("os.environ", {"HYPERAGENTS_META_MAX_TOKENS": "0"}):
+            history = llm.chat_with_agent(
+                "edit", tools_available=["bash"], logging=lambda *_: None
+            )
+
+        self.assertEqual(send.call_count, 4)
+        self.assertEqual(executed, ["repair"])
+        self.assertNotIn("tool_protocol_error", history[-1])
+
+    def test_task_agent_starts_each_step_with_empty_history(self):
+        from task_agent import TaskAgent
+
+        agent = object.__new__(TaskAgent)
+        for key, value in {
+            "model": "test", "reasoning_effort": "low", "backend": "openai",
+            "api_mode": "responses", "api_key_env": "OPENAI_API_KEY",
+            "base_url_env": "OPENAI_BASE_URL", "log": lambda *_: None,
+        }.items():
+            setattr(agent, key, value)
+        usage = {
+            "input_tokens": 1, "output_tokens": 1, "total_tokens": 2,
+            "cached_input_tokens": 0, "reasoning_tokens": 0,
+        }
+        answers = [
+            [{"role": "assistant", "text": "step one", "usage": usage.copy()}],
+            [{"role": "assistant", "text": "step two", "usage": usage.copy()}],
+        ]
+        with patch("task_agent.chat_with_agent", side_effect=answers) as send:
+            agent.forward({"instruction": "first"})
+            agent.forward({"instruction": "second"})
+
+        self.assertEqual(send.call_count, 2)
+        self.assertEqual([call.kwargs["msg_history"] for call in send.call_args_list],
+                         [[], []])
+
+    def test_runtime_agent_launches_a_fresh_task_agent_process_per_step(self):
+        import base64
+        from rsi_methods.HyperAgents.runtime_agent import RuntimeAgent
+
+        payload = base64.b64encode(json.dumps({
+            "prediction": "ok",
+            "history": [{"role": "assistant", "text": "ok", "status": "completed"}],
+        }).encode()).decode()
+        container = SimpleNamespace(exec_run=Mock(return_value=SimpleNamespace(
+            exit_code=0, output=f"__RUNTIME_AGENT_RESULT__{payload}\n".encode()
+        )))
+        agent = RuntimeAgent(
+            container=container, agent_path="/RSI-Bench/task_agent.py",
+            repo_path="/RSI-Bench", model="test", reasoning_effort="low",
+            backend="openai", api_mode="responses", api_key_env="OPENAI_API_KEY",
+            base_url_env="OPENAI_BASE_URL", generation_id="candidate",
+            artifact_dir="/tmp/runtime-test",
+        )
+        agent.run({"instruction": "step one"})
+        agent.run({"instruction": "step two"})
+
+        self.assertEqual(container.exec_run.call_count, 2)
+        commands = [call.kwargs["cmd"] for call in container.exec_run.call_args_list]
+        self.assertTrue(all(command[:2] == ["python", "-c"] for command in commands))
+        self.assertTrue(all("task_agent = TaskAgentClass(" in command[2] for command in commands))
+        self.assertNotEqual(commands[0][5], commands[1][5])
 
     def test_bash_heredoc_without_trailing_newline(self):
         bash = load_overlay("test_safe_bash_heredoc", "agent/tools/bash.py")

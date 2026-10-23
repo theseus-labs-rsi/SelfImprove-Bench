@@ -72,6 +72,17 @@ class DockerBuildContextTests(unittest.TestCase):
         self.assertEqual(build.call_count, 2)
         self.assertEqual(build.call_args_list[0].kwargs["dockerfile"], "Dockerfile.runtime")
         self.assertEqual(build.call_args_list[1].kwargs["tag"], "app")
+        self.assertIn("volumes", client.containers.run.call_args.kwargs)
+
+    def test_candidate_container_can_avoid_shared_repository_bind_mount(self):
+        client = Mock()
+        client.images.list.return_value = []
+        client.containers.get.side_effect = docker_utils.docker.errors.NotFound("missing")
+        with patch.object(docker_utils, "_build_image", return_value=(Mock(), [])):
+            docker_utils.build_container(
+                client, repo_path="/candidate", mount_repo=False, verbose=False
+            )
+        self.assertNotIn("volumes", client.containers.run.call_args.kwargs)
 
     def test_host_network_requires_explicit_opt_in(self):
         for environment, expected in (({}, None), ({"HYPERAGENTS_DOCKER_NETWORK": "host"}, "host")):

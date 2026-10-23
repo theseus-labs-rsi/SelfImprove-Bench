@@ -59,16 +59,45 @@ def _is_fatal_method_error(config: BenchmarkConfig, record: Mapping[str, Any]) -
     return runtime_policy(config.agent).is_fatal_error(record.get("error"))
 
 
+def _is_provider_failure(record: Mapping[str, Any]) -> bool:
+    """Keep transport failures separate from scored invalid model actions."""
+    if record.get("status") != "error":
+        return False
+    metrics = record.get("llm_metrics") or {}
+    calls = [metrics, *(metrics.get("stages") or [])]
+    attempts = [attempt for call in calls for attempt in call.get("attempts", [])]
+    if attempts:
+        return attempts[-1].get("status") == "provider_error"
+    error_type = str(record.get("error_type") or "").lower()
+    if error_type in {
+        "timeout", "timeouterror", "apitimeouterror", "apiconnectionerror",
+        "connectionerror", "connecttimeout", "readtimeout", "ratelimiterror",
+        "authenticationerror", "permissiondeniederror", "internalservererror",
+        "serviceunavailableerror",
+    }:
+        return True
+    error = str(record.get("error") or "").lower()
+    return any(marker in error for marker in (
+        "api request timed out", "request timed out", "openai request failed",
+        "connection refused", "connection reset by peer",
+        "apiconnectionerror:", "apitimeouterror:", "ratelimiterror:",
+        "authenticationerror:", "internalservererror:",
+    ))
+
+
 def _must_stop_after_error(config: BenchmarkConfig, record: Mapping[str, Any]) -> bool:
     """Stop on fatal method errors even when ordinary errors may be tolerated."""
     if record.get("status") in {"ok", "skipped"}:
         return False
-    return not config.continue_on_error or _is_fatal_method_error(config, record)
+    return (not config.continue_on_error or _is_fatal_method_error(config, record)
+            or _is_provider_failure(record))
 
 
 def _checkpoint_is_stable(config: BenchmarkConfig, task: PlannedTask,
                           record: Mapping[str, Any]) -> bool:
     """A failed task attempt can still have a valid post-refinement RSI state."""
+    if _is_provider_failure(record):
+        return False
     if task.phase == "train" and not task.replay:
         status = (record.get("selection") or {}).get("status")
         if status not in {"committed", "completed", "unchanged", "skipped"}:
@@ -420,6 +449,7 @@ def _run_one(
         and not task.replay
         and controller.session is not None
         and not _is_fatal_method_error(controller.config, result)
+        and not _is_provider_failure(result)
     ):
         try:
             controller.refine(task, result, ordinal, feedback=outcome.feedback)
@@ -832,7 +862,8 @@ def _run_checkpoint_task(config, output_dir, manifest, controller, task, index, 
             cursor["new_train_runs"] += 1
     elif not stable:
         cursor["committable"] = False
-    cursor["stopped"] = _must_stop_after_error(config, record)
+    # Never run beyond an uncommitted state: resume must retry this task first.
+    cursor["stopped"] = not stable or _must_stop_after_error(config, record)
     return record
 
 

@@ -194,6 +194,9 @@ class ScreenshotEvidenceTests(unittest.TestCase):
             "role": "assistant", "usage": {"total_tokens": 7},
             "tool_budget_exhausted": True,
             "tool_calls_executed": 40, "tool_call_limit": 40,
+            "tool_protocol_error": {
+                "type": "invalid_tool_call_format", "attempts": 3,
+            },
         }]
         module = SimpleNamespace(chat_with_agent=lambda *_args, **_kwargs: history)
         with tempfile.TemporaryDirectory() as directory:
@@ -206,7 +209,10 @@ class ScreenshotEvidenceTests(unittest.TestCase):
                     patch.object(sys, "argv", ["python", str(usage_path)]), \
                     patch("runpy.run_path", side_effect=run_runner):
                 exec(_USAGE_RECORDING_BOOTSTRAP, {})
-            self.assertTrue(json.loads(usage_path.read_text())["tool_budget_exhausted"])
+            recorded = json.loads(usage_path.read_text())
+            self.assertTrue(recorded["tool_budget_exhausted"])
+            self.assertEqual(recorded["tool_protocol_error"],
+                             history[0]["tool_protocol_error"])
 
 
 if __name__ == "__main__":

@@ -18,6 +18,7 @@ _USAGE_FIELDS = (
     "cached_input_tokens",
     "reasoning_tokens",
 )
+_MAX_TOOL_PROTOCOL_RETRIES = 2
 
 
 def get_tooluse_prompt(tool_infos=()):
@@ -68,8 +69,9 @@ def check_for_tool_uses(response):
 def should_retry_tool_use(response, tool_uses=None):
     if tool_uses:
         return False
-    positions = [response.find(marker) for marker in ("<json>", "tool_name", "tool_input")]
-    return positions[0] >= 0 and positions[0] < positions[1] < positions[2] and len(response) >= 2000
+    has_tool_field = re.search(r"\btool_(?:name|input)\b", response) is not None
+    has_json_shape = re.search(r"<\s*/?\s*json\b|```json|\{", response) is not None
+    return has_tool_field and has_json_shape
 
 
 def _execute_tool(tools, name, tool_input):
@@ -151,6 +153,7 @@ def chat_with_agent(
 
     current_prompt = system_msg + prompt
     tool_call_count = 0
+    protocol_retries = 0
 
     while True:
         logging(f"Input: {current_prompt!r}")
@@ -175,14 +178,33 @@ def chat_with_agent(
             usage_complete = False
         _merge_usage(usage_total, response.usage)
         logging(f"Output: {response.text!r}")
-        if meta_cap and meta_spent + usage_total["total_tokens"] >= meta_cap:
+        tool_calls = check_for_tool_uses(response.text)
+        retry_tool_use = should_retry_tool_use(response.text, tool_calls)
+        token_cap_reached = meta_cap and meta_spent + usage_total["total_tokens"] >= meta_cap
+        if retry_tool_use:
+            if protocol_retries < _MAX_TOOL_PROTOCOL_RETRIES and not token_cap_reached:
+                protocol_retries += 1
+                current_prompt = (
+                    system_msg
+                    + "Error: Your previous response attempted a tool call, but it was not "
+                    "valid JSON in the required tool-call format. Retry with exactly one "
+                    "valid tool call, or provide a concise final response if no tool is needed."
+                )
+                continue
+            history[-1]["tool_protocol_error"] = {
+                "type": "invalid_tool_call_format",
+                "attempts": protocol_retries + 1,
+                "max_retries": _MAX_TOOL_PROTOCOL_RETRIES,
+                "retry_blocked": "meta_token_budget" if token_cap_reached else "retry_limit",
+            }
+            logging("Tool protocol retry limit reached; preserving candidate artifacts but rejecting this refinement.")
+            break
+        if token_cap_reached:
             logging(f"MetaAgent token cap ({meta_cap}) reached; "
                     "saving current candidate without further tools or model calls.")
             break
 
-        tool_calls = check_for_tool_uses(response.text)
-        retry_tool_use = should_retry_tool_use(response.text, tool_calls)
-        if not tool_calls and not retry_tool_use:
+        if not tool_calls:
             break
         if max_tool_calls > 0 and tool_call_count >= max_tool_calls:
             history[-1]["tool_budget_exhausted"] = True
@@ -209,8 +231,6 @@ def chat_with_agent(
                 f'        "tool_input": {tool_call["tool_input"]},\n'
                 f'        "tool_output": "{tool_output}"\n    }}\n</json>'
             )
-        if retry_tool_use:
-            tool_messages.append("Error: Output context exceeded. Please try again.")
         current_prompt = system_msg + "\n\n".join(tool_messages)
 
     if history and history[-1].get("role") == "assistant":

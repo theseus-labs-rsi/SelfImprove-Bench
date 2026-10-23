@@ -112,14 +112,88 @@ class NetworkPreflightTests(unittest.TestCase):
         container = Mock()
         with tempfile.TemporaryDirectory() as directory, \
                 patch.object(lifecycle, "setup_logger"), \
-                patch.object(lifecycle, "build_container", return_value=container), \
+                patch.object(lifecycle, "build_container", return_value=container) as build, \
                 patch.object(lifecycle, "check_model_network", side_effect=RuntimeError("preflight")), \
                 patch.object(lifecycle, "reconstruct_agent") as reconstruct:
             with self.assertRaisesRegex(RuntimeError, "preflight"):
                 lifecycle.instantiate_agent(snapshot, runtime=runtime, run_id="test",
                                             artifact_dir=Path(directory) / "artifacts")
+        self.assertFalse(build.call_args.kwargs["mount_repo"])
         container.remove.assert_called_once_with(force=True)
         reconstruct.assert_not_called()
+
+    def test_closing_candidate_does_not_reset_repository(self):
+        agent = lifecycle.InstantiatedAgent(
+            snapshot=SimpleNamespace(root_commit="root"),
+            runtime=SimpleNamespace(),
+            container=Mock(),
+            commit_hash="candidate-commit",
+            artifact_dir=Path("/tmp/artifacts"),
+        )
+        with patch.object(lifecycle, "cleanup_container") as cleanup:
+            agent.close()
+        cleanup.assert_called_once_with(agent.container)
+        agent.container.exec_run.assert_not_called()
+
+    def test_invalid_meta_protocol_rejects_patch_but_preserves_patch_artifact(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            agent_output = output / "agent_output"
+            patch_file = agent_output / "model_patch.diff"
+            container = Mock()
+            container.exec_run.return_value = SimpleNamespace(exit_code=0, output=b"ok")
+            snapshot = SimpleNamespace(
+                candidate_id="candidate", run_dir=output, lineage_patches=(),
+            )
+            agent = lifecycle.InstantiatedAgent(
+                snapshot=snapshot,
+                runtime=SimpleNamespace(),
+                container=container,
+                commit_hash="parent-commit",
+                artifact_dir=output,
+            )
+
+            def copy_artifacts(_container, *, source_path, dest_path):
+                target = Path(dest_path)
+                target.mkdir(parents=True, exist_ok=True)
+                (target / "model_patch.diff").write_text(
+                    "diff --git a/task_agent.py b/task_agent.py\n"
+                    "--- a/task_agent.py\n+++ b/task_agent.py\n"
+                    "@@ -1 +1 @@\n-old\n+new\n",
+                    encoding="utf-8",
+                )
+                (target / "meta_agent_history.json").write_text("[]", encoding="utf-8")
+
+            metadata = {
+                "meta_agent_protocol_error": {
+                    "type": "invalid_tool_call_format", "attempts": 3,
+                },
+            }
+            with patch.object(lifecycle, "copy_from_container", side_effect=copy_artifacts):
+                transition = lifecycle._collect_refinement(
+                    agent, output, "/tmp/agent_output", metadata
+                )
+
+            self.assertTrue(patch_file.is_file())
+            self.assertFalse(transition.changed)
+            self.assertIsNone(transition.patch_path)
+            self.assertTrue(metadata["patch_rejected"])
+            self.assertFalse(metadata["run_eval"])
+            self.assertIn("preserved for audit", metadata["error"])
+            calls = [call.args[0] for call in container.exec_run.call_args_list]
+            self.assertIn(["git", "reset", "--hard", "parent-commit"], calls)
+            self.assertIn(["git", "clean", "-fd"], calls)
+
+    def test_protocol_error_usage_is_read_without_token_totals(self):
+        error = {"type": "invalid_tool_call_format", "attempts": 3}
+        container = Mock()
+        container.exec_run.return_value = SimpleNamespace(
+            exit_code=0, output=json.dumps({"tool_protocol_error": error}).encode()
+        )
+        usage = lifecycle._read_refinement_usage(
+            SimpleNamespace(container=container), "/tmp/agent_output"
+        )
+        self.assertEqual(usage, {"tool_protocol_error": error})
 
     def test_fatal_policy_stops_for_every_hyperagents_game_config(self):
         from benchmark.config import load_config

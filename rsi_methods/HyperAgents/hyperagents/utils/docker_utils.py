@@ -161,9 +161,13 @@ def build_container(
     verbose=True,
     runtime_image_name=None,
     runtime_dockerfile="Dockerfile.runtime",
+    mount_repo=True,
 ):
     """
     Build and run the image using Docker's configured default networking.
+
+    ``mount_repo=False`` keeps candidate writes inside the container instead of
+    exposing a shared host checkout through a writable bind mount.
     """
     try:
         if runtime_image_name:
@@ -310,11 +314,12 @@ def build_container(
             "detach": True,
             "tty": True,
             "stdin_open": True,
-            "volumes": {
-                os.path.abspath(repo_path): {"bind": f"/{REPO_NAME}", "mode": "rw"}
-            },
             "command": "tail -f /dev/null",
         }
+        if mount_repo:
+            run_kwargs["volumes"] = {
+                os.path.abspath(repo_path): {"bind": f"/{REPO_NAME}", "mode": "rw"}
+            }
         extra_hosts = {}
         for entry in os.environ.get("HYPERAGENTS_EXTRA_HOSTS", "").split(","):
             entry = entry.strip()
@@ -347,15 +352,19 @@ def build_container(
                 # Podman 5.x uses CDI (Container Device Interface) instead of --gpus
                 import subprocess
 
-                volume_mount = f"{os.path.abspath(repo_path)}:/{REPO_NAME}:rw"
                 cmd = [
                     "podman",
                     "run",
                     "-d",  # detach
                     "-it",  # interactive + tty
                     "--network=host",
-                    "-v",
-                    volume_mount,
+                ]
+                # Add volume mount before GPU device to keep device flags together
+                if mount_repo:
+                    volume_mount = f"{os.path.abspath(repo_path)}:/{REPO_NAME}:rw"
+                    cmd.extend(["-v", volume_mount])
+                # GPU device and environment
+                cmd.extend([
                     "--device",
                     "nvidia.com/gpu=all",  # CDI format for Podman 5.x
                     # Add environment variables for NVIDIA libraries
@@ -371,7 +380,7 @@ def build_container(
                     "tail",
                     "-f",
                     "/dev/null",
-                ]
+                ])
 
                 safe_log(f"Running Podman command: {' '.join(cmd)}", verbose=verbose)
                 result = subprocess.run(cmd, capture_output=True, text=True)

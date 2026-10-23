@@ -70,18 +70,7 @@ class InstantiatedAgent:
         )
 
     def close(self) -> None:
-        try:
-            reset = self.container.exec_run(
-                ["git", "reset", "--hard", self.snapshot.root_commit],
-                workdir=f"/{REPO_NAME}",
-            )
-            log_container_output(reset)
-            clean = self.container.exec_run(
-                ["git", "clean", "-fd"], workdir=f"/{REPO_NAME}"
-            )
-            log_container_output(clean)
-        finally:
-            cleanup_container(self.container)
+        cleanup_container(self.container)
 
 
 @dataclass(frozen=True)
@@ -144,6 +133,7 @@ def instantiate_agent(
         image_name,
         container_name,
         runtime_image_name=RUNTIME_IMAGE_NAME,
+        mount_repo=False,
     )
     if container is None:
         raise RuntimeError("Docker container creation failed.")
@@ -295,6 +285,8 @@ def refine(
         metadata["refinement_usage"] = usage
     if usage and usage.get("tool_budget_exhausted"):
         metadata["tool_budget_exhausted"] = True
+    if usage and usage.get("tool_protocol_error"):
+        metadata["meta_agent_protocol_error"] = usage["tool_protocol_error"]
     if execution.exit_code != 0:
         output = execution.output.decode("utf-8", errors="replace")
         raise RuntimeError(f"MetaAgent command failed: {output}")
@@ -462,11 +454,14 @@ def tracked_chat(*args, **kwargs):
     history = original_chat(*args, **kwargs)
     last = history[-1] if history else {}
     usage = dict(last.get("usage") or {})
+    if last.get("tool_protocol_error"):
+        usage["tool_protocol_error"] = last["tool_protocol_error"]
     if last.get("tool_budget_exhausted"):
         usage["tool_budget_exhausted"] = True
         usage["tool_calls_executed"] = last["tool_calls_executed"]
         usage["tool_call_limit"] = last["tool_call_limit"]
-    if usage.get("total_tokens", 0) > 0 or usage.get("tool_budget_exhausted"):
+    if (usage.get("total_tokens", 0) > 0 or usage.get("tool_budget_exhausted")
+            or usage.get("tool_protocol_error")):
         usage_path.write_text(json.dumps(usage), encoding="utf-8")
     return history
 
@@ -526,6 +521,23 @@ def _collect_refinement(
     changed = file_exist_and_not_empty(str(patch_path))
     metadata["patch_produced"] = changed
     metadata["run_eval"] = changed
+    if metadata.get("meta_agent_protocol_error"):
+        metadata["patch_rejected"] = changed
+        metadata["run_eval"] = False
+        metadata["refine_successful"] = False
+        metadata["compilation_successful"] = None
+        metadata["error"] = (
+            "MetaAgent tool protocol failed; candidate changes were preserved for audit "
+            "but rejected."
+        )
+        _discard_refinement_changes(agent)
+        return RefineOutput(
+            agent=agent,
+            changed=False,
+            patch_path=None,
+            result=None,
+            metadata=metadata,
+        )
     if changed:
         _validate_patch_scope(patch_path)
         check_candidate_compilation(agent.container)
@@ -555,6 +567,23 @@ def _collect_refinement(
     )
 
 
+def _discard_refinement_changes(agent: InstantiatedAgent) -> None:
+    """Restore the isolated candidate after an invalid MetaAgent tool exchange."""
+    repo_path = f"/{REPO_NAME}"
+    _run_candidate_command(
+        agent.container,
+        ["git", "reset", "--hard", agent.commit_hash],
+        repo_path,
+        "Rejected refinement reset",
+    )
+    _run_candidate_command(
+        agent.container,
+        ["git", "clean", "-fd"],
+        repo_path,
+        "Rejected refinement clean",
+    )
+
+
 def _read_refinement_usage(
     agent: InstantiatedAgent, container_output: str,
 ) -> dict[str, Any] | None:
@@ -579,13 +608,16 @@ def _read_refinement_usage(
         type(raw.get(key)) is int and raw[key] >= 0 for key in fields.values()
     ) and raw.get("total_tokens", 0) > 0
     exhausted = raw.get("tool_budget_exhausted") is True
-    if not valid_usage and not exhausted:
+    protocol_error = raw.get("tool_protocol_error")
+    if not valid_usage and not exhausted and not protocol_error:
         return None
     usage = {name: raw[key] for name, key in fields.items()} if valid_usage else {}
     if exhausted:
         usage["tool_budget_exhausted"] = True
         usage["tool_calls_executed"] = raw.get("tool_calls_executed")
         usage["tool_call_limit"] = raw.get("tool_call_limit")
+    if protocol_error:
+        usage["tool_protocol_error"] = protocol_error
     return usage
 
 

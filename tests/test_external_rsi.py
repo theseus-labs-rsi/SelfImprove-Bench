@@ -291,6 +291,141 @@ class ExternalMethodTest(unittest.TestCase):
         self.assertEqual(resumed["training_runs"], result["training_runs"])
         self.assertEqual(resumed["holdout_runs"], result["holdout_runs"])
 
+    def test_provider_failure_detection_preserves_invalid_action_scores(self):
+        from benchmark.runner import _is_provider_failure
+
+        for record, expected in (
+            ({"status": "error", "error_type": "APITimeoutError"}, True),
+            ({"status": "error", "error": "API request timed out"}, True),
+            ({"status": "error", "llm_metrics": {
+                "attempts": [{"status": "provider_error"}]}}, True),
+            ({"status": "error", "llm_metrics": {"stages": [
+                {"attempts": [{"status": "ok"}]},
+                {"attempts": [{"status": "provider_error"}]},
+            ]}}, True),
+            ({"status": "error", "error_type": "FarmError",
+              "error": "ordinary task failure"}, False),
+            ({"status": "error", "error": "Invalid action: request timed out",
+              "llm_metrics": {"attempts": [{"status": "validation_error"}]}}, False),
+            ({"status": "ok"}, False),
+        ):
+            with self.subTest(record=record):
+                self.assertEqual(_is_provider_failure(record), expected)
+
+    def test_checkpoint_resume_retries_provider_failures_before_later_tasks(self):
+        for phase in ("train", "replay", "holdout"):
+            for continue_on_error in (False, True):
+                with self.subTest(phase=phase, continue_on_error=continue_on_error):
+                    output = self.root / f"timeout-{phase}-{continue_on_error}"
+                    config = replace(
+                        load_config(ROOT / "configs/examples/minimal_rsi.json"),
+                        output_dir=str(output),
+                        continue_on_error=continue_on_error,
+                    )
+                    calls = []
+                    failed_id = None
+
+                    def generate(difficulty, *, seed, task_id):
+                        return {"difficulty": difficulty, "seed": seed, "task_id": task_id}
+
+                    def evaluate(task, **kwargs):
+                        nonlocal failed_id
+                        calls.append(task.run_id)
+                        task_phase = "replay" if task.replay else task.phase
+                        failed = failed_id is None and task_phase == phase
+                        if failed:
+                            failed_id = task.run_id
+                        return EvaluationOutcome({
+                            "status": "error" if failed else "ok",
+                            "game": task.game, "difficulty": task.difficulty,
+                            "relative_score": 0 if failed else 0.4,
+                            "success": not failed,
+                            "error_type": "APITimeoutError" if failed else None,
+                            "error": "API request timed out" if failed else None,
+                            "interactions": [], "llm_metrics": {},
+                        })
+
+                    with patch.object(GAMES["farm"], "generate", side_effect=generate), \
+                            patch("benchmark.runner._evaluate", side_effect=evaluate), \
+                            redirect_stdout(io.StringIO()):
+                        interrupted = run_benchmark(config)
+                        self.assertEqual(calls[-1], failed_id)
+                        self.assertFalse(interrupted["summary"]["checkpoint_chain_complete"])
+                        self.assertTrue((output / "inflight.json").exists())
+                        checkpoints = list((output / "checkpoints").glob("train_*.json"))
+                        checkpoints += list((output / "checkpoints").glob("holdout_*.json"))
+                        self.assertEqual(len(checkpoints), len(calls) - 1)
+                        failed_record = (
+                            interrupted["holdout_runs"] if phase == "holdout"
+                            else interrupted["training_runs"]
+                        )[-1]
+                        self.assertIsNone(failed_record["selection"])
+                        retry_start = len(calls)
+                        with patch.object(MinimalAdapter, "init",
+                                          side_effect=AssertionError("Must not re-init")):
+                            resumed = run_benchmark(config, resume=True)
+                        self.assertEqual(calls[retry_start], failed_id)
+                        self.assertEqual(calls.count(failed_id), 2)
+                        self.assertEqual(len(calls), len(set(calls)) + 1)
+                        self.assertTrue(resumed["summary"]["checkpoint_chain_complete"])
+                        self.assertEqual(resumed["summary"]["completed_training_runs"], 6)
+                        self.assertEqual(resumed["summary"]["completed_holdout_runs"], 1)
+                        self.assertFalse((output / "inflight.json").exists())
+                        self.assertEqual(resumed["summary"]["abandoned_attempts"], 1)
+                        final = json.loads((output / "checkpoints/holdout_0001.json").read_text())
+                        self.assertEqual(final["state"]["adapter_state"]["rounds"], 5)
+
+    def test_holdout_invalid_action_remains_a_committed_failure(self):
+        config = replace(
+            load_config(ROOT / "configs/examples/minimal_rsi.json"),
+            schedule=(), replay=ReplayConfig(), output_dir=str(self.root / "invalid-action"),
+        )
+
+        def generate(difficulty, *, seed, task_id):
+            return {"difficulty": difficulty, "seed": seed, "task_id": task_id}
+
+        outcome = EvaluationOutcome({
+            "status": "error", "game": "farm", "difficulty": 1,
+            "relative_score": 0, "success": False, "error_type": "FarmError",
+            "error": "Invalid action after 1 attempts: missing days array",
+            "interactions": [], "llm_metrics": {
+                "attempts": [{"status": "validation_error"}]},
+        })
+        with patch.object(GAMES["farm"], "generate", side_effect=generate), \
+                patch("benchmark.runner._evaluate", return_value=outcome) as evaluate, \
+                redirect_stdout(io.StringIO()):
+            result = run_benchmark(config)
+            self.assertTrue(result["summary"]["checkpoint_chain_complete"])
+            self.assertEqual(result["holdout_runs"][0]["relative_score"], 0)
+            resumed = run_benchmark(config, resume=True)
+            self.assertEqual(evaluate.call_count, 1)
+            self.assertEqual(resumed["holdout_runs"], result["holdout_runs"])
+
+    def test_raised_timeout_is_retried_after_resume(self):
+        output = self.root / "raised-timeout"
+        config = replace(
+            load_config(ROOT / "configs/examples/minimal_rsi.json"),
+            schedule=(), replay=ReplayConfig(), output_dir=str(output),
+            continue_on_error=True,
+        )
+        outcome = EvaluationOutcome({
+            "status": "ok", "game": "farm", "difficulty": 1,
+            "relative_score": 0.4, "success": False,
+            "interactions": [], "llm_metrics": {},
+        })
+        with patch.object(GAMES["farm"], "generate", side_effect=lambda difficulty, seed, task_id: {
+                "difficulty": difficulty, "seed": seed, "task_id": task_id}), \
+                patch("benchmark.runner._evaluate", side_effect=[
+                    TimeoutError("request timed out"), outcome,
+                ]) as evaluate, redirect_stdout(io.StringIO()):
+            result = run_benchmark(config)
+            self.assertFalse(result["summary"]["checkpoint_chain_complete"])
+            self.assertFalse((output / "checkpoints/holdout_0001.json").exists())
+            resumed = run_benchmark(config, resume=True)
+            self.assertEqual(evaluate.call_count, 2)
+            self.assertTrue(resumed["summary"]["checkpoint_chain_complete"])
+            self.assertEqual(resumed["holdout_runs"][0]["relative_score"], 0.4)
+
     def test_hci_accepts_external_method_with_matching_initial(self):
         config = replace(load_config(ROOT / "configs/main/farm_ace.json"), agent=agent_config())
         initial_config = replace(config, schedule=(), replay=ReplayConfig())
