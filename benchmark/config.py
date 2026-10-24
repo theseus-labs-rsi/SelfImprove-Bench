@@ -173,8 +173,10 @@ def config_from_mapping(value: dict[str, Any]) -> BenchmarkConfig:
     if not isinstance(agent_raw, dict):
         raise ValueError("agent must be an object")
     provider = str(agent_raw.get("provider", "ace")).strip().lower()
-    if provider not in SUPPORTED_PROVIDERS:
+    if provider not in (*SUPPORTED_PROVIDERS, "claude"):
         raise ValueError(f"agent.provider must be one of: {', '.join(SUPPORTED_PROVIDERS)}")
+    if provider == "claude" and schedule:
+        raise ValueError("agent.provider='claude' is evaluation-only; schedule must be empty")
     adapter = agent_raw.get("adapter")
     adapter_options = agent_raw.get("adapter_options", {})
     if not isinstance(adapter_options, dict):
@@ -220,7 +222,16 @@ def config_from_mapping(value: dict[str, Any]) -> BenchmarkConfig:
                 "game_options.gameworld.framework must match the agent method "
                 f"({identity!r}) so the CSD method and GameWorld client cannot diverge"
             )
-        for phase in ("train", "holdout"):
+        generator = gameworld_options.get("train_generator")
+        if generator is not None and generator != "astray":
+            raise ValueError("game_options.gameworld.train_generator must be 'astray'")
+        if generator and gameworld_options.get("train"):
+            raise ValueError("Use either gameworld.train_generator or gameworld.train")
+        if generator:
+            for item in schedule:
+                if item.game == "gameworld" and item.difficulty not in range(1, 6):
+                    raise ValueError("Generated Astray difficulty must be within 1..5")
+        for phase in (("holdout",) if generator else ("train", "holdout")):
             pool = gameworld_options.get(phase)
             if not isinstance(pool, list) or not pool:
                 raise ValueError(f"game_options.gameworld.{phase} must be a non-empty array")
@@ -232,7 +243,7 @@ def config_from_mapping(value: dict[str, Any]) -> BenchmarkConfig:
                         f"game_options.gameworld.{phase}[{index}] requires game and task"
                     )
         train_count = sum(item.count for item in schedule if item.game == "gameworld")
-        if train_count > len(gameworld_options["train"]):
+        if not generator and train_count > len(gameworld_options["train"]):
             raise ValueError(
                 "GameWorld training schedule requests "
                 f"{train_count} tasks but only {len(gameworld_options['train'])} are configured"
@@ -241,7 +252,7 @@ def config_from_mapping(value: dict[str, Any]) -> BenchmarkConfig:
             raise ValueError(
                 "holdout_tasks_per_difficulty exceeds game_options.gameworld.holdout size"
             )
-        train_keys = {(str(item["game"]).strip(), str(item["task"]).strip()) for item in gameworld_options["train"]}
+        train_keys = {(str(item["game"]).strip(), str(item["task"]).strip()) for item in gameworld_options.get("train", [])}
         holdout_keys = {(str(item["game"]).strip(), str(item["task"]).strip()) for item in gameworld_options["holdout"]}
         overlap = train_keys & holdout_keys
         if overlap:

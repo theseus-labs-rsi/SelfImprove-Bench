@@ -273,6 +273,12 @@ class GameWorldBenchmark:
             else:
                 run_root = cell / f"attempt_{uuid.uuid4().hex[:8]}"
                 run_root.mkdir(parents=True, exist_ok=False)
+            if task.get("generated_task") is not None:
+                from .astray_task_factory import materialize_task
+
+                task_options["task_assets_root"] = str(
+                    materialize_task(dict(task), run_root / "task_assets")
+                )
             client_module, client_class = FRAMEWORK_CLIENTS[framework]
             module = importlib.import_module(client_module)
             client_type = getattr(module, client_class)
@@ -328,7 +334,8 @@ class GameWorldBenchmark:
                     raise RuntimeError('No isolated GameWorld port available for this episode')
             if resumable:
                 from .astray_step_resume import AstrayTransaction, UnsafeResume, coordinator_resume
-                transaction = AstrayTransaction(run_root=run_root, task=dict(task),
+                transaction_task = {**task, **task_options}
+                transaction = AstrayTransaction(run_root=run_root, task=transaction_task,
                                                 gameworld_root=gameworld_root, framework=framework)
             finished = resumable and transaction.completed_summary(int(task.get('max_steps') or 100))
             if finished:

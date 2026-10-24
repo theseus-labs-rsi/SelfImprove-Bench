@@ -14,6 +14,7 @@ no circular import). Import style is package-relative.
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 from benchmark.contracts import (
@@ -59,7 +60,7 @@ def resolve_act(text: str, task: SweepmineCore) -> SweepmineEvent:
     Returns the action outcome event, which resolve_response turns into text.
     """
     try:
-        payload = json.loads(text.strip())
+        payload = json.loads(extract_action(text).strip())
         act = payload["act"]
         row = int(payload["row"])
         col = int(payload["col"])
@@ -188,7 +189,20 @@ def play(task: SweepmineCore, agent: Any) -> dict[str, Any]:
 
 
 def extract_action(response_text: str) -> str:
-    """Accept game action text; method envelopes belong to method adapters."""
+    """Unwrap one complete JSON code fence, without interpreting method envelopes."""
+    fenced = re.fullmatch(
+        r"```(?:json)?[ \t]*\r?\n(.*?)\r?\n```",
+        response_text.strip(),
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    if fenced:
+        inner = fenced.group(1).strip()
+        try:
+            payload = json.loads(inner)
+        except (ValueError, TypeError):
+            return response_text
+        if isinstance(payload, dict):
+            return inner
     return response_text
 
 

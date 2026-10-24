@@ -9,7 +9,7 @@
     // Training-only URL seed. No train_seed means the original official seed 42.
     var seedParam = new URLSearchParams(window.location.search || '').get('train_seed');
     var parsedSeed = seedParam !== null && /^(0|[1-9][0-9]*)$/.test(seedParam) ? Number(seedParam) : NaN;
-    var SEED = Number.isSafeInteger(parsedSeed) && parsedSeed > 0 && parsedSeed <= 0xffffffff
+    var SEED = Number.isSafeInteger(parsedSeed) && parsedSeed >= 0 && parsedSeed <= 0xffffffff
         ? (parsedSeed >>> 0) : (42 >>> 0);
     function mulberry32(s) {
         return function() {

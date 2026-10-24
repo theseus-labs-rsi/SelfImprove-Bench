@@ -112,6 +112,13 @@ class MainConfigurationsTest(unittest.TestCase):
                         self.assertTrue(all(t.task['game_id'] == own for t in manifest.holdout[:5]))
                         self.assertTrue(all(t.task['game_id'] != own for t in manifest.holdout[5:]))
                         for task in (*normal, *manifest.holdout):
+                            if "generated_task" in task.task:
+                                self.assertEqual(game, "astray")
+                                self.assertEqual(task.difficulty, 3)
+                                self.assertEqual(task.task["generated_task"]["game_id"], own)
+                                self.assertEqual(task.task["generated_task"]["task_id"],
+                                                 task.task["game_task_id"])
+                                continue
                             assets = Path(task.task['task_assets_root'])
                             self.assertTrue(assets.is_dir())
                             directory = 'minecraft' if task.task['game_id'].startswith('18_') else 'astray'

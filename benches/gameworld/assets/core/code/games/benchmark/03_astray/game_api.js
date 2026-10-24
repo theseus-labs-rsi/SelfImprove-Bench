@@ -3,7 +3,7 @@
   // Report the query-selected training map seed; gameAPI.init({seed}) stays unsupported.
   const rawTrainSeed = new URLSearchParams(window.location.search || '').get('train_seed');
   const parsedTrainSeed = rawTrainSeed !== null && /^(0|[1-9][0-9]*)$/.test(rawTrainSeed) ? Number(rawTrainSeed) : NaN;
-  const DEFAULT_SEED = Number.isSafeInteger(parsedTrainSeed) && parsedTrainSeed > 0 && parsedTrainSeed <= 0xffffffff
+  const DEFAULT_SEED = Number.isSafeInteger(parsedTrainSeed) && parsedTrainSeed >= 0 && parsedTrainSeed <= 0xffffffff
     ? (parsedTrainSeed >>> 0) : 42;
 
   const capabilities = {
