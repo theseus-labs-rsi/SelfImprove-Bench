@@ -7,6 +7,7 @@
 <p align="center">
   <b>If you like our project, please give us a star ⭐ on GitHub for the latest update.</b>
 </p>
+
 ![image](./figures/intro.png)
 
 ## ✨ Introduction
