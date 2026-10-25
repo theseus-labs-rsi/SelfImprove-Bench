@@ -772,6 +772,11 @@
     if (typeof startGame === "function") {
       try {
         startGame(seed, null);
+        // resetEpisode creates a new Player, so restore benchmark input focus
+        // after startGame replaces the instance created by the page bootstrap.
+        if (typeof player !== "undefined" && player && typeof player.forceLock === "function") {
+          player.forceLock();
+        }
         runtime.lastResetMethod = "soft_restart";
         return {
           ok: true,
@@ -786,6 +791,9 @@
     if (typeof startNewGame === "function") {
       try {
         startNewGame();
+        if (typeof player !== "undefined" && player && typeof player.forceLock === "function") {
+          player.forceLock();
+        }
         runtime.lastResetMethod = "soft_restart";
         return {
           ok: true,
@@ -915,7 +923,20 @@
       }
       if (!entities.length) entities = null;
 
-      var isActionable = status === "ready" || status === "playing";
+      // A visible menu, missing player, or active loading screen means the
+      // benchmark cannot safely send gameplay actions yet.  The old check
+      // treated the initial menu/loading state as actionable because its
+      // status was also reported as "ready".
+      var uiLoading = isElementVisibleById("loading");
+      var statusUI = statusInfo.ui || {};
+      var hasPlayableSession =
+        game !== null &&
+        playerInst !== null &&
+        statusUI.is_main_menu_visible !== true &&
+        uiLoading !== true;
+      var isActionable =
+        status === "playing" ||
+        (status === "ready" && hasPlayableSession);
 
       return {
         schemaVersion: "2.0",

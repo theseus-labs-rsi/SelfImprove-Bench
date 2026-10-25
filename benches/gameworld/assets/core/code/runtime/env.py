@@ -115,7 +115,13 @@ class GameEnv:
         self.game_url = self._build_game_url()
         self.game_manager = BrowserGameManager(self._build_browser_config())
         await self.game_manager.start()
-        if self.config.game_id == "15_google-snake":
+        # Minecraft's page-level gameAPI.init() only records episode metadata;
+        # it intentionally does not leave the main menu. Start the first world
+        # through the reset hook before waiting for an actionable state.
+        if self.config.game_id == "18_minecraft-clone-glm":
+            reset = await self.game_manager.reset_game()
+            LOGGER.info("Minecraft startup reset: %s", reset)
+        elif self.config.game_id == "15_google-snake":
             reset = await self.game_manager.reset_game()
             LOGGER.info("Google Snake startup reset: %s", reset)
         ready = await self.wait_until_ready(stage="startup", timeout_s=DEFAULT_READY_TIMEOUT_S)
