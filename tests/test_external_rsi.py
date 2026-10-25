@@ -476,10 +476,16 @@ class ExternalMethodTest(unittest.TestCase):
 class VisualClientTest(unittest.TestCase):
     def test_all_methods_use_shared_gameworld_transport(self):
         from benches.gameworld.frameworks import SUPPORTED_FRAMEWORKS, client_import_spec
+        expected = {
+            "ace": ("benches.gameworld.rsi_game_client", "RSIGameClient"),
+            "ahe": ("benches.gameworld.rsi_game_client", "RSIGameClient"),
+            "hyperagents": ("benches.gameworld.rsi_game_client", "RSIGameClient"),
+            "rsi": ("benches.gameworld.rsi_game_client", "RSIGameClient"),
+            "claude": ("agents.mm_agents.claude_code", "ClaudeCodeAgent"),
+        }
         for method in SUPPORTED_FRAMEWORKS:
             with self.subTest(method=method):
-                self.assertEqual(client_import_spec(method), (
-                    "benches.gameworld.rsi_game_client", "RSIGameClient"))
+                self.assertEqual(client_import_spec(method), expected[method])
 
     def test_method_unwraps_ace_answer_before_game_parsing(self):
         from benches.sweepmine.play import extract_action

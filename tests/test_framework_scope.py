@@ -18,7 +18,7 @@ from benchmark.methods import BUILTIN_ADAPTERS, method_identity
 
 ROOT = Path(__file__).resolve().parents[1]
 METHODS = {"ace", "ahe", "hyperagents"}
-REMOVED_METHODS = ("hyperdsh", "baseline", "self_harness", "codex", "claude", "deepseek", "openai")
+REMOVED_METHODS = ("hyperdsh", "baseline", "self_harness")
 
 
 class FrameworkScopeTest(unittest.TestCase):
@@ -39,7 +39,7 @@ class FrameworkScopeTest(unittest.TestCase):
                 self.assertEqual(sum(item.count for item in config.schedule), 20)
 
     def test_removed_providers_are_rejected(self):
-        for method in REMOVED_METHODS:
+        for method in (*REMOVED_METHODS, "codex", "deepseek", "openai"):
             with self.subTest(method=method), self.assertRaisesRegex(ValueError, "agent.provider"):
                 config_from_mapping({
                     "schedule": [{"game": "farm", "difficulty": 3, "count": 1}],
@@ -57,6 +57,21 @@ class FrameworkScopeTest(unittest.TestCase):
                 })
                 self.assertEqual(config.agent.provider, method)
                 self.assertFalse(config.schedule)
+
+    def test_claude_baseline_is_eval_only(self):
+        config = config_from_mapping({
+            "schedule": [],
+            "holdout": [{"game": "farm", "difficulty": 3}],
+            "agent": {"provider": "claude", "model": "claude-opus-5-5"},
+        })
+        self.assertEqual(config.agent.provider, "claude")
+        self.assertFalse(config.schedule)
+        with self.assertRaisesRegex(ValueError, "agent.provider"):
+            config_from_mapping({
+                "schedule": [{"game": "farm", "difficulty": 3, "count": 1}],
+                "holdout": [{"game": "farm", "difficulty": 3}],
+                "agent": {"provider": "claude"},
+            })
 
     def test_sessions_initialize_only_supported_methods(self):
         with tempfile.TemporaryDirectory() as directory:

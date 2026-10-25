@@ -164,9 +164,11 @@ class BrowserReadinessGate:
         started_at = time.monotonic()
         last_status: str | None = None
         last_actionable: bool | None = None
+        last_state: dict | None = None
 
         while True:
             state = await get_state()
+            last_state = state
             status = self.normalize_status(state)
             actionable = self.normalize_actionable(state)
 
@@ -203,6 +205,20 @@ class BrowserReadinessGate:
                     actionable,
                     sorted(desired),
                 )
+                if isinstance(last_state, dict):
+                    game_state = last_state.get("game_state")
+                    player_state = game_state.get("player") if isinstance(game_state, dict) else None
+                    debug = last_state.get("debug")
+                    ui = debug.get("ui") if isinstance(debug, dict) else None
+                    LOGGER.warning(
+                        "Game readiness diagnostics: game_id=%s player=%s player_locked=%s "
+                        "ui=%s debug=%s",
+                        last_state.get("gameId"),
+                        player_state is not None,
+                        player_state.get("is_locked") if isinstance(player_state, dict) else None,
+                        ui,
+                        debug,
+                    )
                 return False
 
             await asyncio.sleep(DEFAULT_READINESS_POLL_S)
@@ -275,6 +291,12 @@ class BrowserGameManager:
             "headless": self.config.headless,
             "args": self._browser_launch_args(),
         }
+        # Some containerized Linux hosts cannot start Chromium's zygote/thread
+        # pool; single-process mode avoids SIGTRAP during browser startup there.
+        if os.environ.get("GAMEWORLD_CHROMIUM_SINGLE_PROCESS") == "1":
+            launch_kwargs["args"].extend(
+                ["--single-process", "--no-zygote", "--disable-gpu"]
+            )
         if os.environ.get("GAMEWORLD_PLAYWRIGHT_MINIMAL_ARGS") == "1":
             launch_kwargs["ignore_default_args"] = True
             launch_kwargs["args"] = list(launch_kwargs["args"])
@@ -290,6 +312,14 @@ class BrowserGameManager:
             service_workers="block",
         )
         self.page = await self.context.new_page()
+        self.page.on(
+            "pageerror",
+            lambda exc: LOGGER.error("Game page error: %s", exc),
+        )
+        self.page.on(
+            "console",
+            lambda message: LOGGER.debug("Game console [%s]: %s", message.type, message.text),
+        )
 
         if self.config.zoom_level != 1.0:
             cdp_session = await self._new_cdp_session()

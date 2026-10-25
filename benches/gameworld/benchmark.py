@@ -285,6 +285,8 @@ class GameWorldBenchmark:
 
             def client_factory(runtime_config: Any, agent_ids: list[str]) -> list[Any]:
                 base_clients = build_agent_clients(runtime_config, agent_ids)
+                if framework == "claude":
+                    return base_clients
                 effort = str(task.get("reasoning_effort") or "").strip()
                 if effort and effort not in {"low", "medium", "high"}:
                     raise ValueError(f"Unsupported GameWorld reasoning_effort: {effort}")
@@ -313,9 +315,16 @@ class GameWorldBenchmark:
 
             # The same task id is run concurrently by all three RSI providers.
             # Separate each framework's GameWorld ports to avoid cross-run collision.
-            framework_offset = {"ace": 0, "hyperagents": 1000, "ahe": 2000, "rsi": 3000}[framework]
-            # Task ids repeat across games (e.g. train-gameworld-d1-0001), so key by game too.
-            port_key = f"{task['game_id']}/{task_key}"
+            framework_offset = {
+                "ace": 0,
+                "hyperagents": 1000,
+                "ahe": 2000,
+                "rsi": 3000,
+                "claude": 4000,
+            }[framework]
+            # Run ids can repeat across independent evaluation configs; include the
+            # concrete task id as well as game and phase/run key to isolate them.
+            port_key = f"{task['game_id']}/{task['game_task_id']}/{task_key}"
             port = 20000 + framework_offset + (zlib.crc32(port_key.encode("utf-8")) % 1000)
             if True:  # always probe (was: only for resumable Astray)
                 # A just-closed local server may leave a short TCP TIME_WAIT, and

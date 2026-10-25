@@ -231,7 +231,10 @@ def config_from_mapping(value: dict[str, Any]) -> BenchmarkConfig:
             for item in schedule:
                 if item.game == "gameworld" and item.difficulty not in range(1, 6):
                     raise ValueError("Generated Astray difficulty must be within 1..5")
-        for phase in (("holdout",) if generator else ("train", "holdout")):
+        phases = ("holdout",) if generator or not any(
+            item.game == "gameworld" for item in schedule
+        ) else ("train", "holdout")
+        for phase in phases:
             pool = gameworld_options.get(phase)
             if not isinstance(pool, list) or not pool:
                 raise ValueError(f"game_options.gameworld.{phase} must be a non-empty array")
@@ -243,10 +246,11 @@ def config_from_mapping(value: dict[str, Any]) -> BenchmarkConfig:
                         f"game_options.gameworld.{phase}[{index}] requires game and task"
                     )
         train_count = sum(item.count for item in schedule if item.game == "gameworld")
-        if not generator and train_count > len(gameworld_options["train"]):
+        configured_train = gameworld_options.get("train", [])
+        if not generator and train_count > len(configured_train):
             raise ValueError(
                 "GameWorld training schedule requests "
-                f"{train_count} tasks but only {len(gameworld_options['train'])} are configured"
+                f"{train_count} tasks but only {len(configured_train)} are configured"
             )
         if pool_size > len(gameworld_options["holdout"]):
             raise ValueError(

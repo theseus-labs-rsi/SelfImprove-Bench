@@ -29,7 +29,13 @@ GAME_ID = '18_minecraft-clone-glm'
 snapshot_memory = _astray.snapshot_memory
 restore_memory = _astray.restore_memory
 
-_KNOWN_API = frozenset({'6e1254211b86f418d155bbb77b5529d14e3fde261929b075272dace603d2aaa1'})
+_KNOWN_API = frozenset({
+    # Pre-ee59de6 Minecraft API.
+    '6e1254211b86f418d155bbb77b5529d14e3fde261929b075272dace603d2aaa1',
+    # ee59de6 only fixes reset input focus and startup/actionability guards;
+    # checkpoint runtime and score semantics remain unchanged.
+    '182f171029bd258ab8c68ba139fe75cedfdc506a10b1b80768b63facb4818325',
+})
 _KNOWN_INDEX = frozenset({'d160e783bf312108b8afa146f8551e02f4583eeb84806309d7282d325991af3d'})
 
 

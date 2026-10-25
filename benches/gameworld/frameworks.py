@@ -13,9 +13,11 @@ from typing import Any
 from benchmark.methods import RSI_PROVIDERS
 
 
-SUPPORTED_FRAMEWORKS = RSI_PROVIDERS
-CLIENT_MODULES = {name: "benches.gameworld.rsi_game_client" for name in SUPPORTED_FRAMEWORKS}
-CLIENT_CLASSES = {name: "RSIGameClient" for name in SUPPORTED_FRAMEWORKS}
+SUPPORTED_FRAMEWORKS = (*RSI_PROVIDERS, "claude")
+CLIENT_MODULES = {name: "benches.gameworld.rsi_game_client" for name in RSI_PROVIDERS}
+CLIENT_CLASSES = {name: "RSIGameClient" for name in RSI_PROVIDERS}
+CLIENT_MODULES["claude"] = "agents.mm_agents.claude_code"
+CLIENT_CLASSES["claude"] = "ClaudeCodeAgent"
 ADAPTOR_IMPORTS = {
     "ace": "rsi_methods.ACE.ACEAdaptor.ACEAdaptor",
     "hyperagents": "rsi_methods.HyperAgents.HyperAgentsAdaptor.HyperAgentsAdaptor",

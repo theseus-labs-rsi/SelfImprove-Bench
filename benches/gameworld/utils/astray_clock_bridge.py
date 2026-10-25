@@ -16,6 +16,8 @@ _KNOWN_SOURCE_DIGESTS = frozenset({
     # ?train_seed= maps, and the official holdout copy.
     "3a0a0ecfaa2fc152c5dfc4ec4940fbe79ddea4d0570ae4b06c9a38942fe62c80",
     "25c96e48fb859e2fa82a0ce71e835ce13fb8466f249ea7ca16ac90d5d8ce585e",
+    # Generated-task seed support (d991673): accept train_seed=0.
+    "bd46fc9b45e728ea428cd1951dcec553c7b862569962684d3bf70e6300cfe548",
 })
 
 _BRIDGE = r'''

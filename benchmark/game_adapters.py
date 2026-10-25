@@ -165,7 +165,7 @@ def evaluate_task(
     agent: Any | None = None, reload_agent: Callable[[], Any] | None = None,
 ) -> EvaluationOutcome:
     if game == "gameworld":
-        if agent is None:
+        if agent is None and str(task.get("framework") or "").lower() != "claude":
             raise TypeError("gameworld evaluation requires an explicit RSI agent")
         from benches.gameworld.benchmark import GameWorldBenchmark
 
