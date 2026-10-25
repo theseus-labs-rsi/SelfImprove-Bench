@@ -1,15 +1,29 @@
-# RSI-Bench
+# SelfImprove-Bench: Evaluating Generalization in Self-Improving Agents
 
-A benchmark for recursive self-improvement across six game environments.
-RSI-Bench trains agent frameworks and evaluates their initial and final states
-on shared held-out tasks, measuring score gains, retention, generalization,
-and token/time costs.
+<p align="center">
+  <a href="./LICENSE.txt"><img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="License MIT" /></a>
+</p>
 
-- **Methods:** ACE, AHE, HyperAgents.
+<p align="center">
+  <b>If you like our project, please give us a star ⭐ on GitHub for the latest update.</b>
+</p>
+![image](./figures/intro.png)
+
+## ✨ Introduction
+
+The above project provides a benchmark for RSI. Its protocol supports multiple representative RSI methods to self-evolve from feedback on multi-round tasks, and provides task generation, simulation, and evaluation through six game scenarios across three capability categories. With a scalable task generation and orchestration mechanism, the benchmark can measure the effectiveness of RSI methods at different levels of generalization and offers better sustainability.
+
+- **Generalization Ladder**: Organize evaluation into generalization ladder levels G0 to G4: same instances (G0), unseen instances at the same difficulty (G1), new difficulty levels within the same task (G2), different tasks within the same capability category (G3), and tasks across capability categories (G4).
+- **Scalable Task Generation and Orchestration**: Automatic generate task istances based on templates and difficuly coefficients, enabling configurable task sequences for evaluating each level of the generalization ladder.
+- **High Resolution Trace Analysis**: Characterize refinement semantics, modification scope, capability dimension, and generalizability from evolution trajectories, enabling a more comprehensive reflection on the method pattern..
+
+The initial version covers following methods and games, while you can extend new ones based on the extensible framework.
+- **Methods:** RSI framework (ACE, AHE, HyperAgents) and baselines (Codex, Claude Code, Deepseek Harness).
 - **Games:** Farm, Combat, Sweepmine, Hero's Journey, Minecraft, Astray.
-- **Extensible:** game environments and RSI methods use separate interfaces.
+![image](./figures/bench.png)
 
-## Installation
+
+## ⚙️ Setup
 
 Run the following from the repository root:
 
@@ -60,7 +74,7 @@ This check does not validate API credentials or model availability.
 Host proxy variables (including `NO_PROXY`) override proxy defaults baked into
 the image; unset host proxies are cleared inside model processes.
 
-## Run Experiments
+## 💻 Usage
 
 The 18 configurations in [`configs/main/`](configs/main/) cover all six games
 and three methods. For example:
@@ -133,7 +147,7 @@ For Minecraft/Astray, `game_options.gameworld.train` and `.holdout` specify the
 actual game/task IDs, and `max_steps` limits actions per episode. Start from a
 matching config in `configs/main/` rather than changing only the top-level game ID.
 
-## Analyze Results
+### Analyze Results
 
 ```bash
 python -m analyze ace outputs/main/farm/ace --model MODEL --output farm_ace_analysis.json
@@ -150,7 +164,7 @@ python -m benchmark.hci --trained outputs/main/farm/ace --initial outputs/main/f
 
 Use `python -m analyze --help` for trajectory analysis and reporting commands.
 
-## Add an RSI Method
+### Expand to an new RSI Method
 
 Implement [`RSIMethod`](benchmark/interfaces.py) and configure its import path:
 
@@ -177,7 +191,7 @@ types. Run the example with:
 python -m benchmark configs/examples/minimal_rsi.json
 ```
 
-## Repository Layout
+## 📊 Repository Layout
 
 | Directory | Contents |
 |---|---|
@@ -188,9 +202,11 @@ python -m benchmark configs/examples/minimal_rsi.json
 | `analyze/` | Trajectory analysis and reports |
 | `tests/` | Regression tests |
 
-## License
+## 📚 Citation
+If you find this project useful for your research, please consider giving us a star and citing our paper.
 
-RSI-Bench's own code is released under the [MIT License](LICENSE).
+## 📄 License
+This project is licensed under the MIT License. See the [LICENSE](./LICENSE) file for details.
 Bundled third-party components retain their own licenses:
 
 | Component | License / terms |
