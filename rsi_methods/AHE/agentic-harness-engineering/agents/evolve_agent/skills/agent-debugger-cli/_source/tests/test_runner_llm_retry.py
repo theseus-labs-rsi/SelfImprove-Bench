@@ -51,3 +51,18 @@ def test_llm_fails_after_three_attempts(tmp_path, monkeypatch):
             run_agent(trace_paths=["/f"], mode="ask", question="q")
     assert "llm:" in str(exc.value)
     assert fake.run.call_count == 3
+
+
+def test_llm_failure_preserves_transport_cause_without_changing_retry_limit(tmp_path, monkeypatch):
+    _prep(tmp_path, monkeypatch)
+    cause = OSError("synthetic proxy connection refused")
+    failure = _ApiError("Connection error.")
+    failure.__cause__ = cause
+    fake = MagicMock()
+    fake.run.side_effect = failure
+    with patch("agent_debugger_core.runtime.runner._build_agent", return_value=fake), \
+         patch("agent_debugger_core.runtime.runner.time.sleep"):
+        with pytest.raises(RunnerError, match="synthetic proxy connection refused") as error:
+            run_agent(trace_paths=["/f"], mode="ask", question="q")
+    assert "_ApiError: Connection error." in str(error.value)
+    assert fake.run.call_count == 3

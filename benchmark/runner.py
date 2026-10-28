@@ -452,7 +452,30 @@ def _run_one(
         and not _is_provider_failure(result)
     ):
         try:
-            controller.refine(task, result, ordinal, feedback=outcome.feedback)
+            previous_telemetry = controller.session.refinement_telemetry
+            refinement_started = time.perf_counter()
+            try:
+                controller.refine(task, result, ordinal, feedback=outcome.feedback)
+            except Exception as exc:
+                telemetry = controller.session.refinement_telemetry
+                if (
+                    isinstance(telemetry, Mapping)
+                    and telemetry is not previous_telemetry
+                    and telemetry.get("task_index", ordinal) == ordinal
+                ):
+                    refinement = dict(telemetry)
+                else:
+                    # Failure before the session publishes this round's telemetry
+                    # must not reuse the previous round or imply free model calls.
+                    refinement = {
+                        "status": "error", "method": controller.provider,
+                        "task_index": ordinal,
+                        "duration_seconds": round(time.perf_counter() - refinement_started, 6),
+                        "duration_method": "runner_wall_clock",
+                        "error_type": type(exc).__name__, "error": str(exc),
+                        "tokens": rsi_session.refinement_token_metrics(None),
+                    }
+                raise
             refinement = controller.session.refinement_telemetry
             batch = controller.session.pending_batch
             parent_path = (
@@ -511,7 +534,12 @@ def _run_one(
                 "error": error,
             }
     refinement_seconds = float(refinement.get("duration_seconds", 0.0)) if isinstance(refinement, dict) else 0.0
-    refinement_tokens = _token_total(refinement) if isinstance(refinement, dict) else 0
+    refinement_tokens: int | None = 0
+    if isinstance(refinement, dict):
+        value = (refinement.get("tokens") or {}).get("total_tokens")
+        refinement_tokens = (
+            value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
+        )
     record = {
         **result, "run_id": task.run_id, "phase": task.phase, "group_index": task.group_index,
         "task_seed": task.task_seed, "replay": task.replay, "replay_of": task.replay_of,
@@ -523,7 +551,10 @@ def _run_one(
         "total_seconds": round(execution_seconds + refinement_seconds + candidate_validation_seconds, 6),
         "inference_tokens": _token_total(result.get("llm_metrics", {})),
         "refinement_tokens": refinement_tokens,
-        "total_tokens": _token_total(result.get("llm_metrics", {})) + refinement_tokens + candidate_validation_tokens,
+        "total_tokens": (
+            _token_total(result.get("llm_metrics", {})) + refinement_tokens + candidate_validation_tokens
+            if refinement_tokens is not None else None
+        ),
     }
     if task.phase == "train" and not task.replay:
         record["post_refinement_score"] = post_refinement_score(record)

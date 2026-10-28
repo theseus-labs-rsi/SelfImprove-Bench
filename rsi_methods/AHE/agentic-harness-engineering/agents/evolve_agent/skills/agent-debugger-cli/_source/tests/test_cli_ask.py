@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 
 FIX = Path(__file__).parent / "fixtures"
@@ -50,3 +52,33 @@ def test_cli_ask_text_format(tmp_path, monkeypatch, capsys):
     assert rc == 0
     captured = capsys.readouterr()
     assert "because" in captured.out
+
+
+@pytest.mark.parametrize("inner_result,expected_error", [
+    ('{"mode":"ask","answer":"literal\nnewline"}', "not valid JSON"),
+    (json.dumps({"mode": "check", "issues": [], "response": "report"}), "expected mode=ask"),
+])
+def test_cli_returns_structured_failure_with_original_output(
+    tmp_path, monkeypatch, capsys, inner_result, expected_error,
+):
+    _setup_env(tmp_path, monkeypatch)
+    from agent_debugger_core.cli import adb as adb_cli
+
+    raw = json.dumps({
+        "status": "TASK_COMPLETED", "task_completed": True,
+        "output": {"result": inner_result},
+    })
+    fake_agent = MagicMock()
+    fake_agent.run.return_value = raw
+    with patch("agent_debugger_core.runtime.runner._build_agent", return_value=fake_agent):
+        rc = adb_cli.main([
+            "ask", "-t", str(FIX / "openai_messages_sample.json"), "-q", "why?", "--format", "json",
+        ])
+    assert rc == 1
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert payload["status"] == "failed"
+    assert expected_error in payload["error"]
+    assert payload["raw_output"] == raw
+    assert "Traceback" not in captured.err
+    fake_agent.run.assert_called_once()

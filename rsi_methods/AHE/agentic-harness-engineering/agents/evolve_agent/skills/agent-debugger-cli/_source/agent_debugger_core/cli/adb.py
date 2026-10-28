@@ -25,6 +25,8 @@ def _flatten_nested_list_attrs(args: argparse.Namespace, attrs: Sequence[str]) -
 
 def _emit_failure(command: str, exc: Exception, output_format: str) -> int:
     payload = {"status": "failed", "command": command, "error": str(exc)}
+    if isinstance(exc, RunnerError) and exc.raw_output is not None:
+        payload["raw_output"] = exc.raw_output
     if output_format == "json":
         print(json.dumps(payload, ensure_ascii=False, indent=2))
     else:
@@ -86,7 +88,7 @@ def _cmd_ask(args) -> int:
             question=questions[0],
         )
     except RunnerError as e:
-        return _emit_failure("ask", ADBError(str(e)), args.output_format)
+        return _emit_failure("ask", e, args.output_format)
     _emit_ask(primary_path, primary_trace_id, questions[0], result, args.output_format)
     return 0
 
@@ -181,7 +183,7 @@ def _cmd_check(args) -> int:
     try:
         result = run_agent(trace_paths=[normalized_path], mode="check")
     except RunnerError as e:
-        return _emit_failure("check", ADBError(str(e)), args.output_format)
+        return _emit_failure("check", e, args.output_format)
 
     if args.output_format == "json":
         payload = {

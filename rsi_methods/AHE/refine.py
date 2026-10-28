@@ -15,6 +15,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -261,6 +262,58 @@ def _write_analysis(
     return overview
 
 
+def _debugger_text(value: str | bytes | None) -> str:
+    # TimeoutExpired may expose bytes even when subprocess.run(text=True).
+    return value.decode("utf-8", errors="replace") if isinstance(value, bytes) else value or ""
+
+
+def _redact_debugger_text(value: str, environment: Mapping[str, str]) -> str:
+    secrets = {
+        secret for name, secret in environment.items()
+        if secret and re.search(r"(?:^|_)(?:KEY|TOKEN|PASSWORD|PASSWD|SECRET|AUTHORIZATION)(?:_|$)", name.upper())
+    }
+    for secret in sorted(secrets, key=len, reverse=True):
+        value = value.replace(secret, "<redacted>")
+    return re.sub(r"(https?://)[^/@\s]+:[^/@\s]+@", r"\1<redacted>@", value)
+
+
+def _save_debugger_process(
+    output_dir: Path | None, environment: Mapping[str, str], *,
+    command: Sequence[str], stdout: str, stderr: str, returncode: int | None,
+    elapsed_seconds: float, timed_out: bool = False, error: str | None = None,
+) -> None:
+    if output_dir is None:
+        return
+    output_dir.mkdir(parents=True, exist_ok=True)
+    for name, content in (("stdout", stdout), ("stderr", stderr)):
+        (output_dir / f"debugger_{name}.txt").write_text(
+            _redact_debugger_text(content, environment), encoding="utf-8",
+        )
+    metadata = {
+        "command": list(command), "returncode": returncode, "timed_out": timed_out,
+        "elapsed_seconds": elapsed_seconds, "error": error,
+    }
+    (output_dir / "debugger_process.json").write_text(
+        _redact_debugger_text(json.dumps(metadata, ensure_ascii=False, indent=2), environment),
+        encoding="utf-8",
+    )
+
+
+def _debugger_failure_details(stdout: str, stderr: str) -> str:
+    try:
+        payload = json.loads(stdout)
+    except (json.JSONDecodeError, TypeError):
+        payload = None
+    parts = []
+    if isinstance(payload, dict) and payload.get("error"):
+        parts.append(f"Debugger error: {str(payload['error'])[-2000:]}")
+    elif stdout.strip():
+        parts.append(f"stdout: {stdout[-2000:]}")
+    if stderr.strip():
+        parts.append(f"stderr: {stderr[-2000:]}")
+    return "\n".join(parts) or "Debugger produced no output"
+
+
 def _ask_debugger(
     trace_path: Path, score: float, evaluator_note: str, *,
     model: str | None = None,
@@ -295,6 +348,8 @@ def _ask_debugger(
         "concrete evidence and an actionable correction. Separate observed facts "
         "from hypotheses; do not invent missing runtime logs."
     )
+    command: list[str] = []
+    started = time.monotonic()
     try:
         command = sandbox_command(
             [sys.executable, "-m", "agent_debugger_core.cli.adb", "ask",
@@ -307,25 +362,45 @@ def _ask_debugger(
             env=env, capture_output=True, text=True, timeout=600,
         )
     except subprocess.TimeoutExpired as exc:
+        _save_debugger_process(
+            output_dir, env, command=command, stdout=_debugger_text(exc.stdout),
+            stderr=_debugger_text(exc.stderr), returncode=None,
+            elapsed_seconds=time.monotonic() - started, timed_out=True,
+        )
         raise RuntimeError("AHE Agent Debugger timed out; refinement stopped") from exc
     except OSError as exc:
-        raise RuntimeError("AHE Agent Debugger could not start; refinement stopped") from exc
+        _save_debugger_process(
+            output_dir, env, command=command, stdout="", stderr="", returncode=None,
+            elapsed_seconds=time.monotonic() - started, error=f"{type(exc).__name__}: {exc}",
+        )
+        raise RuntimeError(
+            "AHE Agent Debugger could not start; refinement stopped. "
+            + _redact_debugger_text(str(exc), env)
+        ) from exc
+    _save_debugger_process(
+        output_dir, env, command=command, stdout=completed.stdout, stderr=completed.stderr,
+        returncode=completed.returncode, elapsed_seconds=time.monotonic() - started,
+    )
+    details = _redact_debugger_text(_debugger_failure_details(completed.stdout, completed.stderr), env)
     if completed.returncode != 0:
         raise RuntimeError(
             "AHE Agent Debugger failed; refinement stopped. "
-            f"Check Debugger dependencies and LLM configuration. "
-            f"Details: {(completed.stderr or completed.stdout)[-1000:]}"
+            f"Exit code: {completed.returncode}. Details: {details}"
         )
     try:
         result = json.loads(completed.stdout)
     except json.JSONDecodeError as exc:
-        raise RuntimeError("AHE Agent Debugger returned invalid JSON; refinement stopped") from exc
+        raise RuntimeError(
+            f"AHE Agent Debugger returned invalid JSON; refinement stopped. Details: {details}"
+        ) from exc
     if not isinstance(result, dict) or result.get("status") != "success":
-        raise RuntimeError("AHE Agent Debugger did not report success; refinement stopped")
+        raise RuntimeError(
+            f"AHE Agent Debugger did not report success; refinement stopped. Details: {details}"
+        )
     if output_dir is not None:
         output_dir.mkdir(parents=True, exist_ok=True)
         (output_dir / "debugger_result.json").write_text(
-            json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8",
+            _redact_debugger_text(json.dumps(result, ensure_ascii=False, indent=2), env), encoding="utf-8",
         )
         (output_dir / "debugger_usage_snapshot.json").write_text(
             json.dumps(result.get("usage_snapshot"), ensure_ascii=False, indent=2), encoding="utf-8",
@@ -578,6 +653,9 @@ def refine(
             candidate_agent = build(
                 state, workspace=workspace, model=model,
                 reasoning_effort=reasoning_effort,
+                # Keep the parent's effective actor budget, including step caps.
+                # This function's timeout_seconds belongs to the evolver only.
+                timeout_seconds=parent_agent.timeout_seconds,
                 agent_limits=agent_limits,
                 llm_environment=llm_environment,
             )

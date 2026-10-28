@@ -59,7 +59,7 @@ make model API calls and may incur charges.
 Pairs are Farm/Combat, Sweepmine/Hero, and Minecraft/Astray. `hero` uses internal
 game name `heros_journey`. GameWorld assets are bundled under
 `benches/gameworld/assets/tasks/{train,holdout}`. For Minecraft/Astray, the outer
-`difficulty: 1` is an orchestration placeholder, not the task's difficulty.
+`difficulty: 3` is an orchestration placeholder, not the task's difficulty.
 Use `game_id` and `game_task_id` to distinguish games/tasks, including transfers.
 Minecraft Medium is the mean of `18_02,18_03`; Hard is the mean of `18_04,18_05`.
 Astray Medium is `03_03` and Hard is `03_05` for the reported task grouping.

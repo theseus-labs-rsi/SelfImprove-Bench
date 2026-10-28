@@ -84,12 +84,69 @@ def test_diagnosis_failure_prevents_evolver_and_candidate_build(tmp_path):
 
 def test_debugger_usage_is_saved_with_the_diagnosis(tmp_path):
     usage = {"total_tokens": 13, "input_tokens": 8, "output_tokens": 5, "model_calls": 1}
-    completed = SimpleNamespace(returncode=0, stderr="", stdout=json.dumps({
+    completed = SimpleNamespace(returncode=0, stderr="E2B SDK not installed\n", stdout=json.dumps({
         "status": "success", "response": "diagnosis", "usage_snapshot": usage,
     }))
     with patch.object(refinement.subprocess, "run", return_value=completed):
         refinement._ask_debugger(tmp_path / "trace.json", 0.2, "", output_dir=tmp_path / "analysis")
     assert json.loads((tmp_path / "analysis/debugger_usage_snapshot.json").read_text()) == usage
+    assert (tmp_path / "analysis/debugger_stderr.txt").read_text() == completed.stderr
+    assert json.loads((tmp_path / "analysis/debugger_process.json").read_text())["returncode"] == 0
+
+
+@pytest.mark.parametrize("returncode", [0, 1])
+def test_debugger_reports_structured_error_despite_stderr_warning(tmp_path, returncode):
+    secret = "synthetic-api-key"
+    error_text = f"expected mode=ask, got 'check'; credential={secret}"
+    stdout = json.dumps({"status": "failed", "error": error_text, "raw_output": "original model result"})
+    stderr = "E2B SDK not installed\n"
+    completed = SimpleNamespace(returncode=returncode, stdout=stdout, stderr=stderr)
+    with patch.object(refinement.subprocess, "run", return_value=completed) as run:
+        with pytest.raises(RuntimeError) as error:
+            refinement._ask_debugger(
+                tmp_path / "trace.json", 0.2, "", output_dir=tmp_path / "analysis",
+                llm_environment={"LLM_API_KEY": secret},
+            )
+    run.assert_called_once()
+    assert "expected mode=ask" in str(error.value)
+    assert "E2B SDK not installed" in str(error.value)
+    assert secret not in str(error.value)
+    assert is_fatal_ahe_error(str(error.value))
+    saved = json.loads((tmp_path / "analysis/debugger_stdout.txt").read_text())
+    assert saved["raw_output"] == "original model result"
+    assert secret not in saved["error"]
+    assert (tmp_path / "analysis/debugger_stderr.txt").read_text() == stderr
+    assert not (tmp_path / "analysis/debugger_result.json").exists()
+
+
+def test_debugger_timeout_preserves_partial_bytes_and_redacts_credentials(tmp_path):
+    secret = "synthetic-timeout-key"
+    failure = subprocess.TimeoutExpired(
+        "debugger", 600, output=f"partial output {secret}".encode(), stderr=b"warning\xff",
+    )
+    with patch.object(refinement.subprocess, "run", side_effect=failure) as run:
+        with pytest.raises(RuntimeError, match="Debugger timed out"):
+            refinement._ask_debugger(
+                tmp_path / "trace.json", 0.2, f"note {secret}", output_dir=tmp_path / "analysis",
+                llm_environment={"LLM_API_KEY": secret},
+            )
+    run.assert_called_once()
+    assert (tmp_path / "analysis/debugger_stdout.txt").read_text() == "partial output <redacted>"
+    assert (tmp_path / "analysis/debugger_stderr.txt").read_text().startswith("warning")
+    metadata_text = (tmp_path / "analysis/debugger_process.json").read_text()
+    assert secret not in metadata_text
+    metadata = json.loads(metadata_text)
+    assert metadata["timed_out"] is True
+    assert metadata["returncode"] is None
+
+
+def test_debugger_start_failure_is_recorded(tmp_path):
+    with patch.object(refinement.subprocess, "run", side_effect=OSError("interpreter unavailable")):
+        with pytest.raises(RuntimeError, match="interpreter unavailable"):
+            refinement._ask_debugger(tmp_path / "trace.json", 0.2, "", output_dir=tmp_path / "analysis")
+    metadata = json.loads((tmp_path / "analysis/debugger_process.json").read_text())
+    assert metadata["returncode"] is None
+    assert metadata["error"] == "OSError: interpreter unavailable"
 
 
 @pytest.mark.parametrize("debugger_usage,expected", [

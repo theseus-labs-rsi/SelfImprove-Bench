@@ -19,7 +19,9 @@ BUDGET_MARKER = "[Note: Maximum iteration limit reached]"
 
 
 class RunnerError(Exception):
-    pass
+    def __init__(self, message: str, *, raw_output: Any = None):
+        super().__init__(message)
+        self.raw_output = raw_output
 
 
 class BudgetExceeded(Exception):
@@ -43,9 +45,13 @@ def _build_user_message(trace_paths: List[Path], mode: str, question: Optional[s
     lines = ["Analyze the following normalized trace file(s):"]
     for p in trace_paths:
         lines.append(f"- {p}")
-    lines.append("")
+    lines.extend(("", f"Task mode: {mode}"))
     if mode == "ask":
         lines.append(f"Question: {question or 'Why is this trace so slow?'}")
+        lines.append(
+            'Return complete_task.result as a JSON string with `mode="ask"` '
+            'and a non-empty string `answer`. Escape newlines and quotes inside JSON strings.'
+        )
     else:
         lines.append(
             "Task: produce a QC report. Return a JSON payload with "
@@ -99,12 +105,18 @@ def _parse_inner_payload(raw: Any) -> dict:
     if not isinstance(raw, str):
         raise RunnerError("complete_task `result` is not a string")
     try:
-        return json.loads(raw)
+        payload = json.loads(raw)
     except json.JSONDecodeError:
         m = re.search(r"\{.*\}", raw, flags=re.DOTALL)
         if not m:
             raise RunnerError(f"complete_task result is not JSON: {raw[:200]}")
-        return json.loads(m.group(0))
+        try:
+            payload = json.loads(m.group(0))
+        except json.JSONDecodeError as exc:
+            raise RunnerError(f"complete_task result is not valid JSON: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise RunnerError("complete_task result must be a JSON object")
+    return payload
 
 
 def _parse_run_output(run_output: Any) -> dict:
@@ -177,7 +189,24 @@ def _run_with_retry(agent, user_message: str, *, attempts: int = 3):
             last = e
             if i < attempts - 1:
                 time.sleep(2 ** i)
-    raise RunnerError(f"llm: {last}")
+    # Preserve the underlying network/transport cause instead of only
+    # surfacing an uninformative APIConnectionError("Connection error.").
+    chain = []
+    seen = set()
+    cause = last
+    while cause is not None and id(cause) not in seen:
+        seen.add(id(cause))
+        chain.append(f"{type(cause).__name__}: {cause}")
+        cause = cause.__cause__ or (None if cause.__suppress_context__ else cause.__context__)
+    raise RunnerError(f"llm: {' <- '.join(chain)}") from last
+
+
+def _parse_output_with_evidence(run_output: Any) -> dict:
+    try:
+        return _parse_run_output(run_output)
+    except RunnerError as exc:
+        exc.raw_output = run_output
+        raise
 
 
 def run_agent(
@@ -195,7 +224,7 @@ def run_agent(
     run_output = _run_with_retry(agent, user_message)
 
     try:
-        payload = _parse_run_output(run_output)
+        payload = _parse_output_with_evidence(run_output)
     except BudgetExceeded as be:
         fallback_text = be.fallback_text
         if mode == "ask":
@@ -214,9 +243,13 @@ def run_agent(
         )
 
     if mode == "ask":
+        if payload.get("mode") != "ask":
+            raise RunnerError(
+                f"expected mode=ask, got {payload.get('mode')!r}", raw_output=run_output,
+            )
         answer = payload.get("answer")
-        if not isinstance(answer, str):
-            raise RunnerError("ask payload missing string `answer`")
+        if not isinstance(answer, str) or not answer.strip():
+            raise RunnerError("ask payload missing non-empty string `answer`", raw_output=run_output)
         return RunnerResult(mode="ask", answer=answer, usage_snapshot=_usage_snapshot(agent))
 
     try:
@@ -230,7 +263,7 @@ def run_agent(
         )
         run_output = _run_with_retry(agent, retry_msg)
         try:
-            payload = _parse_run_output(run_output)
+            payload = _parse_output_with_evidence(run_output)
         except BudgetExceeded as be:
             return RunnerResult(
                 mode="check",

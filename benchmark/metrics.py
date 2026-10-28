@@ -13,9 +13,14 @@ def _score(record: dict[str, Any]) -> float:
     return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else 0.0
 
 
-def _total(record: dict[str, Any], field: str) -> float:
-    value = record.get(field)
-    return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else 0.0
+def _cost_total(records: list[dict[str, Any]], field: str) -> float | None:
+    values = [record.get(field) for record in records]
+    if not all(
+        isinstance(value, (int, float)) and not isinstance(value, bool)
+        and isfinite(value) and value >= 0 for value in values
+    ):
+        return None
+    return sum(values)
 
 
 def execution_score(record: dict[str, Any]) -> float | None:
@@ -133,8 +138,8 @@ def calculate_metrics(
         for (game, difficulty, group_index), values in sorted(groups.items(), key=lambda item: item[0][2])
     ]
 
-    total_tokens = sum(_total(record, "total_tokens") for record in training)
-    total_seconds = sum(_total(record, "total_seconds") for record in training)
+    total_tokens = _cost_total(training, "total_tokens")
+    total_seconds = _cost_total(training, "total_seconds")
     declines = sum(current < previous for previous, current in zip(scores, scores[1:]))
     large_declines = sum(
         previous > 0 and current <= 0.8 * previous
@@ -164,13 +169,15 @@ def calculate_metrics(
             "groups": generalization,
         },
         "evolution_cost": {
-            "total_tokens": int(total_tokens),
+            "total_tokens": int(total_tokens) if total_tokens is not None else None,
             "total_seconds": total_seconds,
             "tokens_per_absolute_gain": (
-                total_tokens / absolute_gain if absolute_gain not in (None, 0) else None
+                total_tokens / absolute_gain
+                if total_tokens is not None and absolute_gain not in (None, 0) else None
             ),
             "seconds_per_absolute_gain": (
-                total_seconds / absolute_gain if absolute_gain not in (None, 0) else None
+                total_seconds / absolute_gain
+                if total_seconds is not None and absolute_gain not in (None, 0) else None
             ),
         },
         "stability": {

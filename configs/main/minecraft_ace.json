@@ -3,7 +3,7 @@
   "schedule": [
     {
       "game": "gameworld",
-      "difficulty": 1,
+      "difficulty": 3,
       "count": 20,
       "replay": true
     }
@@ -11,7 +11,7 @@
   "holdout": [
     {
       "game": "gameworld",
-      "difficulty": 1,
+      "difficulty": 3,
       "count": 10
     }
   ],

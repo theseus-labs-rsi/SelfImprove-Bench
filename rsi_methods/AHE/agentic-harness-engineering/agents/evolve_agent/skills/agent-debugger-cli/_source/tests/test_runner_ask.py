@@ -48,6 +48,9 @@ def test_ask_mode_happy_path(tmp_path, monkeypatch):
     assert result.mode == "ask"
     assert result.answer == "42"
     assert result.budget_exceeded is False
+    request = fake_agent.run.call_args.kwargs["message"]
+    assert "Task mode: ask" in request
+    assert '`mode="ask"`' in request
 
 
 @pytest.mark.parametrize("budget_exceeded", [False, True])
@@ -74,3 +77,41 @@ def test_runner_exports_tracer_usage(monkeypatch, budget_exceeded):
     export.assert_called_once_with(traces)
     assert result.usage_snapshot == usage
     assert result.budget_exceeded is budget_exceeded
+
+
+@pytest.mark.parametrize("payload", [
+    {"mode": "check", "issues": [], "response": "wrong mode"},
+    {"mode": "check", "answer": "still the wrong mode"},
+    {"mode": "ask", "answer": " "},
+    {"mode": "ask", "answer": 42},
+    {"answer": "mode is missing"},
+])
+def test_ask_rejects_protocol_mismatch_without_extra_model_calls(payload):
+    from agent_debugger_core.runtime import runner
+
+    fake_agent = _scripted_agent(payload)
+    with patch.object(runner, "resolve_llm_settings", return_value={}), patch.object(
+        runner, "_build_agent", return_value=fake_agent,
+    ), pytest.raises(RunnerError) as error:
+        runner.run_agent(trace_paths=[Path("/fake/trace.json")], mode="ask")
+    assert error.value.raw_output == fake_agent.run.return_value
+    fake_agent.run.assert_called_once()
+
+
+@pytest.mark.parametrize("payload", [
+    '{"mode":"ask","answer":"literal\nnewline"}',
+    '{"mode":"ask","answer":"unterminated}',
+    '[]', 'null', '42',
+])
+def test_malformed_inner_result_is_a_runner_error(payload):
+    from agent_debugger_core.runtime import runner
+
+    with pytest.raises(RunnerError, match="complete_task result"):
+        runner._parse_run_output(_wrap(payload))
+
+
+def test_escaped_newlines_and_double_encoded_outer_result_remain_valid():
+    from agent_debugger_core.runtime import runner
+
+    payload = {"mode": "ask", "answer": "first line\nsecond line"}
+    assert runner._parse_run_output(json.dumps(_wrap(payload))) == payload
