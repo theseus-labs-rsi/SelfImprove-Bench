@@ -64,21 +64,12 @@ export OPENAI_API_KEY="YOUR_API_KEY"
 export OPENAI_BASE_URL="YOUR_API_BASE_URL"
 ```
 
-Set method-specific models and backend options in
-`rsi_methods/<METHOD>/config.toml`. These settings are not overridden by
-`agent.model` in benchmark configs.
+Set each method's model and backend in `rsi_methods/<METHOD>/config.toml`;
+benchmark `agent.model` does not override these settings.
 
-HyperAgents runs in Docker. If a required proxy listens only on the host's
-loopback address, first verify that it is running, then set
-`HYPERAGENTS_DOCKER_NETWORK=host` on Linux before starting the benchmark.
-Otherwise, use a proxy address reachable from the container; container
-`127.0.0.1` does not refer to the host under default bridge networking.
-Before gameplay, HyperAgents checks TCP connectivity to the configured model
-routes from inside the container without calling the model API. Unreachable
-routes and image build failures stop the run, even with `continue_on_error`.
-This check does not validate API credentials or model availability.
-Host proxy variables (including `NO_PROXY`) override proxy defaults baked into
-the image; unset host proxies are cleared inside model processes.
+HyperAgents runs in Docker. If your model proxy is available only at the
+host's `127.0.0.1`, set `HYPERAGENTS_DOCKER_NETWORK=host` on Linux, or
+configure a proxy address reachable from the container.
 
 ## 💻 Usage
 
