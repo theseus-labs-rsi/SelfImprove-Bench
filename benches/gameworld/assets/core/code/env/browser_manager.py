@@ -258,13 +258,19 @@ class BrowserGameManager:
 
     @staticmethod
     def _browser_launch_args() -> list[str]:
-        return [
+        args = [
             "--no-sandbox",
             "--disable-setuid-sandbox",
             "--disable-backgrounding-occluded-windows",
             "--disable-renderer-backgrounding",
             "--disable-background-timer-throttling",
         ]
+        renderer = os.environ.get("GAMEWORLD_RENDERER", "default").strip().lower()
+        if renderer == "swiftshader":
+            args.append("--use-angle=swiftshader")
+        elif renderer != "default":
+            raise ValueError("GAMEWORLD_RENDERER must be 'default' or 'swiftshader'")
+        return args
 
     async def _launch_browser(self) -> None:
         self._playwright = await async_playwright().start()

@@ -52,6 +52,11 @@ AHE requires filesystem sandbox support and a successful Agent Debugger
 diagnosis before each refinement. It stops if either is unavailable.
 NexAU is bundled locally and installed by `requirements.txt`.
 
+**Headless Linux rendering:** If Chromium fails to initialize WebGL or a game
+remains stuck on its loading screen, set `GAMEWORLD_RENDERER=swiftshader`
+before running the benchmark to use software rendering. Leave it unset to use
+Chromium's default renderer. SwiftShader may run more slowly.
+
 Configure model credentials through environment variables:
 
 ```bash

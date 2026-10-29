@@ -68,6 +68,11 @@ def _is_provider_failure(record: Mapping[str, Any]) -> bool:
     attempts = [attempt for call in calls for attempt in call.get("attempts", [])]
     if attempts:
         return attempts[-1].get("status") == "provider_error"
+    # GameWorld and method workers can wrap the transport exception. Preserve
+    # its type across result serialization instead of refining a failed request.
+    if any(_is_provider_failure({"status": "error", **cause})
+           for cause in record.get("error_chain", [])):
+        return True
     error_type = str(record.get("error_type") or "").lower()
     if error_type in {
         "timeout", "timeouterror", "apitimeouterror", "apiconnectionerror",
@@ -82,6 +87,7 @@ def _is_provider_failure(record: Mapping[str, Any]) -> bool:
         "connection refused", "connection reset by peer",
         "apiconnectionerror:", "apitimeouterror:", "ratelimiterror:",
         "authenticationerror:", "internalservererror:",
+        "error in agent execution: connection error.",
     ))
 
 
@@ -272,6 +278,15 @@ def _error_result(task: PlannedTask, exc: Exception) -> dict[str, Any]:
         "error": f"No response: {error_text}" if is_timeout else error_text,
         "agent_output": None, "simulation": None, "interactions": [], "llm_metrics": {},
     }
+    causes = []
+    seen = {id(exc)}
+    cause = exc.__cause__ or (None if exc.__suppress_context__ else exc.__context__)
+    while cause is not None and id(cause) not in seen:
+        seen.add(id(cause))
+        causes.append({"error_type": type(cause).__name__, "error": str(cause)})
+        cause = cause.__cause__ or (None if cause.__suppress_context__ else cause.__context__)
+    if causes:
+        record["error_chain"] = causes
     if task.game == "heros_journey":
         record["interaction_protocol"] = task.task.get("interaction_protocol", "legacy_unlabeled")
         record["score_metric"] = "reference_steps_over_executed_steps_v1"
