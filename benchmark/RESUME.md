@@ -14,6 +14,13 @@ state it skips already-committed tasks. An orphaned `runs/` file does not mean t
 state was committed. A process lock guards the directory, so two instances cannot run
 at the same time.
 
+AHE additionally binds the effective model, reasoning effort, endpoint, timeout,
+redacted method configuration, method source, and committed actor/evolver file trees.
+Changing a tool or prompt after a checkpoint refuses recovery. Normally selected
+evolved workspaces are fingerprinted as new committed state, not compared against
+the initial harness. API key rotation alone is allowed. Older AHE checkpoints without
+these fingerprints require their historical code, not forced recovery with this version.
+
 Recovery into a new directory is still supported:
 
 ```bash

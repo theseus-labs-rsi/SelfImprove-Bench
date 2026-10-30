@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import json
+import hashlib
 import re
 import tomllib
 from pathlib import Path
@@ -16,7 +17,8 @@ from typing import Any, Mapping, Sequence
 from uuid import uuid4
 
 from benchmark.interfaces import MethodContext
-from rsi_methods.checkpoint import MethodCheckpointMixin
+from rsi_methods.checkpoint import MethodCheckpointMixin, ahe_surface_digests, tree_digest
+from benchmark.resume_state import atomic_json
 
 from .agent import AHEAgent
 from .build import build as build_agent
@@ -110,7 +112,16 @@ class AHEAdaptor(MethodCheckpointMixin):
     def checkpoint_policy(self) -> dict[str, Any]:
         """Persist method changes that would make old checkpoints incomparable."""
         return {
-            "version": "upstream-active-lineage-v3",
+            "version": "upstream-active-lineage-v4",
+            "model": self.model,
+            "reasoning_effort": self.reasoning_effort,
+            "timeout_seconds": self.timeout_seconds,
+            "base_url": self._llm_environment().get("LLM_BASE_URL"),
+            "config_digest": hashlib.sha256(self._redacted_config_text().encode("utf-8")).hexdigest(),
+            "source_digest": tree_digest(Path(__file__).parent, exclude=("config.toml",)),
+            "checkpoint_code_digest": hashlib.sha256(
+                Path(__file__).parents[1].joinpath("checkpoint.py").read_bytes()
+            ).hexdigest(),
             "filesystem_isolation": "bubblewrap-allowlist-v1",
             "refinement_usage": "debugger-and-evolver-tracers-v1",
             "game_history_turns": 8,
@@ -148,6 +159,12 @@ class AHEAdaptor(MethodCheckpointMixin):
         (self.run_dir / "ahe_policy.json").write_text(
             json.dumps(self.checkpoint_policy(), indent=2), encoding="utf-8",
         )
+        self._save_surface_digests()
+
+    def _save_surface_digests(self) -> None:
+        atomic_json(self.run_dir / "ahe_surfaces.json", ahe_surface_digests(
+            self.state.current_workspace, self.state.evolve_agent_dir,
+        ))
 
     def resume(
         self, previous_batch: str | Path, *, source_batch: str | Path,
@@ -173,6 +190,14 @@ class AHEAdaptor(MethodCheckpointMixin):
             if reports else str(source_state / "workspace")
         )
         relative = _resume_workspace_relative(selected, source_state, copied_state)
+        surfaces_path = copied_state / "ahe_surfaces.json"
+        if (
+            not surfaces_path.is_file()
+            or json.loads(surfaces_path.read_text(encoding="utf-8")) != ahe_surface_digests(
+                copied_state / relative, copied_state / "evolve_agent",
+            )
+        ):
+            raise RuntimeError("AHE committed tools/prompts changed or lack resume fingerprints")
         copied_state.rename(target)
         self.run_dir = target
         self.state = AHEState(target, target / relative, target / "evolve_agent")
@@ -274,6 +299,7 @@ class AHEAdaptor(MethodCheckpointMixin):
                 candidate_evaluations=candidate_evaluations, output_dir=output_dir,
                 selection_mode=selection_mode,
             )
+            self._save_surface_digests()
         except BaseException:
             self._discard_pending()
             self._release_agent()

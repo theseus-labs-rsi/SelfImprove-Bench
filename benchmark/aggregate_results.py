@@ -24,6 +24,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable
 
+from .metrics import execution_score, record_score
+
 
 METRICS = (
     "first_absolute_score", "last_absolute_score", "absolute_gain", "relative_gain",
@@ -89,11 +91,7 @@ def _base(source: Path, kind: str, run_id: str, repeat_id: str) -> dict[str, Any
 
 
 def _scores(records: list[dict[str, Any]]) -> list[float]:
-    return [
-        score for record in records
-        if record.get("status") in {"ok", "skipped"}
-        and (score := _num(record.get("relative_score"))) is not None
-    ]
+    return [record_score(record) for record in records]
 
 
 def _costs(records: list[dict[str, Any]], field: str) -> float | None:
@@ -102,7 +100,7 @@ def _costs(records: list[dict[str, Any]], field: str) -> float | None:
 
 
 def _replay(records: list[dict[str, Any]], row: dict[str, Any]) -> None:
-    by_id = {record.get("run_id"): _num(record.get("relative_score")) for record in records}
+    by_id = {record.get("run_id"): execution_score(record) for record in records}
     deltas: list[float] = []
     normalized: list[float] = []
     for record in records:
@@ -110,7 +108,7 @@ def _replay(records: list[dict[str, Any]], row: dict[str, Any]) -> None:
             continue
         original = by_id.get(record.get("replay_of"))
         gap = record.get("replay_gap")
-        score = _num(record.get("relative_score"))
+        score = execution_score(record)
         if original is None or score is None or not isinstance(gap, int) or gap <= 0:
             continue
         deltas.append(score - original)
@@ -152,12 +150,8 @@ def _holdout_new(row: dict[str, Any], config: dict[str, Any], records: list[dict
             max_difficulty[game] = max(max_difficulty.get(game, 0), difficulty)
     buckets: dict[str, list[float]] = {"same": [], "higher": [], "cross": []}
     for record in records:
-        if record.get("status") != "ok":
-            continue
         game, difficulty = record.get("game"), record.get("difficulty")
-        score = _num(record.get("relative_score"))
-        if score is None:
-            continue
+        score = record_score(record)
         if (game, difficulty) in train_pairs:
             category = "same"
         elif game not in train_games:

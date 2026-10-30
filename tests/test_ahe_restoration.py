@@ -13,10 +13,11 @@ import pytest
 import yaml
 
 from rsi_methods.AHE.history import load_history, save_history
+from rsi_methods.AHE.AHEAdaptor import AHEAdaptor
 from rsi_methods.AHE.init import AHEState, initialize
 from rsi_methods.AHE.refine import CandidateBatch, CandidateSpec, _prepare_evolve_runtime
 from rsi_methods.AHE.select import select
-from rsi_methods.checkpoint import export_state, restore_state
+from rsi_methods.checkpoint import export_state, restore_state, tree_digest
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -133,6 +134,153 @@ def test_checkpoint_restores_only_committed_history(tmp_path):
     assert load_history(tmp_path) == [first]
     assert "iteration_002" not in (tmp_path / "evolution_history.md").read_text()
     assert export_state(adaptor, "ahe") == snapshot
+
+
+@pytest.fixture
+def initialized_adaptor(tmp_path, monkeypatch):
+    monkeypatch.setenv("LLM_BASE_URL", "https://offline.invalid/v1")
+    monkeypatch.setenv("LLM_API_KEY", "offline-test")
+    config = tmp_path / "config.toml"
+    config.write_text('[agent]\nmodel = "model-A"\nreasoning_effort = "high"\n')
+    adaptor = AHEAdaptor(tmp_path / "state", config_path=config)
+    adaptor.init()
+    return adaptor
+
+
+@pytest.mark.parametrize("options", [
+    {"model": "model-B"}, {"reasoning_effort": "low"},
+    {"timeout_seconds": 120}, {"candidate_count": 2}, {"refinement_every": 1},
+])
+def test_checkpoint_rejects_changed_effective_parameters(initialized_adaptor, options):
+    original = initialized_adaptor
+    snapshot = export_state(original, "ahe")
+    resumed = AHEAdaptor(original.run_dir, config_path=original.config_path, **options)
+    with pytest.raises(RuntimeError, match="policy"):
+        restore_state(resumed, "ahe", original.run_dir.parent, snapshot)
+    assert resumed.state is None
+
+
+@pytest.mark.parametrize("surface,filename", [
+    ("workspace", "tool.py"), ("workspace", "systemprompt.md"),
+    ("evolve_agent", "diagnostic_tool.py"), ("evolve_agent", "evolve_prompt.md"),
+])
+def test_checkpoint_binds_all_tool_and_prompt_files(initialized_adaptor, surface, filename):
+    adaptor = initialized_adaptor
+    path = adaptor.run_dir / surface / filename
+    path.write_text("before checkpoint\n")
+    snapshot = export_state(adaptor, "ahe")
+    path.write_text("after checkpoint\n")
+    with pytest.raises(RuntimeError, match="digest"):
+        restore_state(adaptor, "ahe", adaptor.run_dir.parent, snapshot)
+
+
+def test_checkpoint_rejects_changed_config_and_endpoint(initialized_adaptor, monkeypatch):
+    adaptor = initialized_adaptor
+    snapshot = export_state(adaptor, "ahe")
+    monkeypatch.setenv("LLM_BASE_URL", "https://different.invalid/v1")
+    with pytest.raises(RuntimeError, match="policy"):
+        restore_state(adaptor, "ahe", adaptor.run_dir.parent, snapshot)
+    monkeypatch.setenv("LLM_BASE_URL", "https://offline.invalid/v1")
+    adaptor.config_path.write_text(adaptor.config_path.read_text() + '\n[limits]\nrefinement_every = 2\n')
+    with pytest.raises(RuntimeError, match="policy"):
+        restore_state(adaptor, "ahe", adaptor.run_dir.parent, snapshot)
+
+
+def test_key_rotation_and_interpreter_cache_do_not_invalidate_state(initialized_adaptor, monkeypatch):
+    adaptor = initialized_adaptor
+    adaptor.config_path.write_text(adaptor.config_path.read_text() + (
+        '\n[backend.openai]\napi_key = "synthetic-original-key"\n'
+    ))
+    adaptor._configure(adaptor._load_config())
+    snapshot = export_state(adaptor, "ahe")
+    adaptor.config_path.write_text(
+        adaptor.config_path.read_text().replace("synthetic-original-key", "synthetic-rotated-key")
+    )
+    monkeypatch.setenv("LLM_API_KEY", "synthetic-rotated-key")
+    cache = adaptor.state.current_workspace / "__pycache__"
+    cache.mkdir(exist_ok=True)
+    (cache / "tool.pyc").write_bytes(b"transient")
+    restore_state(adaptor, "ahe", adaptor.run_dir.parent, snapshot)
+    assert export_state(adaptor, "ahe") == snapshot
+    assert "synthetic-original-key" not in json.dumps(snapshot)
+
+
+def test_checkpoint_accepts_a_legitimately_evolved_workspace(initialized_adaptor):
+    adaptor = initialized_adaptor
+    candidate = adaptor.run_dir / "candidates/iteration_001/variant_0/workspace"
+    shutil.copytree(adaptor.state.current_workspace, candidate)
+    (candidate / "systemprompt.md").write_text("legitimate evolved prompt\n")
+    adaptor.state.current_workspace = candidate
+    snapshot = export_state(adaptor, "ahe")
+    resumed = AHEAdaptor(adaptor.run_dir, config_path=adaptor.config_path)
+    restore_state(resumed, "ahe", adaptor.run_dir.parent, snapshot)
+    assert resumed.state.current_workspace == candidate
+    assert export_state(resumed, "ahe") == snapshot
+
+
+def test_checkpoint_rejects_old_missing_tree_fingerprints(initialized_adaptor):
+    adaptor = initialized_adaptor
+    snapshot = export_state(adaptor, "ahe")
+    snapshot.pop("workspace_digest")
+    with pytest.raises(RuntimeError, match="digest"):
+        restore_state(adaptor, "ahe", adaptor.run_dir.parent, snapshot)
+
+
+@pytest.mark.parametrize("tamper", [False, True])
+def test_copied_resume_validates_committed_surfaces(initialized_adaptor, tmp_path, tamper):
+    original = initialized_adaptor
+    previous = tmp_path / "copied"
+    shutil.copytree(original.run_dir, previous / "state")
+    if tamper:
+        (previous / "state/workspace/tool.py").write_text("external modification\n")
+    target = tmp_path / "resumed"
+    resumed = AHEAdaptor(target, config_path=original.config_path)
+    if tamper:
+        with pytest.raises(RuntimeError, match="tools/prompts"):
+            resumed.resume(previous, source_batch=tmp_path,
+                           before_task_index=1, target_dir=target)
+        assert not target.exists()
+    else:
+        resumed.resume(previous, source_batch=tmp_path,
+                       before_task_index=1, target_dir=target)
+        assert resumed.state.current_workspace == target / "workspace"
+
+
+def test_tree_fingerprint_tracks_file_additions_deletions_and_renames(tmp_path):
+    tool = tmp_path / "tool.py"
+    tool.write_text("content\n")
+    first = tree_digest(tmp_path)
+    tool.rename(tmp_path / "renamed.py")
+    assert tree_digest(tmp_path) != first
+    (tmp_path / "renamed.py").unlink()
+    assert tree_digest(tmp_path) != first
+
+
+def test_tree_fingerprint_requires_an_existing_directory(tmp_path):
+    with pytest.raises(FileNotFoundError, match="checkpoint directory"):
+        tree_digest(tmp_path / "missing")
+    file = tmp_path / "not_a_directory"
+    file.write_text("content\n")
+    with pytest.raises(FileNotFoundError, match="checkpoint directory"):
+        tree_digest(file)
+
+
+def test_tree_fingerprint_does_not_hide_directory_read_errors(tmp_path, monkeypatch):
+    def failed_walk(root, *, onerror):
+        onerror(PermissionError("synthetic unreadable checkpoint directory"))
+        return iter(())
+
+    monkeypatch.setattr("rsi_methods.checkpoint.os.walk", failed_walk)
+    with pytest.raises(PermissionError, match="unreadable checkpoint"):
+        tree_digest(tmp_path)
+
+
+def test_checkpoint_rejects_changed_method_source(initialized_adaptor, monkeypatch):
+    adaptor = initialized_adaptor
+    snapshot = export_state(adaptor, "ahe")
+    monkeypatch.setattr("rsi_methods.AHE.AHEAdaptor.tree_digest", lambda *args, **kwargs: "changed")
+    with pytest.raises(RuntimeError, match="policy"):
+        restore_state(adaptor, "ahe", adaptor.run_dir.parent, snapshot)
 
 
 def test_real_debugger_and_evolver_construct_without_api_calls(tmp_path):

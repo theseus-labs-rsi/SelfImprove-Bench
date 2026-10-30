@@ -516,8 +516,8 @@ def _ordered_plan_stages(
 
 
 def _objective_score(victory: bool, defeated: int, hp: int, gold: int) -> int:
-    """Calculate the common final score for both successful and failed runs."""
-    return 100 + defeated * 5 + max(0, hp) + gold
+    """Reward partial combat progress, but reserve resource bonuses for victory."""
+    return defeated * 5 + (100 + max(0, hp) + gold if victory else 0)
 
 
 class CombatSession:

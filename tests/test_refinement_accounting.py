@@ -12,19 +12,20 @@ from benchmark.metrics import calculate_metrics
 from benchmark.tasks import PlannedTask
 
 
-def run_task(tmp_path, monkeypatch, refine, *, previous=None, ordinal=1):
-    session = SimpleNamespace(refinement_telemetry=previous, pending_batch=None)
+def run_task(tmp_path, monkeypatch, refine, *, previous=None, ordinal=1, evaluate=None, select=None):
+    session = SimpleNamespace(refinement_telemetry=previous, pending_batch=None, select=select)
     controller = SimpleNamespace(
         config=SimpleNamespace(agent=SimpleNamespace(provider="offline-test")),
         provider="offline-test", session=session, active_agent=None,
         begin=lambda task: None, request=lambda *args, **kwargs: None,
+        request_for_agent=lambda agent: None,
         refine=lambda *args, **kwargs: refine(session),
     )
     task = PlannedTask("synthetic-cost-test", "train", "farm", 1, {}, 1, 0)
-    monkeypatch.setattr(runner, "_evaluate", lambda *args, **kwargs: EvaluationOutcome({
+    monkeypatch.setattr(runner, "_evaluate", evaluate or (lambda *args, **kwargs: EvaluationOutcome({
         "status": "ok", "game": "farm", "relative_score": 0.2, "success": False,
         "llm_metrics": {"tokens": {"total_tokens": 11}},
-    }))
+    })))
     monkeypatch.setattr(runner.time, "perf_counter", lambda: next(ticks))
     ticks = itertools.count(100, 2)
     record = runner._run_one(task, controller=controller, ordinal=ordinal, output_dir=tmp_path)
@@ -91,6 +92,66 @@ def test_selection_failure_does_not_replace_completed_refinement_cost(tmp_path, 
     assert record["refinement"]["status"] == "ok"
     assert record["refinement_seconds"] == 5
     assert record["refinement_tokens"] == 17
+
+
+@pytest.mark.parametrize("failure_at", ["select", "second_candidate", "artifact"])
+def test_completed_candidate_usage_survives_later_failure(tmp_path, monkeypatch, failure_at):
+    def refine(session):
+        session.refinement_telemetry = {
+            "status": "ok", "task_index": 1, "duration_seconds": 12,
+            "tokens": {"total_tokens": 17},
+        }
+        session.pending_batch = SimpleNamespace(candidates=[
+            SimpleNamespace(candidate_id=str(index), agent=object(),
+                            artifact_dir=tmp_path / f"candidate_{index}")
+            for index in range(2 if failure_at == "second_candidate" else 1)
+        ])
+
+    calls = itertools.count()
+
+    def evaluate(*args, **kwargs):
+        index = next(calls)
+        if index == 2:
+            raise RuntimeError("synthetic second-candidate failure")
+        return EvaluationOutcome({
+            "status": "ok", "game": "farm", "relative_score": 0.2,
+            "llm_metrics": {"tokens": {"total_tokens": 11 if index == 0 else 900}},
+        })
+
+    def select(*args, **kwargs):
+        raise RuntimeError("synthetic selection failure")
+
+    if failure_at == "artifact":
+        def fail_write(*args, **kwargs):
+            raise OSError("synthetic artifact write failure")
+        monkeypatch.setattr(runner, "_write_json", fail_write)
+    record = run_task(tmp_path, monkeypatch, refine, evaluate=evaluate, select=select)
+    assert record["status"] == "error"
+    assert record["selection"]["status"] == "error"
+    assert record["candidate_validation_tokens"] == 900
+    assert record["candidate_validation_seconds"] == (4 if failure_at == "second_candidate" else 2)
+    assert record["refinement_seconds"] == 12
+    assert record["refinement_tokens"] == 17
+    assert record["total_tokens"] == 928
+    assert record["total_seconds"] == 14 + record["candidate_validation_seconds"]
+
+
+def test_successful_candidate_cost_is_not_double_counted(tmp_path, monkeypatch):
+    def refine(session):
+        session.refinement_telemetry = {
+            "status": "ok", "duration_seconds": 12, "tokens": {"total_tokens": 17},
+        }
+        session.pending_batch = SimpleNamespace(candidates=[
+            SimpleNamespace(candidate_id="test", agent=object(), artifact_dir=tmp_path / "candidate"),
+        ])
+
+    record = run_task(tmp_path, monkeypatch, refine, select=lambda *args, **kwargs: (
+        SimpleNamespace(status="unchanged", committed_candidate_id=None)
+    ))
+    assert record["status"] == "ok"
+    assert record["candidate_validation_tokens"] == 11
+    assert record["total_tokens"] == 39
+    assert record["candidate_validation_seconds"] == 2
 
 
 @pytest.mark.parametrize("status,tokens", [("ok", 17), ("skipped", 0)])

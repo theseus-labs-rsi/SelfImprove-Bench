@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from copy import deepcopy
+from dataclasses import dataclass
 import time
 from pathlib import Path
 from typing import Any, Mapping
@@ -335,6 +336,12 @@ def _evaluate(
         return EvaluationOutcome(_error_result(task, exc))
 
 
+@dataclass
+class _ValidationCost:
+    tokens: int = 0
+    seconds: float = 0.0
+
+
 def _evaluate_candidates(
     task: PlannedTask,
     batch: Any,
@@ -345,6 +352,7 @@ def _evaluate_candidates(
     ordinal: int,
     stage_index: int,
     selection_mode: str = "paired",
+    costs: _ValidationCost | None = None,
 ) -> tuple[
     Any,
     list[dict[str, Any]],
@@ -355,8 +363,7 @@ def _evaluate_candidates(
     candidate_evaluations: dict[str, rsi_session.SelectionEvaluation] = {}
     candidate_outcomes: dict[str, tuple[EvaluationOutcome, float]] = {}
     summaries: list[dict[str, Any]] = []
-    validation_tokens = 0
-    validation_seconds = 0.0
+    costs = costs if costs is not None else _ValidationCost()
     candidate_ids: set[str] = set()
     for candidate in batch.candidates:
         candidate_id = str(candidate.candidate_id)
@@ -382,16 +389,18 @@ def _evaluate_candidates(
         )
         # Candidate validation uses the same task, separate from holdout evaluation.
         validation_started = time.perf_counter()
-        outcome = _evaluate(
-            candidate_task,
-            request=controller.request_for_agent(candidate.agent),
-            agent=candidate.agent,
-            output_dir=output_dir,
-        )
+        try:
+            outcome = _evaluate(
+                candidate_task,
+                request=controller.request_for_agent(candidate.agent),
+                agent=candidate.agent,
+                output_dir=output_dir,
+            )
+        finally:
+            candidate_seconds = time.perf_counter() - validation_started
+            costs.seconds += candidate_seconds
         result = outcome.record
-        candidate_seconds = time.perf_counter() - validation_started
-        validation_seconds += candidate_seconds
-        validation_tokens += _token_total(result.get("llm_metrics", {}))
+        costs.tokens += _token_total(result.get("llm_metrics", {}))
         artifact_dir = Path(candidate.artifact_dir).resolve()
         path = artifact_dir / "evaluation" / "result.json"
         _write_json(path, {
@@ -413,7 +422,7 @@ def _evaluate_candidates(
         candidate_evaluations,
         selection_mode=selection_mode,
     )
-    return selection, summaries, candidate_outcomes, validation_tokens, validation_seconds
+    return selection, summaries, candidate_outcomes, costs.tokens, costs.seconds
 
 
 def _run_one(
@@ -504,12 +513,19 @@ def _run_one(
                 if not ids or ids in seen_batches:
                     raise ValueError("candidate batch is empty or repeated")
                 seen_batches.add(ids)
-                selection, evaluations, _, stage_tokens, stage_seconds = _evaluate_candidates(
-                    task, batch, parent_evaluation, controller=controller, output_dir=output_dir,
-                    ordinal=ordinal, stage_index=len(stages)
-                )
-                candidate_validation_tokens += stage_tokens
-                candidate_validation_seconds += stage_seconds
+                stage_costs = _ValidationCost()
+                try:
+                    selection, evaluations, _, stage_tokens, stage_seconds = _evaluate_candidates(
+                        task, batch, parent_evaluation, controller=controller, output_dir=output_dir,
+                        ordinal=ordinal, stage_index=len(stages), costs=stage_costs,
+                    )
+                    stage_costs.tokens = stage_tokens
+                    stage_costs.seconds = stage_seconds
+                finally:
+                    # Completed validation remains billable even if selection or
+                    # a later candidate fails before the stage returns.
+                    candidate_validation_tokens += stage_costs.tokens
+                    candidate_validation_seconds += stage_costs.seconds
                 status = str(getattr(selection, "status", "")).lower()
                 stages.append({
                     "stage_index": len(stages),

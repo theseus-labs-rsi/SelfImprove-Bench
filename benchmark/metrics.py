@@ -8,9 +8,15 @@ from statistics import fmean, pvariance
 from typing import Any
 
 
-def _score(record: dict[str, Any]) -> float:
+def record_score(record: dict[str, Any]) -> float:
+    """Keep every attempted case in the denominator, with failures scored zero."""
+    if record.get("status") not in {None, "ok"}:
+        return 0.0
     value = record.get("relative_score")
-    return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else 0.0
+    return (
+        float(value) if isinstance(value, (int, float)) and not isinstance(value, bool)
+        and isfinite(value) else 0.0
+    )
 
 
 def _cost_total(records: list[dict[str, Any]], field: str) -> float | None:
@@ -45,12 +51,12 @@ def post_refinement_score(record: dict[str, Any]) -> float | None:
         )
     selection = record.get("selection")
     if selection is None:
-        return _score(record) if "refinement" in record and record["refinement"] is None else None
+        return record_score(record) if "refinement" in record and record["refinement"] is None else None
     if not isinstance(selection, dict):
         return None
     status = selection.get("status")
     if status in {"unchanged", "skipped"}:
-        return _score(record)
+        return record_score(record)
     if status not in {"committed", "completed"}:
         return None
     candidate_id = selection.get("committed_candidate_id")
@@ -81,7 +87,7 @@ def calculate_metrics(
 ) -> dict[str, Any]:
     evolution_records = [record for record in training if not record.get("replay")]
     replay_records = [record for record in training if record.get("replay")]
-    scores = [_score(record) for record in evolution_records]
+    scores = [record_score(record) for record in evolution_records]
     window = min(evolution_window, len(scores))
     first = fmean(scores[:window]) if window else None
     last = fmean(scores[-window:]) if window else None
@@ -125,7 +131,7 @@ def calculate_metrics(
     groups: dict[tuple[str, int, int], list[float]] = defaultdict(list)
     for record in holdout:
         groups[(record["game"], int(record["difficulty"]), int(record["group_index"]))].append(
-            _score(record)
+            record_score(record)
         )
     generalization = [
         {
@@ -164,7 +170,7 @@ def calculate_metrics(
         },
         "generalization": {
             "overall_average_relative_score": (
-                fmean([_score(record) for record in holdout]) if holdout else None
+                fmean([record_score(record) for record in holdout]) if holdout else None
             ),
             "groups": generalization,
         },

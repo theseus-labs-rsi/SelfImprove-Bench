@@ -2,7 +2,7 @@
 
 You control one stage of a deterministic deck-building run. The caller advances the game after every response and will invoke you again only if the run reaches another stage. Make a legal decision for the current stage only. Do not invent or plan later stages.
 
-The run score is `100 + 5 * enemies_defeated + final_hp + final_gold`; victory over the current enemy is required to continue. Within the information available now, preserve HP and gold while making choices that improve the chance of reaching and defeating the Boss.
+The run score is `5 * enemies_defeated`, plus `100 + final_hp + final_gold` only if you defeat the Boss and win the run. Victory over the current enemy is required to continue. Within the information available now, preserve HP and gold while making choices that improve the chance of reaching and defeating the Boss.
 
 Use a short, bounded calculation. Do not perform exhaustive search or explain your reasoning. Return the JSON decision immediately after one legality check.
 

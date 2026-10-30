@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
 from benchmark.interfaces import MethodContext
 from benchmark.resume_state import atomic_json
@@ -40,6 +41,37 @@ def _file_digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def tree_digest(root: Path, *, exclude: tuple[str, ...] = ()) -> str:
+    """Fingerprint relative paths and contents, excluding transient interpreter files."""
+    if not root.is_dir():
+        raise FileNotFoundError(f"Missing checkpoint directory: {root}")
+
+    def fail_on_error(error: OSError) -> None:
+        raise error
+
+    digest = hashlib.sha256()
+    for directory, folders, files in os.walk(root, onerror=fail_on_error):
+        folders[:] = sorted(
+            name for name in folders
+            if name not in {".git", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache"}
+        )
+        for name in sorted(files):
+            path = Path(directory) / name
+            relative = path.relative_to(root).as_posix()
+            if relative in exclude or path.suffix in {".pyc", ".pyo"}:
+                continue
+            digest.update(relative.encode("utf-8") + b"\0")
+            digest.update(_file_digest(path).encode("ascii") + b"\0")
+    return digest.hexdigest()
+
+
+def ahe_surface_digests(workspace: Path, evolve_dir: Path) -> dict[str, str]:
+    return {
+        "workspace_digest": tree_digest(workspace),
+        "evolve_digest": tree_digest(evolve_dir),
+    }
+
+
 def _optional_json(path: Path) -> object | None:
     return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else None
 
@@ -66,8 +98,7 @@ def export_state(adaptor: object, method: str) -> dict:
                      observed_training_tasks=adaptor._observed_training_tasks,
                      ahe_policy=adaptor.checkpoint_policy(),
                      evolution_history=_optional_json(adaptor.run_dir / "evolution_history.json") or [],
-                     workspace_config_digest=_file_digest(adaptor.state.current_workspace / "code_agent.yaml"),
-                     evolve_config_digest=_file_digest(adaptor.state.evolve_agent_dir / "evolve_agent.yaml"))
+                     **ahe_surface_digests(adaptor.state.current_workspace, adaptor.state.evolve_agent_dir))
     elif method == "hyperagents":
         from rsi_methods.HyperAgents.HyperAgentsAdaptor import _snapshot_to_dict
         snapshot = _snapshot_to_dict(adaptor.snapshot)
@@ -122,11 +153,10 @@ def restore_state(adaptor: object, method: str, root: Path, state: dict) -> None
         from rsi_methods.AHE.init import AHEState
         run_dir = _path(state["run_dir"], root, directory=True)
         workspace = _path(state["workspace"], run_dir, directory=True)
-        if _file_digest(workspace / "code_agent.yaml") != state["workspace_config_digest"]:
-            raise RuntimeError("AHE committed workspace changed since checkpoint")
         evolve_dir = _path(str(run_dir / "evolve_agent"), run_dir, directory=True)
-        if _file_digest(evolve_dir / "evolve_agent.yaml") != state["evolve_config_digest"]:
-            raise RuntimeError("AHE Evolve Agent config changed since checkpoint")
+        for key, value in ahe_surface_digests(workspace, evolve_dir).items():
+            if state.get(key) != value:
+                raise RuntimeError(f"AHE committed {key} changed or is missing since checkpoint")
         observed = state.get("observed_training_tasks")
         if isinstance(observed, bool) or not isinstance(observed, int) or observed < 0:
             raise RuntimeError("Invalid AHE observed training task count in checkpoint")

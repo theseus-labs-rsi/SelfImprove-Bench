@@ -4,6 +4,7 @@ import unittest
 from combat_planner import (
     CombatError,
     CombatSession,
+    _objective_score,
     draw_hand,
     generate_task,
     load_combat_data,
@@ -126,7 +127,7 @@ class CombatPlannerTests(unittest.TestCase):
         self.assertFalse(failed["victory"])
         self.assertEqual(
             failed["objective_score"],
-            100 + 5 * failed["enemies_defeated"] + failed["final_hp"] + failed["final_gold"],
+            5 * failed["enemies_defeated"],
         )
         self.assertLess(failed["relative_score"], 1.0)
 
@@ -134,6 +135,21 @@ class CombatPlannerTests(unittest.TestCase):
         illegal["stages"][0]["turns"] = [{"turn": 1, "play": ["not_a_card"]}]
         with self.assertRaises(CombatError):
             simulate_plan(task, illegal)
+
+    def test_unspent_resources_cannot_outscore_a_winning_reference(self):
+        task = generate_task(1, seed=8, task_id="resource-hoarding")
+        task["player"]["initial_gold"] = 10_000
+        session = CombatSession(task)
+        session.apply({"stage_id": "combat_1", "turns": []})
+        result = session.result()
+        self.assertFalse(result["victory"])
+        self.assertEqual(result["final_gold"], 10_000)
+        self.assertEqual(result["relative_score"], 0.0)
+        self.assertLess(result["objective_score"], task["reference_score"])
+
+    def test_resource_bonus_requires_victory(self):
+        self.assertEqual(_objective_score(False, 2, 80, 10_000), 10)
+        self.assertEqual(_objective_score(True, 3, 80, 120), 315)
 
     def test_solver_rejects_artificially_impossible_turn_limit(self):
         task = generate_task(1, seed=3, task_id="short")
