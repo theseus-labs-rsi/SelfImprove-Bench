@@ -4,6 +4,7 @@
     "1": {
       "task_type": "proc_over",
       "seeds_per_task": 5,
+      "episode_indices": [0, 1, 2],
       "action_budget_multiplier": 3
     },
     "2": {
