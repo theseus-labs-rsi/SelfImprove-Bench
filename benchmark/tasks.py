@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from random import Random
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
@@ -93,6 +94,33 @@ def _hash(*parts: Any) -> str:
     return hashlib.sha256("\x1f".join(_canonical(part) for part in parts).encode("utf-8")).hexdigest()
 
 
+def implementation_digest(config: BenchmarkConfig) -> str:
+    """Fingerprint executable benchmark code used by the configured games."""
+    roots = {
+        "farm": Path(__file__).parents[1] / "benches" / "farm",
+        "combat": Path(__file__).parents[1] / "benches" / "combat",
+        "sweepmine": Path(__file__).parents[1] / "benches" / "sweepmine",
+        "heros_journey": Path(__file__).parents[1] / "benches" / "heros_journey",
+        "gameworld": Path(__file__).parents[1] / "benches" / "gameworld",
+    }
+    requested = {item.game for item in (*config.schedule, *config.holdout)}
+    digest = hashlib.sha256()
+    for game in sorted(requested):
+        root = roots[game]
+        for directory, folders, files in os.walk(root):
+            folders[:] = sorted(name for name in folders if name not in {
+                ".git", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache",
+            })
+            for name in sorted(files):
+                path = Path(directory) / name
+                if path.suffix not in {".py", ".js"}:
+                    continue
+                relative = path.relative_to(root).as_posix()
+                digest.update(f"{game}/{relative}".encode("utf-8") + b"\0")
+                digest.update(hashlib.sha256(path.read_bytes()).digest())
+    return digest.hexdigest()
+
+
 def _seed(master: int, *parts: Any) -> int:
     return int(_hash(master, *parts)[:16], 16)
 
@@ -142,7 +170,7 @@ def _make_task(
 
 def build_manifest(config: BenchmarkConfig) -> TaskManifest:
     """Build the full benchmark deterministically, creating holdouts first."""
-    config_hash = _hash(config.as_dict())
+    config_hash = _hash(config.as_dict(), implementation_digest(config))
     if config.holdout_manifest is not None:
         source_path = Path(config.holdout_manifest)
         source = TaskManifest.from_mapping(json.loads(source_path.read_text(encoding="utf-8")))

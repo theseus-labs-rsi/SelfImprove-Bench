@@ -16,7 +16,7 @@ from uuid import uuid4
 from benchmark.backend import BackendDispatcher, OpenAIBackend
 from benchmark.interfaces import MethodContext
 from benchmark.visual_evidence import frames, refinement_image_limit, sample, visual_note
-from rsi_methods.checkpoint import MethodCheckpointMixin
+from rsi_methods.checkpoint import MethodCheckpointMixin, tree_digest
 from rsi_methods.ACE.runtime_policy import ACERuntimePolicy
 
 if __package__:
@@ -294,6 +294,10 @@ class ACEAdaptor(MethodCheckpointMixin):
         return {
             "evolution_policy": "accept-valid-candidates-v1",
             "prompt_digest": hashlib.sha256(json.dumps(prompts).encode("utf-8")).hexdigest(),
+            "source_digest": tree_digest(Path(__file__).parent, exclude=("config.toml",)),
+            "checkpoint_code_digest": hashlib.sha256(
+                Path(__file__).parents[1].joinpath("checkpoint.py").read_bytes()
+            ).hexdigest(),
         }
 
     def _persist_checkpoint_policy(self) -> None:

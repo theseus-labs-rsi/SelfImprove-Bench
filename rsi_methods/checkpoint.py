@@ -104,6 +104,7 @@ def export_state(adaptor: object, method: str) -> dict:
         snapshot = _snapshot_to_dict(adaptor.snapshot)
         snapshot["patch_digests"] = [_file_digest(Path(p)) for p in snapshot["lineage_patches"]]
         state.update(workspace_dir=str(adaptor.workspace_dir), snapshot=snapshot,
+                     hyperagents_policy=adaptor.checkpoint_policy(),
                      active_snapshot=_optional_json(adaptor.workspace_dir / "active_snapshot.json"),
                      workspace_selection=_optional_json(adaptor.workspace_dir / "selection.json"),
                      refinement_round=adaptor._refinement_round,
@@ -114,7 +115,7 @@ def export_state(adaptor: object, method: str) -> dict:
 
 
 def restore_state(adaptor: object, method: str, root: Path, state: dict) -> None:
-    if method == "ahe":
+    if method in {"ahe", "hyperagents"}:
         adaptor._configure(adaptor._load_config())
     if method == "ahe" and state.get("ahe_policy") != adaptor.checkpoint_policy():
         raise RuntimeError(
@@ -171,6 +172,11 @@ def restore_state(adaptor: object, method: str, root: Path, state: dict) -> None
         from rsi_methods.HyperAgents.search_archive import SearchArchive
         if "search_archive" not in state:
             raise RuntimeError("HyperAgents checkpoint predates archive restoration; use the historical code for that run")
+        if state.get("hyperagents_policy") != adaptor.checkpoint_policy():
+            raise RuntimeError(
+                "HyperAgents checkpoint policy is missing or differs from current code, tools, or model settings; "
+                "use historical code for old runs"
+            )
         raw = (root / "method_config.toml").read_bytes()
         if raw != adaptor.config_path.read_bytes():
             raise RuntimeError("HyperAgents method configuration changed since original run")

@@ -677,6 +677,8 @@ def _run_target_benchmark(
         previous = json.loads((source_dir / "task_manifest.json").read_text(encoding="utf-8"))
         saved_manifest = TaskManifest.from_mapping(previous)
         manifest = build_manifest(config)
+        if saved_manifest.config_hash != manifest.config_hash:
+            raise ValueError("Resume configuration or benchmark implementation changed")
         if len(saved_manifest.training) != len(manifest.training) or any(
             old.manifest_record() != new.manifest_record()
             for old, new in zip(saved_manifest.training, manifest.training)

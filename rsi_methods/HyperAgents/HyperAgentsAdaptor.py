@@ -14,7 +14,7 @@ from uuid import uuid4
 
 from benchmark.token_ledger import hyperagents_usage_report
 from benchmark.interfaces import MethodContext
-from rsi_methods.checkpoint import MethodCheckpointMixin
+from rsi_methods.checkpoint import MethodCheckpointMixin, tree_digest
 from benchmark.contracts import (
     ExecutionStatus,
     FeedbackResult,
@@ -577,6 +577,19 @@ class HyperAgentsAdaptor(MethodCheckpointMixin):
             self.max_refinement_rounds = self._max_refinement_rounds_override
         if self.max_refinement_rounds <= 0:
             raise ValueError("max_refinement_rounds must be positive")
+
+    def checkpoint_policy(self) -> dict[str, Any]:
+        """Identify HyperAgents code, tools, models, and runtime semantics."""
+        return {
+            "version": "hyperagents-active-lineage-v1",
+            "meta_model": dict(self.meta_model),
+            "task_model": dict(self.task_model),
+            "parent_selection": self.parent_selection,
+            "max_refinement_rounds": self.max_refinement_rounds,
+            "source_digest": tree_digest(Path(__file__).parent, exclude=("config.toml",)),
+            "runtime_source_digest": tree_digest(Path(__file__).parent / "hyperagents"),
+            "checkpoint_code_digest": tree_digest(Path(__file__).parents[1], exclude=("config.toml",)),
+        }
 
     def _create_workspace(self) -> Path:
         if self.workspace_root is None:
