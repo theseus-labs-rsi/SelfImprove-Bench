@@ -87,12 +87,6 @@
           <span class="figure-zoom">Expand figure <span aria-hidden="true">↗</span></span>
         </a>
       </figure>
-      <div class="evidence-strip" aria-label="Headline empirical findings">
-        <div><strong>8<span>/18</span></strong><p>method–task pairs lose performance on G0 replay.</p></div>
-        <div><strong>16<span>/18</span></strong><p>pairs improve on held-out instances at the training difficulty.</p></div>
-        <div><strong>5<span>/8</span></strong><p>HyperAgents cross-capability G4 directions show positive HCI.</p></div>
-        <div><strong>915</strong><p>retained refinement opinions are analysed across six games and three methods.</p></div>
-      </div>
     </div>
   </section>
 
@@ -155,6 +149,7 @@
                 <th scope="col" class="rank-col">#</th>
                 <th scope="col">Game</th>
                 <th scope="col">Method</th>
+                <th scope="col">model</th>
                 <th scope="col" class="hci-heading" data-heading-level="g0">G0 <span>Replay</span></th>
                 <th scope="col" class="hci-heading is-active" data-heading-level="g1" aria-sort="descending">G1 <span>New inst.</span></th>
                 <th scope="col" class="hci-heading" data-heading-level="g2">G2 <span>Harder</span></th>
@@ -164,74 +159,92 @@
             <tbody id="leaderboard-body">
               <tr data-game="Combat" data-category="Planning" data-method="hyper" data-g0="62.5" data-g1="100.0" data-g2="100.0" data-g3="109.2">
                 <td class="rank">01</td><th scope="row" class="game-cell">Combat<small>Planning</small></th><td class="method-cell"><strong>HyperAgents</strong><small>Meta-level</small></td>
+                <td class="model-cell">GPT-5.6 Sol</td>
                 <td class="hci positive">+62.5<span>%</span></td><td class="hci positive best" title="Best available HCI for this game at G1">+100.0<span>%</span><i class="best-dot"></i></td><td class="hci positive best" title="Best available HCI for this game at G2">+100.0<span>%</span><i class="best-dot"></i></td><td class="hci positive best" title="Best available HCI for this game at G3">+109.2<span>%</span><i class="best-dot"></i></td>
               </tr>
               <tr data-game="Farm" data-category="Planning" data-method="hyper" data-g0="28.0" data-g1="100.0" data-g2="19.3" data-g3="-0.1">
                 <td class="rank">02</td><th scope="row" class="game-cell">Farm<small>Planning</small></th><td class="method-cell"><strong>HyperAgents</strong><small>Meta-level</small></td>
+                <td class="model-cell">GPT-5.6 Sol</td>
                 <td class="hci positive">+28.0<span>%</span></td><td class="hci positive best" title="Best available HCI for this game at G1">+100.0<span>%</span><i class="best-dot"></i></td><td class="hci positive best" title="Best available HCI for this game at G2">+19.3<span>%</span><i class="best-dot"></i></td><td class="hci negative">−0.1<span>%</span></td>
               </tr>
               <tr data-game="Combat" data-category="Planning" data-method="ahe" data-g0="93.8" data-g1="99.2" data-g2="88.4" data-g3="-24.3">
                 <td class="rank">03</td><th scope="row" class="game-cell">Combat<small>Planning</small></th><td class="method-cell"><strong>AHE</strong><small>Harness-level</small></td>
+                <td class="model-cell">GPT-5.6 Sol</td>
                 <td class="hci positive best" title="Best available HCI for this game at G0">+93.8<span>%</span><i class="best-dot"></i></td><td class="hci positive">+99.2<span>%</span></td><td class="hci positive">+88.4<span>%</span></td><td class="hci negative">−24.3<span>%</span></td>
               </tr>
               <tr data-game="Farm" data-category="Planning" data-method="ace" data-g0="-10.2" data-g1="81.3" data-g2="14.6" data-g3="7.0">
                 <td class="rank">04</td><th scope="row" class="game-cell">Farm<small>Planning</small></th><td class="method-cell"><strong>ACE</strong><small>Experience-level</small></td>
+                <td class="model-cell">GPT-5.6 Sol</td>
                 <td class="hci negative">−10.2<span>%</span></td><td class="hci positive">+81.3<span>%</span></td><td class="hci positive">+14.6<span>%</span></td><td class="hci positive">+7.0<span>%</span></td>
               </tr>
               <tr data-game="Hero" data-category="Reasoning" data-method="ahe" data-g0="7.0" data-g1="47.5" data-g2="21.4" data-g3="19.8">
                 <td class="rank">05</td><th scope="row" class="game-cell">Hero<small>Reasoning</small></th><td class="method-cell"><strong>AHE</strong><small>Harness-level</small></td>
+                <td class="model-cell">GPT-5.6 Sol</td>
                 <td class="hci positive best" title="Best available HCI for this game at G0">+7.0<span>%</span><i class="best-dot"></i></td><td class="hci positive best" title="Best available HCI for this game at G1">+47.5<span>%</span><i class="best-dot"></i></td><td class="hci positive best" title="Best available HCI for this game at G2">+21.4<span>%</span><i class="best-dot"></i></td><td class="hci positive best" title="Best available HCI for this game at G3">+19.8<span>%</span><i class="best-dot"></i></td>
               </tr>
               <tr data-game="MC" data-category="Exploring" data-method="ahe" data-g0="-179.4" data-g1="43.4" data-g2="" data-g3="0.0">
                 <td class="rank">06</td><th scope="row" class="game-cell">MC<small>Exploring</small></th><td class="method-cell"><strong>AHE</strong><small>Harness-level</small></td>
+                <td class="model-cell">GPT-5.6 Sol</td>
                 <td class="hci negative">−179.4<span>%</span></td><td class="hci positive">+43.4<span>%</span></td><td class="hci na">N/A</td><td class="hci neutral best" title="Tied best available HCI for this game at G3">0.0<span>%</span><i class="best-dot"></i></td>
               </tr>
               <tr data-game="Sweepmine" data-category="Reasoning" data-method="ahe" data-g0="-2.0" data-g1="33.7" data-g2="27.2" data-g3="-2.2">
                 <td class="rank">07</td><th scope="row" class="game-cell">Sweepmine<small>Reasoning</small></th><td class="method-cell"><strong>AHE</strong><small>Harness-level</small></td>
+                <td class="model-cell">GPT-5.6 Sol</td>
                 <td class="hci negative">−2.0<span>%</span></td><td class="hci positive best" title="Best available HCI for this game at G1">+33.7<span>%</span><i class="best-dot"></i></td><td class="hci positive best" title="Best available HCI for this game at G2">+27.2<span>%</span><i class="best-dot"></i></td><td class="hci negative">−2.2<span>%</span></td>
               </tr>
               <tr data-game="Sweepmine" data-category="Reasoning" data-method="ace" data-g0="-6.0" data-g1="21.0" data-g2="20.0" data-g3="-3.0">
                 <td class="rank">08</td><th scope="row" class="game-cell">Sweepmine<small>Reasoning</small></th><td class="method-cell"><strong>ACE</strong><small>Experience-level</small></td>
+                <td class="model-cell">GPT-5.6 Sol</td>
                 <td class="hci negative">−6.0<span>%</span></td><td class="hci positive">+21.0<span>%</span></td><td class="hci positive">+20.0<span>%</span></td><td class="hci negative">−3.0<span>%</span></td>
               </tr>
               <tr data-game="Astray" data-category="Exploring" data-method="hyper" data-g0="-1.2" data-g1="20.0" data-g2="-2.9" data-g3="-5.3">
                 <td class="rank">09</td><th scope="row" class="game-cell">Astray<small>Exploring</small></th><td class="method-cell"><strong>HyperAgents</strong><small>Meta-level</small></td>
+                <td class="model-cell">GPT-5.6 Sol</td>
                 <td class="hci negative">−1.2<span>%</span></td><td class="hci positive best" title="Best available HCI for this game at G1">+20.0<span>%</span><i class="best-dot"></i></td><td class="hci negative">−2.9<span>%</span></td><td class="hci negative">−5.3<span>%</span></td>
               </tr>
               <tr data-game="MC" data-category="Exploring" data-method="hyper" data-g0="28.4" data-g1="17.9" data-g2="40.0" data-g3="-33.3">
                 <td class="rank">10</td><th scope="row" class="game-cell">MC<small>Exploring</small></th><td class="method-cell"><strong>HyperAgents</strong><small>Meta-level</small></td>
+                <td class="model-cell">GPT-5.6 Sol</td>
                 <td class="hci positive best" title="Best available HCI for this game at G0">+28.4<span>%</span><i class="best-dot"></i></td><td class="hci positive">+17.9<span>%</span></td><td class="hci positive best" title="Best available HCI for this game at G2">+40.0<span>%</span><i class="best-dot"></i></td><td class="hci negative">−33.3<span>%</span></td>
               </tr>
               <tr data-game="Sweepmine" data-category="Reasoning" data-method="hyper" data-g0="2.8" data-g1="12.9" data-g2="10.5" data-g3="-1.7">
                 <td class="rank">11</td><th scope="row" class="game-cell">Sweepmine<small>Reasoning</small></th><td class="method-cell"><strong>HyperAgents</strong><small>Meta-level</small></td>
+                <td class="model-cell">GPT-5.6 Sol</td>
                 <td class="hci positive best" title="Best available HCI for this game at G0">+2.8<span>%</span><i class="best-dot"></i></td><td class="hci positive">+12.9<span>%</span></td><td class="hci positive">+10.5<span>%</span></td><td class="hci negative best" title="Best available HCI for this game at G3">−1.7<span>%</span><i class="best-dot"></i></td>
               </tr>
               <tr data-game="Astray" data-category="Exploring" data-method="ahe" data-g0="39.6" data-g1="6.7" data-g2="20.0" data-g3="9.1">
                 <td class="rank">12</td><th scope="row" class="game-cell">Astray<small>Exploring</small></th><td class="method-cell"><strong>AHE</strong><small>Harness-level</small></td>
+                <td class="model-cell">GPT-5.6 Sol</td>
                 <td class="hci positive best" title="Best available HCI for this game at G0">+39.6<span>%</span><i class="best-dot"></i></td><td class="hci positive">+6.7<span>%</span></td><td class="hci positive best" title="Best available HCI for this game at G2">+20.0<span>%</span><i class="best-dot"></i></td><td class="hci positive best" title="Best available HCI for this game at G3">+9.1<span>%</span><i class="best-dot"></i></td>
               </tr>
               <tr data-game="Hero" data-category="Reasoning" data-method="ace" data-g0="-5.4" data-g1="6.7" data-g2="10.9" data-g3="11.5">
                 <td class="rank">13</td><th scope="row" class="game-cell">Hero<small>Reasoning</small></th><td class="method-cell"><strong>ACE</strong><small>Experience-level</small></td>
+                <td class="model-cell">GPT-5.6 Sol</td>
                 <td class="hci negative">−5.4<span>%</span></td><td class="hci positive">+6.7<span>%</span></td><td class="hci positive">+10.9<span>%</span></td><td class="hci positive">+11.5<span>%</span></td>
               </tr>
               <tr data-game="Combat" data-category="Planning" data-method="ace" data-g0="9.7" data-g1="6.6" data-g2="14.5" data-g3="69.2">
                 <td class="rank">14</td><th scope="row" class="game-cell">Combat<small>Planning</small></th><td class="method-cell"><strong>ACE</strong><small>Experience-level</small></td>
+                <td class="model-cell">GPT-5.6 Sol</td>
                 <td class="hci positive">+9.7<span>%</span></td><td class="hci positive">+6.6<span>%</span></td><td class="hci positive">+14.5<span>%</span></td><td class="hci positive">+69.2<span>%</span></td>
               </tr>
               <tr data-game="Astray" data-category="Exploring" data-method="ace" data-g0="11.4" data-g1="3.3" data-g2="-1.4" data-g3="5.0">
                 <td class="rank">15</td><th scope="row" class="game-cell">Astray<small>Exploring</small></th><td class="method-cell"><strong>ACE</strong><small>Experience-level</small></td>
+                <td class="model-cell">GPT-5.6 Sol</td>
                 <td class="hci positive">+11.4<span>%</span></td><td class="hci positive">+3.3<span>%</span></td><td class="hci negative">−1.4<span>%</span></td><td class="hci positive">+5.0<span>%</span></td>
               </tr>
               <tr data-game="MC" data-category="Exploring" data-method="ace" data-g0="-10.1" data-g1="2.0" data-g2="35.0" data-g3="0.0">
                 <td class="rank">16</td><th scope="row" class="game-cell">MC<small>Exploring</small></th><td class="method-cell"><strong>ACE</strong><small>Experience-level</small></td>
+                <td class="model-cell">GPT-5.6 Sol</td>
                 <td class="hci negative">−10.1<span>%</span></td><td class="hci positive">+2.0<span>%</span></td><td class="hci positive">+35.0<span>%</span></td><td class="hci neutral best" title="Tied best available HCI for this game at G3">0.0<span>%</span><i class="best-dot"></i></td>
               </tr>
               <tr data-game="Hero" data-category="Reasoning" data-method="hyper" data-g0="-1.9" data-g1="-1.7" data-g2="5.7" data-g3="19.4">
                 <td class="rank">17</td><th scope="row" class="game-cell">Hero<small>Reasoning</small></th><td class="method-cell"><strong>HyperAgents</strong><small>Meta-level</small></td>
+                <td class="model-cell">GPT-5.6 Sol</td>
                 <td class="hci negative">−1.9<span>%</span></td><td class="hci negative">−1.7<span>%</span></td><td class="hci positive">+5.7<span>%</span></td><td class="hci positive">+19.4<span>%</span></td>
               </tr>
               <tr data-game="Farm" data-category="Planning" data-method="ahe" data-g0="58.7" data-g1="-33.8" data-g2="-1.8" data-g3="15.5">
                 <td class="rank">18</td><th scope="row" class="game-cell">Farm<small>Planning</small></th><td class="method-cell"><strong>AHE</strong><small>Harness-level</small></td>
+                <td class="model-cell">GPT-5.6 Sol</td>
                 <td class="hci positive best" title="Best available HCI for this game at G0">+58.7<span>%</span><i class="best-dot"></i></td><td class="hci negative">−33.8<span>%</span></td><td class="hci negative">−1.8<span>%</span></td><td class="hci positive best" title="Best available HCI for this game at G3">+15.5<span>%</span><i class="best-dot"></i></td>
               </tr>
             </tbody>
@@ -431,33 +444,6 @@
           </article>
         </div>
         <p class="case-library-source">Source: <a href="https://huggingface.co/datasets/DreamEternal/SelfImprove-Bench-Cases" target="_blank" rel="noopener">SelfImprove-Bench-Cases on Hugging Face</a>. JSON excerpts show selected fields; long catalogs and metric lists are omitted. Astray and Minecraft use task variants rather than D1&ndash;D5 coefficients.</p>
-      </div>
-
-      <div class="direct-comparison" aria-labelledby="direct-title">
-        <div class="comparison-heading">
-          <div><p class="eyebrow">Direct agents vs. refinement</p><h3 id="direct-title">What changes when the agent is allowed to evolve?</h3></div>
-        </div>
-        <div class="comparison-grid">
-          <section class="bar-panel baseline-panel" aria-labelledby="baseline-title">
-            <div class="bar-panel-head"><span>No evolution</span><h4 id="baseline-title">Direct agent score</h4></div>
-            <div class="bar-list" role="img" aria-label="Direct agent scores: DeepSeek with DeepSeek Harness 0.30, GPT-5.6 Sol with Codex 0.42, Claude Opus 5.5 with Claude Code 0.44.">
-              <div class="bar-row"><div class="bar-label">DeepSeek <span>+ DeepSeek Harness</span></div><div class="bar-track"><span class="bar-fill" style="--value:50%"></span></div><strong>0.30</strong></div>
-              <div class="bar-row"><div class="bar-label">GPT-5.6 Sol <span>+ Codex</span></div><div class="bar-track"><span class="bar-fill" style="--value:70%"></span></div><strong>0.42</strong></div>
-              <div class="bar-row"><div class="bar-label">Claude Opus 5.5 <span>+ Claude Code</span></div><div class="bar-track"><span class="bar-fill" style="--value:73.333%"></span></div><strong>0.44</strong></div>
-            </div>
-            <div class="axis" aria-hidden="true"><span>0.0</span><span>0.2</span><span>0.4</span><span>0.6</span></div>
-          </section>
-          <section class="bar-panel rsi-panel" aria-labelledby="rsi-title">
-            <div class="bar-panel-head"><span>With RSI</span><h4 id="rsi-title">Initial → refined</h4></div>
-            <div class="bar-list" role="img" aria-label="Refined RSI scores: ACE experience-level 0.42 from 0.40, AHE harness-level 0.44 from 0.40, HyperAgents meta-level 0.52 from 0.40.">
-              <div class="bar-row"><div class="bar-label">ACE <span>Experience-level</span></div><div class="bar-track"><span class="initial-marker" style="--initial:66.667%"></span><span class="bar-fill ace" style="--value:70%"></span></div><strong>0.42 <em class="delta up">+0.02</em></strong></div>
-              <div class="bar-row"><div class="bar-label">AHE <span>Harness-level</span></div><div class="bar-track"><span class="initial-marker" style="--initial:66.667%"></span><span class="bar-fill ahe" style="--value:73.333%"></span></div><strong>0.44 <em class="delta up">+0.04</em></strong></div>
-              <div class="bar-row"><div class="bar-label">HyperAgents <span>Meta-level</span></div><div class="bar-track"><span class="initial-marker" style="--initial:66.667%"></span><span class="bar-fill hyper" style="--value:86.667%"></span></div><strong>0.52 <em class="delta up">+0.12</em></strong></div>
-            </div>
-            <div class="axis" aria-hidden="true"><span>0.0</span><span>0.2</span><span>0.4</span><span>0.6</span></div>
-          </section>
-        </div>
-        <p class="comparison-note">The highest direct configuration reaches <strong>0.44</strong>. Meta-level refinement reaches <strong>0.52</strong>. Experience-level refinement is <strong>0.42</strong>, below the strongest direct agent.</p>
       </div>
     </div>
   </section>
