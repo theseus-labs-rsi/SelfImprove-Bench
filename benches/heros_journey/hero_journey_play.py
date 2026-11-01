@@ -6,13 +6,12 @@ import json
 import os
 import re
 import statistics
-import sys
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
-LOCAL_HEROS_JOURNEY = Path(__file__).resolve().parent / "HerosJourney"
-if str(LOCAL_HEROS_JOURNEY) not in sys.path:
-    sys.path.insert(0, str(LOCAL_HEROS_JOURNEY))
+from .vendor import ensure_hero_package
+
+ensure_hero_package()
 
 from herosjourney import get_task
 from herosjourney.core.demo_generator import generate_mixed_demos

@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from farm_planner import FarmError, generate_task, save_json
+from .farm_planner import FarmError, generate_task, save_json
 
 
 PROJECT_DIR = Path(__file__).resolve().parent

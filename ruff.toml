@@ -1,0 +1,5 @@
+target-version = "py313"
+
+# Deliberately limited correctness checks, not a repository-wide style rewrite.
+[lint]
+select = ["E9", "F63", "F7", "F82"]

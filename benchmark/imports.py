@@ -1,4 +1,10 @@
-"""Explicit import bridges for bundled upstream packages and worker tools."""
+"""Explicit import bridges for bundled upstream code and isolated workers.
+
+Own modules use package-relative imports. Upstream packages keep their original
+absolute package names, so load their package spec without exposing an entire
+source tree on sys.path. The remaining path bridge is reserved for GameWorld's
+flat upstream modules and AHE's candidate-local worker tools.
+"""
 
 from __future__ import annotations
 
@@ -10,7 +16,9 @@ from types import ModuleType
 
 _PACKAGE_LOCK = RLock()
 
+
 def load_vendor_package(name: str, package_root: Path) -> ModuleType:
+    """Load one bundled top-level package while retaining its absolute imports."""
     if not name.isidentifier():
         raise ValueError("A bundled package must have a top-level package name")
     package_root = Path(package_root).resolve()
@@ -22,9 +30,14 @@ def load_vendor_package(name: str, package_root: Path) -> ModuleType:
         if existing is not None:
             origin = getattr(existing, "__file__", None)
             if origin is None or Path(origin).resolve() != initializer:
-                raise ImportError(f"Package {name!r} is already loaded from {origin!r}")
+                raise ImportError(
+                    f"Package {name!r} is already loaded from {origin!r}; "
+                    f"expected bundled source {initializer}"
+                )
             return existing
-        spec = importlib.util.spec_from_file_location(name, initializer, submodule_search_locations=[str(package_root)])
+        spec = importlib.util.spec_from_file_location(
+            name, initializer, submodule_search_locations=[str(package_root)],
+        )
         if spec is None or spec.loader is None:
             raise ImportError(f"Cannot load bundled package {name!r} from {initializer}")
         before = set(sys.modules)
@@ -39,7 +52,9 @@ def load_vendor_package(name: str, package_root: Path) -> ModuleType:
             raise
         return module
 
+
 def prepend_legacy_paths(*source_roots: Path) -> None:
+    """Expose legacy flat-module roots in explicit precedence order."""
     roots = list(dict.fromkeys(str(Path(root).resolve()) for root in source_roots))
     for root in roots:
         if not Path(root).is_dir():

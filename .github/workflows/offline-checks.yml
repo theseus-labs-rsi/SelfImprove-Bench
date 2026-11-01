@@ -1,0 +1,30 @@
+name: Linux offline checks
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  offline:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7, verified tag
+        with:
+          persist-credentials: false
+      - name: Prepare dependencies and verified public tokenizer assets
+        run: docker build -f .github/ci/Dockerfile -t rsi-bench-check .
+      - name: Run first-party checks without network or model credentials
+        run: |
+          mkdir -p outputs/checks
+          docker run --rm --network none \
+            --mount type=bind,src="$PWD",dst=/repo,readonly \
+            --mount type=bind,src="$PWD/outputs/checks",dst=/checks \
+            rsi-bench-check python -m scripts.check --output-dir /checks
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7, verified tag
+        if: always()
+        with:
+          name: linux-offline-checks
+          path: outputs/checks/
+          if-no-files-found: warn

@@ -85,3 +85,16 @@ def test_no_model_calls_have_zero_cost_without_imputation():
         "reasoning_tokens": 0,
     }
     assert report["usage_estimation"]["imputed_task_count"] == 0
+
+
+def test_failed_task_without_call_evidence_has_unknown_cost():
+    failed = FeedbackResult(
+        task_id="failed", task={}, trajectory=(),
+        evaluation=TaskEvaluation(ExecutionStatus.ERROR, False, None),
+    )
+    report = aggregate_feedback_usage([failed])
+    assert all(value is None for value in report["usage"].values())
+    assert report["usage_estimation"]["unresolved_fields"] == [
+        "input_tokens", "output_tokens", "total_tokens",
+        "cached_input_tokens", "reasoning_tokens",
+    ]

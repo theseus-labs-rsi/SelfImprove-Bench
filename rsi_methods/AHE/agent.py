@@ -24,6 +24,7 @@ from typing import Mapping, Sequence
 from uuid import uuid4
 
 from benchmark.contracts import BackendResponse, TokenUsage
+from benchmark.imports import prepend_legacy_paths
 from benchmark.token_ledger import nexau_usage_snapshot
 from .sandbox import reject_symlinks, sandbox_command
 
@@ -363,10 +364,9 @@ class AHEAgent:
         with log_path.open("a", encoding="utf-8") as log:
             with redirect_stdout(log), redirect_stderr(log):
                 try:
-                    sys.path.insert(0, str(upstream_root))
                     # Candidate-local tools must win over any upstream imports;
                     # upstream remains available for trace_converter.py.
-                    sys.path.insert(0, str(workspace))
+                    prepend_legacy_paths(workspace, upstream_root)
                     # ``fork`` inherits the parent's imported ``tools`` package.
                     # After evolve() (or evaluation of an earlier candidate),
                     # that package can point at a *different* AHE workspace.

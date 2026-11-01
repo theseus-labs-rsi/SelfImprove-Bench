@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from combat_planner import CombatError, generate_task, save_json
+from .combat_planner import CombatError, generate_task, save_json
 
 
 PROJECT_DIR = Path(__file__).resolve().parent

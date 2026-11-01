@@ -5,7 +5,6 @@ from __future__ import annotations
 import copy
 import json
 import re
-import sys
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field, replace
@@ -25,11 +24,10 @@ from benchmark.contracts import (
 from benchmark.token_ledger import aggregate_feedback_usage
 
 from .task_factory import HeroJourneyDifficulty, load_difficulty_manifest
+from .vendor import ensure_hero_package
 
 
-LOCAL_HEROS_JOURNEY = Path(__file__).resolve().parent / "HerosJourney"
-if str(LOCAL_HEROS_JOURNEY) not in sys.path:
-    sys.path.insert(0, str(LOCAL_HEROS_JOURNEY))
+ensure_hero_package()
 
 from herosjourney import get_task
 from herosjourney.core.demo_generator import generate_mixed_demos

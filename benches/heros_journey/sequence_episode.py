@@ -10,6 +10,9 @@ from typing import Any
 from benchmark.contracts import BackendResponse
 
 from .sequence_prompt import build_sequence_prompt
+from .vendor import ensure_hero_package
+
+ensure_hero_package()
 
 from herosjourney.env.env import AdventureEnv
 from herosjourney.eval.result import EpisodeResult

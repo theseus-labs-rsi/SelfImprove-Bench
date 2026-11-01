@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from benchmark.checkpoint_io import lock_file, unlock_file
+from benchmark.imports import prepend_legacy_paths
 from contextlib import nullcontext, contextmanager
 import importlib
 import json
@@ -91,10 +92,7 @@ class GameWorldBenchmark:
         code_root = gameworld_root / "code"
         if not code_root.is_dir():
             raise FileNotFoundError(f"GameWorld code directory not found: {code_root}")
-        for path in (code_root,):
-            text = str(path)
-            if text not in sys.path:
-                sys.path.insert(0, text)
+        prepend_legacy_paths(code_root)
         return code_root
 
     @staticmethod

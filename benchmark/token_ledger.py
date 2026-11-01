@@ -30,6 +30,9 @@ def aggregate_feedback_usage(feedback_results: Any) -> dict[str, Any]:
             if call is not None:
                 calls.append(call.usage)
         if not calls:
+            if getattr(result.evaluation.execution_status, "value", None) != "completed":
+                for field in USAGE_FIELDS:
+                    unresolved_fields[field] = True
             continue
 
         task_imputed = False

@@ -1,12 +1,7 @@
-"""Outer HyperAgents controller with compatibility for the vendored source tree."""
+"""Outer controller; host imports use the nested vendored package explicitly."""
 
-from pathlib import Path
-import sys
-
-
-_VENDORED_SOURCE = str(Path(__file__).resolve().parent / "hyperagents")
-if _VENDORED_SOURCE not in sys.path:
-    sys.path.insert(0, _VENDORED_SOURCE)
+# Candidate scripts retain upstream imports inside their container; the host
+# does not expose their top-level agent/utils modules on sys.path.
 
 from .candidate import CandidateSnapshot, initialize_agent, with_lineage
 from .candidate_registry import (
