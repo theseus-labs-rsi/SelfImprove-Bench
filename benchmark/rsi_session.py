@@ -20,6 +20,7 @@ from .contracts import (
     StepFeedback,
     TaskEvaluation,
     TokenUsage,
+    normalized_score,
     to_jsonable,
 )
 
@@ -339,9 +340,17 @@ class RSIBatchSession:
         """Release a failed evaluation without treating it as refinement."""
         if self._pending_batch is not None:
             raise RuntimeError("Cannot skip a task with pending RSI candidates")
-        self.adaptor.close()
+        try:
+            self.adaptor.close()
+        finally:
+            self.end_task()
+
+    def end_task(self) -> None:
+        """Release transient task state while retaining committed artifacts."""
         self._agent = None
         self._task_id = None
+        self._pending_batch = None
+        self._pending_output_dir = None
 
     def act(self, prompt: str) -> BackendResponse:
         if self._agent is None:
@@ -362,13 +371,16 @@ class RSIBatchSession:
         if feedback.task_id != self._task_id:
             raise ValueError("feedback task_id does not match the active RSI task")
         output_dir = self.artifact_dir / f"task_{task_index:04d}_{_safe_name(feedback.task_id)}"
-        output_dir.mkdir(parents=True, exist_ok=False)
-        (output_dir / "feedback.json").write_text(
-            json.dumps(to_jsonable(feedback), ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )
+        previous_report = getattr(self.adaptor, "last_refinement_report", None)
+        refinement_called = False
         started = time.perf_counter()
         try:
+            output_dir.mkdir(parents=True, exist_ok=False)
+            (output_dir / "feedback.json").write_text(
+                json.dumps(to_jsonable(feedback), ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
+            refinement_called = True
             batch = self.adaptor.refine([feedback], output_dir=output_dir)
             if batch is not None:
                 _validate_candidate_batch(batch)
@@ -377,6 +389,11 @@ class RSIBatchSession:
                 self._pending_batch = batch
                 self._pending_output_dir = output_dir
         except Exception as exc:
+            report = getattr(self.adaptor, "last_refinement_report", None)
+            if not refinement_called:
+                report = {"token_usage_report": {"total_tokens": 0, "complete": True, "no_model_calls": True}}
+            elif report is previous_report:
+                report = None
             self._last_refinement_telemetry = {
                 "status": "error",
                 "method": self.method,
@@ -385,16 +402,20 @@ class RSIBatchSession:
                 "artifact_dir": str(output_dir),
                 "error_type": type(exc).__name__,
                 "error": str(exc),
-                "tokens": refinement_token_metrics(
-                    getattr(self.adaptor, "last_refinement_report", None)
-                ),
+                "tokens": refinement_token_metrics(report),
             }
-            (output_dir / "refinement_telemetry.json").write_text(
-                json.dumps(self._last_refinement_telemetry, ensure_ascii=False, indent=2) + "\n",
-                encoding="utf-8",
-            )
+            try:
+                (output_dir / "refinement_telemetry.json").write_text(
+                    json.dumps(self._last_refinement_telemetry, ensure_ascii=False, indent=2) + "\n",
+                    encoding="utf-8",
+                )
+            except OSError as telemetry_error:
+                exc.add_note(f"Could not persist refinement telemetry: {telemetry_error}")
+            self.end_task()
             raise
         finally:
+            # A successful refinement may expose a pending candidate batch
+            # that the caller must validate and select next.
             self._agent = None
             self._task_id = None
         report = getattr(self.adaptor, "last_refinement_report", None)
@@ -480,14 +501,13 @@ class RSIBatchSession:
     def close(self) -> None:
         if self._closed:
             return
-        close = getattr(self.adaptor, "close", None)
-        if callable(close):
-            close()
-        self._agent = None
-        self._task_id = None
-        self._pending_batch = None
-        self._pending_output_dir = None
-        self._closed = True
+        try:
+            close = getattr(self.adaptor, "close", None)
+            if callable(close):
+                close()
+        finally:
+            self.end_task()
+            self._closed = True
 
     def __enter__(self) -> "RSIBatchSession":
         return self
@@ -606,7 +626,7 @@ def make_feedback_result(
     feedback: str | None,
     metrics: Mapping[str, Any],
 ) -> FeedbackResult:
-    numeric_score = float(score) if isinstance(score, (int, float)) and not isinstance(score, bool) else 0.0
+    numeric_score = normalized_score(score)
     return FeedbackResult(
         task_id=str(task_id),
         task=task,

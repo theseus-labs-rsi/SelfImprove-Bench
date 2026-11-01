@@ -9,6 +9,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass, field, is_dataclass
 from enum import Enum
+from math import isfinite
 from pathlib import Path
 from typing import Any
 
@@ -109,7 +110,7 @@ class StepFeedback:
 class TaskEvaluation:
     execution_status: ExecutionStatus
     success: bool
-    score: float
+    score: float | None
     feedback: str | None = None
     metrics: dict[str, Any] = field(default_factory=dict)
 
@@ -144,6 +145,14 @@ class SelectionEvaluation:
     error: str | None = None
 
 
+def normalized_score(value: Any) -> float | None:
+    """Keep finite numeric scores; preserve missing or invalid evidence."""
+    return (
+        float(value) if isinstance(value, (int, float)) and not isinstance(value, bool)
+        and isfinite(value) else None
+    )
+
+
 def to_jsonable(value: Any) -> Any:
     """Convert shared contract values into JSON-compatible data."""
     if is_dataclass(value) and not isinstance(value, type):
@@ -173,5 +182,6 @@ __all__ = [
     "TaskEvaluation",
     "TokenUsage",
     "ToolCall",
+    "normalized_score",
     "to_jsonable",
 ]

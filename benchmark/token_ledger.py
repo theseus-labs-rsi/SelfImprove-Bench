@@ -10,6 +10,60 @@ def _number(value: Any) -> int | None:
     return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
 
 
+USAGE_FIELDS = (
+    "input_tokens", "output_tokens", "total_tokens",
+    "cached_input_tokens", "reasoning_tokens",
+)
+
+
+def aggregate_feedback_usage(feedback_results: Any) -> dict[str, Any]:
+    """Sum call usage, imputing missing fields from known calls in the same task."""
+    totals = {field: 0 for field in USAGE_FIELDS}
+    unresolved_fields = {field: False for field in USAGE_FIELDS}
+    imputed_calls = 0
+    imputed_fields = 0
+
+    for result in feedback_results:
+        calls = []
+        for step in result.trajectory:
+            call = step.agent_call
+            if call is not None:
+                calls.append(call.usage)
+        if not calls:
+            continue
+
+        task_imputed = False
+        for field in USAGE_FIELDS:
+            values = [_number(getattr(usage, field, None)) if usage is not None else None
+                      for usage in calls]
+            observed = [value for value in values if value is not None]
+            missing_count = len(values) - len(observed)
+            if missing_count and observed:
+                # Token counts are integers; round the per-call mean to nearest token.
+                estimate = (sum(observed) + len(observed) // 2) // len(observed)
+                totals[field] += sum(observed) + missing_count * estimate
+                imputed_fields += missing_count
+                task_imputed = True
+            elif missing_count:
+                unresolved_fields[field] = True
+            else:
+                totals[field] += sum(observed)
+        imputed_calls += int(task_imputed)
+
+    for field, unresolved in unresolved_fields.items():
+        if unresolved:
+            totals[field] = None
+    return {
+        "usage": totals,
+        "usage_estimation": {
+            "method": "within_task_observed_call_mean",
+            "imputed_task_count": imputed_calls,
+            "imputed_field_count": imputed_fields,
+            "unresolved_fields": [field for field, missing in unresolved_fields.items() if missing],
+        },
+    }
+
+
 def nexau_usage_snapshot(raw_traces: Any) -> dict[str, Any]:
     """Extract a cumulative snapshot; one missing LLM span invalidates the sum."""
     from trace_converter import flatten_inmemory_spans, is_llm_span

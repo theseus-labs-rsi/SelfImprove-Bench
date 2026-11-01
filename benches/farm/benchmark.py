@@ -19,6 +19,7 @@ from benchmark.contracts import (
     TaskEvaluation,
     to_jsonable,
 )
+from benchmark.token_ledger import aggregate_feedback_usage
 
 from . import game
 
@@ -61,18 +62,9 @@ class FarmBenchmark:
     def aggregate(self, feedback_results: FeedbackResults) -> dict[str, Any]:
         """Summarize reference-score success, relative score, and model usage."""
         status_counts = {status.value: 0 for status in ExecutionStatus}
-        usage_fields = (
-            "input_tokens", "output_tokens", "total_tokens",
-            "cached_input_tokens", "reasoning_tokens",
-        )
-        usage_totals = {field: 0 for field in usage_fields}
         for result in feedback_results:
             status_counts[result.evaluation.execution_status.value] += 1
-            for step in result.trajectory:
-                usage = step.agent_call.usage if step.agent_call else None
-                if usage is not None:
-                    for field in usage_fields:
-                        usage_totals[field] += getattr(usage, field) or 0
+        usage_report = aggregate_feedback_usage(feedback_results)
         task_count = len(feedback_results)
         success_count = sum(result.evaluation.success for result in feedback_results)
         score_total = sum(result.evaluation.score for result in feedback_results)
@@ -83,7 +75,7 @@ class FarmBenchmark:
             "score_total": score_total,
             "score_mean": score_total / task_count if task_count else 0.0,
             "execution_status_counts": status_counts,
-            "usage": usage_totals,
+            **usage_report,
         }
 
     def persist(

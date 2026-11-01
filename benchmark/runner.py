@@ -15,8 +15,9 @@ from .checkpoint_io import lock_file, unlock_file
 from .client import load_rsi_integration, request_json
 
 from .config import BenchmarkConfig
+from .contracts import normalized_score
 from .game_adapters import EvaluationOutcome, evaluate_task
-from .metrics import calculate_metrics, format_metrics, post_refinement_score
+from .metrics import calculate_metrics, format_metrics, post_refinement_score, record_score
 from .tasks import GAMES, PlannedTask, TaskManifest, build_manifest
 from .methods import BUILTIN_METHODS, RSI_PROVIDERS, method_identity, runtime_policy
 
@@ -42,16 +43,20 @@ def _suite_feedback(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "rule_count": len(items),
             "rule_success_count": sum(bool(item.get("success")) for item in items),
             "rule_success_rate": sum(bool(item.get("success")) for item in items) / len(items),
-            "mean_score": sum(float(item.get("relative_score") or 0.0) for item in items) / len(items),
+            "mean_score": sum(record_score(item) for item in items) / len(items),
             "rule_results": items,
         }
         for (game, difficulty), items in sorted(groups.items())
     ]
 
 
-def _token_total(metrics: dict[str, Any]) -> int:
-    value = metrics.get("tokens", {}).get("total_tokens")
-    return value if isinstance(value, int) and not isinstance(value, bool) else 0
+def _token_total(metrics: dict[str, Any]) -> int | None:
+    value = (metrics.get("tokens") or {}).get("total_tokens")
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
+
+
+def _add_tokens(*values: int | None) -> int | None:
+    return sum(value for value in values if value is not None) if None not in values else None
 
 
 def _is_fatal_method_error(config: BenchmarkConfig, record: Mapping[str, Any]) -> bool:
@@ -248,8 +253,17 @@ class AgentController:
         )
 
     def close(self) -> None:
+        try:
+            if self.session is not None:
+                self.session.close()
+        finally:
+            self.active_agent = None
+
+    def end_task(self) -> None:
+        """Release transient RSI task state after the runner finishes a task."""
+        self.active_agent = None
         if self.session is not None:
-            self.session.close()
+            self.session.end_task()
 
 
 def _persist_tasks(output_dir: Path, manifest: TaskManifest) -> None:
@@ -303,14 +317,9 @@ def _selection_evaluation(
     record: dict[str, Any], result_path: Path
 ) -> rsi_session.SelectionEvaluation:
     score = record.get("relative_score")
-    normalized_score = (
-        float(score)
-        if isinstance(score, (int, float)) and not isinstance(score, bool)
-        else None
-    )
     return rsi_session.SelectionEvaluation(
         status=str(record.get("status", "")),
-        relative_score=normalized_score,
+        relative_score=normalized_score(score),
         success=bool(record.get("success", False)),
         result_path=str(result_path.resolve()),
         error_type=(str(record["error_type"]) if record.get("error_type") else None),
@@ -338,7 +347,7 @@ def _evaluate(
 
 @dataclass
 class _ValidationCost:
-    tokens: int = 0
+    tokens: int | None = 0
     seconds: float = 0.0
 
 
@@ -357,7 +366,7 @@ def _evaluate_candidates(
     Any,
     list[dict[str, Any]],
     dict[str, tuple[EvaluationOutcome, float]],
-    int,
+    int | None,
     float,
 ]:
     candidate_evaluations: dict[str, rsi_session.SelectionEvaluation] = {}
@@ -396,11 +405,15 @@ def _evaluate_candidates(
                 agent=candidate.agent,
                 output_dir=output_dir,
             )
+        except Exception:
+            # A later failed candidate must not erase usage already observed
+            # for candidates that completed validation.
+            raise
         finally:
             candidate_seconds = time.perf_counter() - validation_started
             costs.seconds += candidate_seconds
         result = outcome.record
-        costs.tokens += _token_total(result.get("llm_metrics", {}))
+        costs.tokens = _add_tokens(costs.tokens, _token_total(result.get("llm_metrics", {})))
         artifact_dir = Path(candidate.artifact_dir).resolve()
         path = artifact_dir / "evaluation" / "result.json"
         _write_json(path, {
@@ -432,8 +445,24 @@ def _run_one(
     ordinal: int,
     output_dir: Path,
 ) -> dict[str, Any]:
+    try:
+        return _execute_one(task, controller=controller, ordinal=ordinal, output_dir=output_dir)
+    finally:
+        end_task = getattr(controller, "end_task", None)
+        if callable(end_task):
+            end_task()
+
+
+def _execute_one(
+    task: PlannedTask,
+    *,
+    controller: AgentController,
+    ordinal: int,
+    output_dir: Path,
+) -> dict[str, Any]:
     started = time.perf_counter()
     began = False
+    outcome: EvaluationOutcome | None = None
     try:
         controller.begin(task)
         began = True
@@ -461,7 +490,7 @@ def _run_one(
     execution_seconds = time.perf_counter() - started
     refinement = None
     selection_summary: dict[str, Any] | None = None
-    candidate_validation_tokens = 0
+    candidate_validation_tokens: int | None = 0
     candidate_validation_seconds = 0.0
     if began and result["status"] == "skipped" and task.phase == "train" and not task.replay:
         controller.session.skip_task()
@@ -479,7 +508,10 @@ def _run_one(
             previous_telemetry = controller.session.refinement_telemetry
             refinement_started = time.perf_counter()
             try:
-                controller.refine(task, result, ordinal, feedback=outcome.feedback)
+                controller.refine(
+                    task, result, ordinal,
+                    feedback=outcome.feedback if outcome is not None else None,
+                )
             except Exception as exc:
                 telemetry = controller.session.refinement_telemetry
                 if (
@@ -524,7 +556,7 @@ def _run_one(
                 finally:
                     # Completed validation remains billable even if selection or
                     # a later candidate fails before the stage returns.
-                    candidate_validation_tokens += stage_costs.tokens
+                    candidate_validation_tokens = _add_tokens(candidate_validation_tokens, stage_costs.tokens)
                     candidate_validation_seconds += stage_costs.seconds
                 status = str(getattr(selection, "status", "")).lower()
                 stages.append({
@@ -564,6 +596,9 @@ def _run_one(
                 "error_type": type(exc).__name__,
                 "error": error,
             }
+    if (selection_summary is None and outcome is None and controller.provider == "rsi"
+            and task.phase == "train" and not task.replay):
+        selection_summary = {"status": "completed"}
     refinement_seconds = float(refinement.get("duration_seconds", 0.0)) if isinstance(refinement, dict) else 0.0
     refinement_tokens: int | None = 0
     if isinstance(refinement, dict):
@@ -582,9 +617,8 @@ def _run_one(
         "total_seconds": round(execution_seconds + refinement_seconds + candidate_validation_seconds, 6),
         "inference_tokens": _token_total(result.get("llm_metrics", {})),
         "refinement_tokens": refinement_tokens,
-        "total_tokens": (
-            _token_total(result.get("llm_metrics", {})) + refinement_tokens + candidate_validation_tokens
-            if refinement_tokens is not None else None
+        "total_tokens": _add_tokens(
+            _token_total(result.get("llm_metrics", {})), refinement_tokens, candidate_validation_tokens
         ),
     }
     if task.phase == "train" and not task.replay:

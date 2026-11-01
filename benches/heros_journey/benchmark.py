@@ -22,6 +22,7 @@ from benchmark.contracts import (
     TaskEvaluation,
     to_jsonable,
 )
+from benchmark.token_ledger import aggregate_feedback_usage
 
 from .task_factory import HeroJourneyDifficulty, load_difficulty_manifest
 
@@ -183,7 +184,6 @@ class HeroJourneyBenchmark:
         return [feedback for feedback, _ in outcomes]
 
     def aggregate(self, feedback_results: FeedbackResults) -> dict[str, Any]:
-        usage = {field: 0 for field in USAGE_FIELDS}
         status_counts = {status.value: 0 for status in ExecutionStatus}
         completion_rates = []
         protocol_counts: dict[str, int] = {}
@@ -195,12 +195,7 @@ class HeroJourneyBenchmark:
             completion_rate = metrics.get("completion_rate")
             if isinstance(completion_rate, (int, float)) and not isinstance(completion_rate, bool):
                 completion_rates.append(float(completion_rate))
-            for step in result.trajectory:
-                step_usage = step.agent_call.usage if step.agent_call else None
-                if step_usage is None:
-                    continue
-                for field in USAGE_FIELDS:
-                    usage[field] += getattr(step_usage, field) or 0
+        usage_report = aggregate_feedback_usage(feedback_results)
 
         task_count = len(feedback_results)
         success_count = sum(result.evaluation.success for result in feedback_results)
@@ -217,7 +212,7 @@ class HeroJourneyBenchmark:
             "completion_rate_count": len(completion_rates),
             "interaction_protocol_counts": protocol_counts,
             "execution_status_counts": status_counts,
-            "usage": usage,
+            **usage_report,
         }
 
     def persist(

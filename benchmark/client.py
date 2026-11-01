@@ -16,7 +16,6 @@ import sys
 import tempfile
 import time
 from collections.abc import Callable, Mapping
-from math import ceil
 from pathlib import Path
 from typing import Any
 
@@ -69,21 +68,13 @@ class LLMClientError(RuntimeError):
     """An agent call failed or returned an invalid JSON action."""
 
 
-def _estimate_tokens(text: str) -> int:
-    cjk = len(re.findall(r"[\u3400-\u9fff\uf900-\ufaff]", text))
-    non_cjk = re.sub(r"[\u3400-\u9fff\uf900-\ufaff\s]", "", text)
-    return cjk + ceil(len(non_cjk) / 4)
-
-
-def _estimated_usage(prompt: str, answer: str) -> dict[str, Any]:
-    prompt_tokens = _estimate_tokens(prompt)
-    answer_tokens = _estimate_tokens(answer)
+def _unknown_usage() -> dict[str, Any]:
     return {
-        "prompt_tokens": prompt_tokens,
+        "prompt_tokens": None,
         "reasoning_tokens": None,
-        "answer_tokens": answer_tokens,
-        "total_tokens": prompt_tokens + answer_tokens,
-        "method": "local_estimate",
+        "answer_tokens": None,
+        "total_tokens": None,
+        "method": "unavailable",
         "includes_all_attempts": True,
     }
 
@@ -92,7 +83,7 @@ def _integer(value: Any) -> int | None:
     return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
 
 
-def _usage(value: Any, prompt: str, answer: str) -> dict[str, Any]:
+def _usage(value: Any, prompt: str = "", answer: str = "") -> dict[str, Any]:
     def field(name: str, default: Any = None) -> Any:
         return value.get(name, default) if isinstance(value, Mapping) else getattr(value, name, default)
 
@@ -107,9 +98,11 @@ def _usage(value: Any, prompt: str, answer: str) -> dict[str, Any]:
     if details is not None:
         reasoning = _integer(details.get("reasoning_tokens") if isinstance(details, Mapping) else getattr(details, "reasoning_tokens", None))
     if input_tokens is None or output_tokens is None:
-        return _estimated_usage(prompt, answer)
+        return _unknown_usage()
     reasoning = reasoning or 0
-    total = _integer(field("total_tokens")) or input_tokens + output_tokens
+    total = _integer(field("total_tokens"))
+    if total is None:
+        total = input_tokens + output_tokens
     return {
         "prompt_tokens": input_tokens,
         "reasoning_tokens": reasoning,
@@ -217,7 +210,7 @@ def call_codex(
                 pass
             else:
                 if telemetry is not None:
-                    telemetry["tokens"] = _estimated_usage(prompt, str(partial))
+                    telemetry["tokens"] = _unknown_usage()
                 return str(partial)
         raise LLMClientError(
             f"Codex invocation timed out after {timeout:g}s; check that Codex is logged in."
@@ -226,7 +219,7 @@ def call_codex(
         raise LLMClientError(f"Codex invocation failed: {exc}") from exc
     answer = completed.stdout or ""
     if telemetry is not None:
-        telemetry["tokens"] = _estimated_usage(prompt, answer)
+        telemetry["tokens"] = _unknown_usage()
     if completed.returncode != 0:
         raise LLMClientError(
             f"Codex exited with code {completed.returncode}: "
@@ -341,7 +334,7 @@ def call_claude(
                 "method": "claude_cli_model_usage_all_models",
                 "includes_all_attempts": True,
             }
-        telemetry.setdefault("tokens", _estimated_usage(prompt, answer))
+        telemetry.setdefault("tokens", _unknown_usage())
     return answer
 
 
@@ -412,7 +405,7 @@ def call_deepseek_harness(
         patch_path.unlink(missing_ok=True)
     answer = completed.stdout or ""
     if telemetry is not None:
-        telemetry["tokens"] = _estimated_usage(prompt, answer)
+        telemetry["tokens"] = _unknown_usage()
         if projection_directory is not None:
             for projection in sorted(set(projection_directory.glob("*.json")) - projection_before):
                 try:
@@ -588,7 +581,7 @@ def request_json(
                 "attempt": attempt,
                 "status": "provider_error",
                 "duration_seconds": round(time.perf_counter() - attempt_started, 6),
-                "tokens": telemetry.get("tokens", _estimated_usage(current_prompt, "")),
+                "tokens": telemetry.get("tokens", _unknown_usage()),
                 "error": str(exc),
             }
             if "rsi_agent_call" in telemetry:
@@ -608,7 +601,7 @@ def request_json(
                 "attempt": attempt,
                 "status": "validation_error",
                 "duration_seconds": round(time.perf_counter() - attempt_started, 6),
-                "tokens": telemetry.get("tokens", _estimated_usage(current_prompt, answer)),
+                "tokens": telemetry.get("tokens", _unknown_usage()),
                 "error": str(exc),
             }
             if "rsi_agent_call" in telemetry:
@@ -638,7 +631,7 @@ def request_json(
             "attempt": attempt,
             "status": "ok",
             "duration_seconds": round(time.perf_counter() - attempt_started, 6),
-            "tokens": telemetry.get("tokens", _estimated_usage(current_prompt, answer)),
+            "tokens": telemetry.get("tokens", _unknown_usage()),
         }
         if "rsi_agent_call" in telemetry:
             record["rsi_agent_call"] = telemetry["rsi_agent_call"]

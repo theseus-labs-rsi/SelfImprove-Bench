@@ -8,6 +8,9 @@ from statistics import fmean, pvariance
 from typing import Any
 
 
+METRIC_POLICY_VERSION = "unified_all_attempts_v2"
+
+
 def record_score(record: dict[str, Any]) -> float:
     """Keep every attempted case in the denominator, with failures scored zero."""
     if record.get("status") not in {None, "ok"}:
@@ -25,6 +28,8 @@ def _cost_total(records: list[dict[str, Any]], field: str) -> float | None:
         isinstance(value, (int, float)) and not isinstance(value, bool)
         and isfinite(value) and value >= 0 for value in values
     ):
+        return None
+    if field == "total_tokens" and any(int(value) != value for value in values):
         return None
     return sum(values)
 
@@ -85,6 +90,8 @@ def calculate_metrics(
     *,
     evolution_window: int,
 ) -> dict[str, Any]:
+    if isinstance(evolution_window, bool) or not isinstance(evolution_window, int) or evolution_window < 1:
+        raise ValueError("evolution_window must be a positive integer")
     evolution_records = [record for record in training if not record.get("replay")]
     replay_records = [record for record in training if record.get("replay")]
     scores = [record_score(record) for record in evolution_records]
@@ -152,6 +159,7 @@ def calculate_metrics(
         for previous, current in zip(scores, scores[1:])
     )
     return {
+        "metric_policy_version": METRIC_POLICY_VERSION,
         "evolution_gain": {
             "window": evolution_window,
             "first_window_average": first,
@@ -179,11 +187,11 @@ def calculate_metrics(
             "total_seconds": total_seconds,
             "tokens_per_absolute_gain": (
                 total_tokens / absolute_gain
-                if total_tokens is not None and absolute_gain not in (None, 0) else None
+                if total_tokens is not None and absolute_gain is not None and absolute_gain > 0 else None
             ),
             "seconds_per_absolute_gain": (
                 total_seconds / absolute_gain
-                if total_seconds is not None and absolute_gain not in (None, 0) else None
+                if total_seconds is not None and absolute_gain is not None and absolute_gain > 0 else None
             ),
         },
         "stability": {

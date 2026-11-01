@@ -14,6 +14,7 @@ from benchmark.contracts import (
     FeedbackResults,
     to_jsonable,
 )
+from benchmark.token_ledger import aggregate_feedback_usage
 
 from .core import SweepmineCore, SweepmineState
 from .play import build_error_feedback, play_feedback, snapshot_task
@@ -111,20 +112,9 @@ class SweepmineBenchmark:
     def aggregate(self, feedback_results: FeedbackResults) -> dict[str, Any]:
         """Build a benchmark-owned summary for one task batch."""
         status_counts = {status.value: 0 for status in ExecutionStatus}
-        input_tokens = output_tokens = reasoning_tokens = 0
-        total_tokens = cached_input_tokens = 0
-
         for result in feedback_results:
             status_counts[result.evaluation.execution_status.value] += 1
-            for step in result.trajectory:
-                usage = step.agent_call.usage if step.agent_call else None
-                if usage is None:
-                    continue
-                input_tokens += usage.input_tokens or 0
-                output_tokens += usage.output_tokens or 0
-                total_tokens += usage.total_tokens or 0
-                cached_input_tokens += usage.cached_input_tokens or 0
-                reasoning_tokens += usage.reasoning_tokens or 0
+        usage_report = aggregate_feedback_usage(feedback_results)
 
         task_count = len(feedback_results)
         success_count = sum(result.evaluation.success for result in feedback_results)
@@ -136,13 +126,7 @@ class SweepmineBenchmark:
             "score_total": score_total,
             "score_mean": score_total / task_count if task_count else 0.0,
             "execution_status_counts": status_counts,
-            "usage": {
-                "input_tokens": input_tokens,
-                "output_tokens": output_tokens,
-                "total_tokens": total_tokens,
-                "cached_input_tokens": cached_input_tokens,
-                "reasoning_tokens": reasoning_tokens,
-            },
+            **usage_report,
         }
 
     def persist(

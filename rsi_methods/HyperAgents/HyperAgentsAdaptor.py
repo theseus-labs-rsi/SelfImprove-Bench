@@ -19,6 +19,7 @@ from benchmark.contracts import (
     ExecutionStatus,
     FeedbackResult,
     FeedbackResults,
+    normalized_score,
     to_jsonable,
 )
 
@@ -661,6 +662,8 @@ class HyperAgentsAdaptor(MethodCheckpointMixin):
 
     @classmethod
     def _feedback_to_result(cls, feedback_results: Sequence[FeedbackResult]) -> dict:
+        if not feedback_results:
+            raise ValueError("HyperAgents refinement requires at least one task result")
         cases = [cls._feedback_case(result) for result in feedback_results]
         completed = all(
             result.evaluation.execution_status == ExecutionStatus.COMPLETED
@@ -668,13 +671,16 @@ class HyperAgentsAdaptor(MethodCheckpointMixin):
         )
         success_count = sum(result.evaluation.success for result in feedback_results)
         task_count = len(feedback_results)
-        score_mean = sum(
-            result.evaluation.score for result in feedback_results
-        ) / task_count
+        scores = [normalized_score(result.evaluation.score) for result in feedback_results]
+        score_mean = (
+            sum(score for score in scores if score is not None) / task_count
+            if all(score is not None for score in scores) else None
+        )
+        valid = completed and score_mean is not None
         return {
             "schema_version": 1,
-            "valid": completed,
-            "selection_score": score_mean if completed else None,
+            "valid": valid,
+            "selection_score": score_mean if valid else None,
             "metrics": {
                 "task_count": task_count,
                 "success_count": success_count,
@@ -685,7 +691,7 @@ class HyperAgentsAdaptor(MethodCheckpointMixin):
             "cases": cases,
             "artifacts": {},
             "cost": cls._aggregate_usage(feedback_results),
-            "error": None if completed else "One or more benchmark tasks did not complete.",
+            "error": None if valid else "One or more benchmark tasks did not complete or have no score.",
         }
 
     @staticmethod

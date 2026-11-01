@@ -22,6 +22,7 @@ from typing import Any, Mapping, Sequence
 from uuid import uuid4
 
 from benchmark.contracts import to_jsonable
+from benchmark.imports import prepend_legacy_paths
 from benchmark.token_ledger import nexau_usage_snapshot
 
 from .agent import AHEAgent, configure_reasoning_effort
@@ -83,6 +84,10 @@ def _read_feedback(feedback_results: Sequence[Any]) -> tuple[dict[str, Any], flo
     if not isinstance(payload, dict) or not isinstance(payload.get("evaluation"), dict):
         raise TypeError("AHE refine requires one FeedbackResult-like record")
     score = payload["evaluation"].get("score")
+    if score is None and payload["evaluation"].get("execution_status") in {
+        "error", "timeout", "cancelled",
+    }:
+        score = 0.0
     if isinstance(score, bool) or not isinstance(score, (int, float)) or not math.isfinite(score):
         raise ValueError("AHE refine requires a finite benchmark score")
     if not str(payload.get("task_id") or "").strip():
@@ -767,8 +772,7 @@ def _worker(request_path: Path, result_path: Path) -> None:
     evolve_dir = request_path.parent / "evolve_agent_runtime"
     config_path = evolve_dir / "evolve_agent.yaml"
     upstream_root = Path(__file__).resolve().parent / "agentic-harness-engineering"
-    sys.path.insert(0, str(upstream_root))
-    sys.path.insert(0, str(evolve_dir))
+    prepend_legacy_paths(evolve_dir, upstream_root)
     os.environ["EVOLVE_WORK_DIR"] = str(run_dir)
     from dotenv import load_dotenv
     from nexau import Agent, AgentConfig

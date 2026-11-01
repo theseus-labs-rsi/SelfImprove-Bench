@@ -11,8 +11,10 @@ from benchmark.contracts import (
     EvaluationOutcome,
     FeedbackResult,
     TaskEvaluation,
+    normalized_score,
     to_jsonable,
 )
+from benchmark.token_ledger import aggregate_feedback_usage
 
 from benches.combat import game as combat_game
 from benches.farm import game as farm_game
@@ -29,19 +31,21 @@ def _native_feedback_outcome(
     game: str, task: Mapping[str, Any], feedback: FeedbackResult
 ) -> EvaluationOutcome:
     evaluation = feedback.evaluation
-    total_tokens = sum(
-        (step.agent_call.usage.total_tokens or 0 if step.agent_call and step.agent_call.usage else 0)
-        for step in feedback.trajectory
-    )
+    usage_report = aggregate_feedback_usage([feedback])
+    score = normalized_score(evaluation.score)
+    completed = evaluation.execution_status == ExecutionStatus.COMPLETED and score is not None
     record = {
-        "status": "ok" if evaluation.execution_status.value == "completed" else "error",
+        "status": "ok" if completed else "error",
         "game": game, "task_id": feedback.task_id,
-        "difficulty": task["difficulty"], "relative_score": evaluation.score,
-        "raw_score": evaluation.score, "success": evaluation.success,
-        "error": None if evaluation.execution_status.value == "completed" else evaluation.feedback,
+        "difficulty": task["difficulty"], "relative_score": score,
+        "raw_score": score, "success": completed and evaluation.success,
+        "error": None if completed else (evaluation.feedback or "Task score is unavailable"),
         "agent_output": None, "simulation": {"metrics": to_jsonable(evaluation.metrics)},
         "interactions": to_jsonable(feedback.trajectory),
-        "llm_metrics": {"tokens": {"total_tokens": total_tokens}},
+        "llm_metrics": {
+            "tokens": usage_report["usage"],
+            "usage_estimation": usage_report["usage_estimation"],
+        },
     }
     if game == "heros_journey":
         record["interaction_protocol"] = evaluation.metrics.get("interaction_protocol")
@@ -94,10 +98,11 @@ def _aggregate_hero_feedback(
             ))
 
     evaluations = [feedback.evaluation for feedback in feedbacks]
-    score = statistics.fmean(evaluation.score for evaluation in evaluations)
+    scores = [normalized_score(evaluation.score) for evaluation in evaluations]
+    score = statistics.fmean(scores) if all(value is not None for value in scores) else None
     execution_status = (
         ExecutionStatus.ERROR
-        if any(evaluation.execution_status == ExecutionStatus.ERROR for evaluation in evaluations)
+        if score is None or any(evaluation.execution_status != ExecutionStatus.COMPLETED for evaluation in evaluations)
         else ExecutionStatus.COMPLETED
     )
     messages = [
@@ -110,7 +115,7 @@ def _aggregate_hero_feedback(
         trajectory=tuple(trajectory),
         evaluation=TaskEvaluation(
             execution_status=execution_status,
-            success=all(evaluation.success for evaluation in evaluations),
+            success=execution_status == ExecutionStatus.COMPLETED and all(evaluation.success for evaluation in evaluations),
             score=score,
             feedback="\n".join(messages),
             metrics={

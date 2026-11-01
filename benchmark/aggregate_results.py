@@ -24,7 +24,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable
 
-from .metrics import execution_score, record_score
+from .metrics import METRIC_POLICY_VERSION, calculate_metrics, execution_score, record_score
+
+LEGACY_METRIC_POLICY_VERSION = "legacy_overall_control_loop_v1"
 
 
 METRICS = (
@@ -87,6 +89,8 @@ def _base(source: Path, kind: str, run_id: str, repeat_id: str) -> dict[str, Any
         "time_observed_range_seconds": None, "missing_fields": [], "token_scope": "missing",
         "time_source": None, "time_confidence": None, "time_imputed": False,
         "token_total": None, "time_total_seconds": None,
+        "metric_policy_version": None, "source_metric_policy_version": None,
+        "evolution_window": None,
     }
 
 
@@ -199,10 +203,45 @@ def parse_unified(path: Path) -> list[dict[str, Any]]:
     training = [item for item in data.get("training_runs", []) if isinstance(item, dict)]
     holdout = [item for item in data.get("holdout_runs", []) if isinstance(item, dict)]
     non_replay = [item for item in training if not item.get("replay")]
-    _evolution(row, _scores(non_replay))
-    _replay(training, row)
+    metrics = calculate_metrics(
+        training, holdout,
+        evolution_window=config.get("evolution_window", 1),
+    )
+    gain = metrics["evolution_gain"]
+    retention = metrics["capability_retention"]
+    cost = metrics["evolution_cost"]
+    stability = metrics["stability"]
+    row.update(
+        metric_policy_version=metrics["metric_policy_version"],
+        evolution_window=gain["window"],
+        first_absolute_score=gain["first_window_average"],
+        last_absolute_score=gain["last_window_average"],
+        absolute_gain=gain["absolute_gain"], relative_gain=gain["relative_gain"],
+        observed_training_count=len(non_replay),
+        observed_replay_pair_count=retention["replay_pair_count"],
+        replay_score_difference=retention["average_score_change"],
+        replay_difference_per_gap=retention["average_change_per_round"],
+        score_variance=stability["score_variance"],
+        declining_round_fraction=stability["declining_round_fraction"],
+        drop_20pct_round_count=stability["drop_20pct_round_count"],
+        tokens_per_absolute_gain=cost["tokens_per_absolute_gain"],
+        time_per_absolute_gain=cost["seconds_per_absolute_gain"],
+    )
+    row["observed_holdout_count"] = len(holdout)
     _holdout_new(row, config, holdout)
-    _cost(row, non_replay)
+    if cost["total_tokens"] is not None:
+        row.update(token_scope="measured", token_total=cost["total_tokens"])
+    else:
+        _reason(row, "training total_tokens missing or invalid")
+    if cost["total_seconds"] is not None:
+        row.update(time_source="recorded", time_confidence="high", time_total_seconds=cost["total_seconds"])
+    else:
+        _reason(row, "training total_seconds missing or invalid")
+    if gain["absolute_gain"] is None or gain["absolute_gain"] <= 0:
+        _reason(row, "non-positive absolute gain; cost per gain is null")
+    source_metrics = data.get("metrics")
+    if isinstance(source_metrics, dict):
+        row["source_metric_policy_version"] = source_metrics.get("metric_policy_version")
     games = sorted({item.get("game") for item in training if item.get("game")})
     row["benchmark"] = "+".join(games) or None
     difficulties = sorted({item.get("difficulty") for item in training if isinstance(item.get("difficulty"), int)})
@@ -253,6 +292,7 @@ def _legacy_repeat(repeat_dir: Path, run_root: Path) -> dict[str, Any]:
     summary_path = repeat_dir / "summary.json"
     summary = _read_json(summary_path) if summary_path.is_file() else {}
     row = _base(summary_path if summary_path.exists() else repeat_dir, "legacy_overall_control_loop", run_root.name, repeat_dir.name)
+    row.update(metric_policy_version=LEGACY_METRIC_POLICY_VERSION, evolution_window=1)
     metadata = _legacy_metadata(run_root)
     label = run_root.name.lower()
     row["benchmark"] = metadata.get("benchmark") or next((name for name in ("sweepmine", "combat", "farm", "hero") if name in label), None)
@@ -396,11 +436,14 @@ def aggregate(inputs: list[str], overrides: dict[str, Any] | None = None) -> tup
             rows.extend(parse_legacy(path, overrides))
     groups: dict[tuple[Any, ...], list[dict[str, Any]]] = {}
     for row in rows:
-        key = tuple(row.get(name) for name in ("schema_kind", "method", "provider", "benchmark", "difficulty"))
+        group_fields = ("schema_kind", "method", "provider", "benchmark", "difficulty",
+                        "metric_policy_version", "evolution_window")
+        key = tuple(row.get(name) for name in group_fields)
         groups.setdefault(key, []).append(row)
     aggregate_rows: list[dict[str, Any]] = []
     for key, members in groups.items():
-        item = {"schema_kind": key[0], "method": key[1], "provider": key[2], "benchmark": key[3], "difficulty": key[4], "repeat_count": len(members)}
+        item = dict(zip(group_fields, key))
+        item["repeat_count"] = len(members)
         for metric in METRICS:
             values = [_num(row.get(metric)) for row in members]
             values = [value for value in values if value is not None]
@@ -446,8 +489,9 @@ def _write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
 
 
 def _write_markdown(path: Path, rows: list[dict[str, Any]], *, aggregate: bool) -> None:
-    fields = ["schema_kind", "method", "benchmark", "difficulty"]
-    labels = ["schema", "method", "benchmark", "difficulty"]
+    fields = ["schema_kind", "method", "benchmark", "difficulty",
+              "metric_policy_version", "evolution_window"]
+    labels = ["schema", "method", "benchmark", "difficulty", "metric policy", "window"]
     if aggregate:
         fields.append("repeat_count")
         labels.append("repeats")

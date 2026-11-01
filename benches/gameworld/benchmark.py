@@ -197,7 +197,7 @@ class GameWorldBenchmark:
             and not isinstance(progress, bool) and score is not None
             and math.isfinite(score) and 0.0 <= score <= 1.0
         )
-        success = task_status == "success"
+        success = valid and task_status == "success"
         feedback = str(summary.get("summary") or "")
         if not valid:
             score = None
