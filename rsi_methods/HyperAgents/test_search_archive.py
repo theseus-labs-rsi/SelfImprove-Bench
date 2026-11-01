@@ -204,7 +204,7 @@ class SearchArchiveTests(unittest.TestCase):
         adaptor._archive.add(candidate.snapshot, score=0.2, valid_parent=True,
                              artifact_dir=candidate.artifact_dir)
         state = json.loads(json.dumps(export_state(adaptor, "hyperagents")))
-        restored = HyperAgentsAdaptor()
+        restored = HyperAgentsAdaptor(max_refinement_rounds=20)
         self.addCleanup(restored.close)
         restore_state(restored, "hyperagents", self.root, state)
         self.assertEqual(export_state(restored, "hyperagents"), state)
