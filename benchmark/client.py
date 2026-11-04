@@ -68,6 +68,10 @@ class LLMClientError(RuntimeError):
     """An agent call failed or returned an invalid JSON action."""
 
 
+class InvalidModelAnswerError(LLMClientError):
+    """A received RSI response has no usable answer; not a transport failure."""
+
+
 def _unknown_usage() -> dict[str, Any]:
     return {
         "prompt_tokens": None,
@@ -500,7 +504,12 @@ def _call_rsi(
     response = rsi_agent.act(prompt)
     telemetry["tokens"] = bridge.rsi_token_metrics(response)
     telemetry["rsi_agent_call"] = bridge.backend_response_record(method, prompt, response)
-    return bridge.extract_rsi_answer(method, response)
+    try:
+        return bridge.extract_rsi_answer(method, response)
+    except ValueError as exc:
+        # Preserve the response/usage above and score this attempt as invalid.
+        # Do not turn answer-unwrapping failures into service outages or retry.
+        raise InvalidModelAnswerError(str(exc)) from exc
 
 
 def _aggregate_attempts(attempts: list[dict[str, Any]]) -> dict[str, Any]:
@@ -579,7 +588,8 @@ def request_json(
         except Exception as exc:
             record = {
                 "attempt": attempt,
-                "status": "provider_error",
+                "status": ("validation_error" if isinstance(exc, InvalidModelAnswerError)
+                           else "provider_error"),
                 "duration_seconds": round(time.perf_counter() - attempt_started, 6),
                 "tokens": telemetry.get("tokens", _unknown_usage()),
                 "error": str(exc),
