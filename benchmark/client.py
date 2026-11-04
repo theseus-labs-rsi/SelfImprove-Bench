@@ -20,11 +20,11 @@ from pathlib import Path
 from typing import Any
 
 from . import rsi_session
-from .methods import RSI_PROVIDERS
+from .methods import RSI_METHOD_IDENTITIES
 
 
 BASELINE_PROVIDERS = ("codex", "claude", "deepseek", "openai")
-PROVIDER_CHOICES = BASELINE_PROVIDERS + RSI_PROVIDERS
+PROVIDER_CHOICES = BASELINE_PROVIDERS + RSI_METHOD_IDENTITIES
 DSH_INSTALL_HELP = (
     "DeepSeek Harness (dsh) is not installed. Install it with:\n"
     "  npm.cmd install --global @deepseek-ai/dsh\n"
@@ -560,7 +560,7 @@ def request_json(
                 flush=True,
             )
         try:
-            if normalized in RSI_PROVIDERS:
+            if normalized in RSI_METHOD_IDENTITIES:
                 answer = _call_rsi(
                     current_prompt,
                     method=normalized,

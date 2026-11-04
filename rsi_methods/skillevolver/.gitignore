@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.eggs/
+.pytest_cache/
+
+# Evolved skills workspaces (large, regenerated per task run)
+evolved-skills/
+experiments/
+logs/
+.cache/
+
+# Benchmark results (regenerable)
+benchmark-results/
+
+# Local secrets / env
+.env
+.env.*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# SkillsBench is cloned by scripts/setup.sh, not tracked here
+Benchmarks/skillsbench/
+
+# KernelBench generated tasks
+Benchmarks/kernelbench/generated/
+
+# Regen script output log
+scripts/train_variant_results.json

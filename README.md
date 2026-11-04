@@ -1,7 +1,6 @@
 # SelfImprove-Bench: Evaluating Generalization in Self-Improving Agents
 
 <p align="center">
-  <a href="https://arxiv.org/pdf/2611.02797"><img src="https://img.shields.io/badge/arXiv-2611.02797-b31b1b?style=flat-square&logo=arxiv" alt="arXiv" /></a>
   <a href="https://huggingface.co/datasets/DreamEternal/SelfImprove-Bench-Cases"><img src="https://img.shields.io/badge/%F0%9F%A4%97_Dataset-HuggingFace-yellow?style=flat-square" alt="Hugging Face dataset" /></a>
   <a href="./LICENSE.txt"><img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="License MIT" /></a>
 </p>

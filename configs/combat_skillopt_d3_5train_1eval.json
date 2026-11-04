@@ -1,0 +1,29 @@
+{
+  "seed": 20261104,
+  "schedule": [
+    {"game": "combat", "difficulty": 3, "count": 5}
+  ],
+  "holdout": [
+    {"game": "combat", "difficulty": 3, "count": 1}
+  ],
+  "agent": {
+    "provider": "rsi",
+    "adapter": "rsi_methods.SkillOpt.SelfImproveAdapter:SkillOptAdapter",
+    "adapter_options": {
+      "max_edits": 4,
+      "max_skill_chars": 40000,
+      "actor_reasoning_effort": "low",
+      "optimizer_reasoning_effort": "low"
+    },
+    "backend": "codex",
+    "model": "gpt-5.6-sol",
+    "timeout": 1800.0,
+    "max_attempts": 3,
+    "show_output": false
+  },
+  "evolution_window": 1,
+  "output_dir": "outputs/smoke/combat/skillopt_d3_5train_1eval",
+  "continue_on_error": true,
+  "holdout_seed": 100,
+  "holdout_tasks_per_difficulty": 5
+}

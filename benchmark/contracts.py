@@ -143,6 +143,7 @@ class SelectionEvaluation:
     result_path: str
     error_type: str | None = None
     error: str | None = None
+    total_tokens: int | None = None
 
 
 def normalized_score(value: Any) -> float | None:

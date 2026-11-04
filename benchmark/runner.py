@@ -19,10 +19,10 @@ from .contracts import normalized_score
 from .game_adapters import EvaluationOutcome, evaluate_task
 from .metrics import calculate_metrics, format_metrics, post_refinement_score, record_score
 from .tasks import GAMES, PlannedTask, TaskManifest, build_manifest
-from .methods import BUILTIN_METHODS, RSI_PROVIDERS, method_identity, runtime_policy
+from .methods import BUILTIN_METHODS, RSI_METHOD_IDENTITIES, method_identity, runtime_policy
 
 
-RSI_METHODS = frozenset(RSI_PROVIDERS)
+RSI_METHODS = frozenset(RSI_METHOD_IDENTITIES)
 
 
 def _write_json(path: Path, value: Any) -> None:
@@ -324,6 +324,7 @@ def _selection_evaluation(
         result_path=str(result_path.resolve()),
         error_type=(str(record["error_type"]) if record.get("error_type") else None),
         error=(str(record["error"]) if record.get("error") else None),
+        total_tokens=_token_total(record.get("llm_metrics", {})),
     )
 
 

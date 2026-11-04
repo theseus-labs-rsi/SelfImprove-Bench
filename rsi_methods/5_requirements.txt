@@ -1,0 +1,61 @@
+# Unified runtime dependencies for the five SelfImprove-Bench adapters:
+#   harness2, Recuris, rrsi, skillevolver, SkillOpt
+#
+# Python 3.12 is required by harness2 and Recuris.
+# Install from the repository root with:
+#   python -m pip install -r rsi_methods/5_requirements.txt
+#
+# Scope:
+# - Includes each method's core runtime dependencies.
+# - Retains SkillEvolver's locked versions for reproducibility.
+# - Merges duplicate requirements using the strictest compatible constraint.
+# - Excludes method-specific benchmark runners, WebUI/docs, local vLLM,
+#   and development-only extras that are not used by these five adapters.
+# - Harness2 declares no core Python runtime dependencies.
+
+# Direct dependencies contributed by Recuris / SkillOpt.
+azure-core>=1.30.0
+azure-identity>=1.15.0
+loguru>=0.7
+numpy>=1.24.0
+openai>=1.30.0
+pyyaml>=6.0
+
+# RRSI requires Anthropic's Vertex support. SkillEvolver locks Anthropic 0.86.0,
+# so the duplicate requirements are represented by this single merged entry.
+anthropic[vertex]==0.86.0
+
+# SkillEvolver locked runtime set, plus shared versions satisfying SkillOpt.
+annotated-types==0.7.0
+anyio==4.12.1
+attrs==26.1.0
+certifi==2026.2.25
+cffi==2.0.0
+claude-agent-sdk==0.1.50
+click==8.3.1
+cryptography==46.0.5
+docstring-parser==0.17.0
+et-xmlfile==2.0.0
+h11==0.16.0
+httpcore==1.0.9
+httpx==0.28.1
+httpx-sse==0.4.3
+idna==3.11
+jsonschema==4.26.0
+jsonschema-specifications==2025.9.1
+mcp==1.26.0
+openpyxl==3.1.5
+pydantic==2.12.5
+pydantic-core==2.41.5
+pydantic-settings==2.13.1
+pytest==9.0.2
+python-dotenv==1.2.2
+python-multipart==0.0.22
+referencing==0.37.0
+rpds-py==0.30.0
+sniffio==1.3.1
+sse-starlette==3.3.3
+starlette==1.0.0
+typing-extensions==4.15.0
+typing-inspection==0.4.2
+uvicorn==0.42.0

@@ -18,6 +18,7 @@ from benchmark.contracts import BackendResponse, EvaluationOutcome, SelectionEva
 from benchmark.hci import calculate_hci
 from benchmark.interfaces import Candidate, CandidateBatch, MethodContext, SelectionResult
 from benchmark.methods import create_adaptor, MethodRuntimePolicy, runtime_policy
+from benchmark.method_support import _parse_json_object
 from benchmark.rsi_session import RSIBatchSession, make_feedback_result, ExecutionStatus
 from benchmark.runner import run_benchmark
 from benchmark.tasks import GAMES, build_manifest
@@ -138,6 +139,42 @@ class ExternalMethodTest(unittest.TestCase):
         self.assertEqual(action, {"days": []})
         self.assertEqual(metrics["tokens"]["total_tokens"], 0)
         self.assertEqual(metrics["attempts"][0]["rsi_agent_call"]["response_text"], '{"days": []}')
+
+    def test_truncated_optimizer_json_is_conservatively_completed(self):
+        truncated = (
+            '{"state":{"components":{"system_prompt":"ok"}},'
+            '"composition_notes":"response ended here\\n'
+        )
+        self.assertEqual(
+            _parse_json_object(truncated),
+            {
+                "state": {"components": {"system_prompt": "ok"}},
+                "composition_notes": "response ended here\n",
+            },
+        )
+        with self.assertRaisesRegex(ValueError, "invalid JSON"):
+            _parse_json_object('{"state":,}')
+        with self.assertRaisesRegex(ValueError, "invalid JSON"):
+            _parse_json_object('{"state":"dangling escape\\')
+
+    def test_skillopt_empty_patch_is_a_noop_candidate(self):
+        from rsi_methods.SkillOpt.SelfImproveAdapter import SkillOptAdapter
+
+        adapter = SkillOptAdapter.__new__(SkillOptAdapter)
+        adapter.max_edits = 4
+        adapter.options = {}
+        current = dict(adapter.initial_state())
+        candidate = adapter.normalize_candidate(
+            {"patch": {"reasoning": "current skill is sufficient", "edits": []}},
+            current=current,
+        )
+        self.assertEqual(candidate["best_skill"], current["best_skill"])
+        self.assertEqual(candidate["step"], 1)
+        self.assertEqual(candidate["last_edit_report"][0]["status"], "skipped_empty_patch")
+        with self.assertRaisesRegex(ValueError, "at most 4 edits"):
+            adapter.normalize_candidate(
+                {"patch": {"edits": [{"op": "append"}] * 5}}, current=current,
+            )
 
     def test_state_roundtrip_and_adapter_identity(self):
         session = RSIBatchSession("rsi", self.root, task_count=5, agent=agent_config())

@@ -1,0 +1,34 @@
+{
+  "seed": 20261104,
+  "schedule": [
+    {"game": "combat", "difficulty": 3, "count": 5}
+  ],
+  "holdout": [
+    {"game": "combat", "difficulty": 3, "count": 1}
+  ],
+  "agent": {
+    "provider": "rsi",
+    "adapter": "rsi_methods.rrsi.SelfImproveAdapter:RRSIAdapter",
+    "adapter_options": {
+      "edit_budget": 2,
+      "delta": 0.0,
+      "beta0": 0.1,
+      "beta1": 40.0,
+      "w_s": 100.0,
+      "w_c": 15.0,
+      "w_n": 0.5,
+      "actor_reasoning_effort": "low",
+      "optimizer_reasoning_effort": "low"
+    },
+    "backend": "codex",
+    "model": "gpt-5.6-sol",
+    "timeout": 1800.0,
+    "max_attempts": 3,
+    "show_output": false
+  },
+  "evolution_window": 1,
+  "output_dir": "outputs/smoke/combat/rrsi_d3_5train_1eval",
+  "continue_on_error": true,
+  "holdout_seed": 100,
+  "holdout_tasks_per_difficulty": 5
+}

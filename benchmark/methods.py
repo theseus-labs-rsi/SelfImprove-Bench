@@ -10,13 +10,22 @@ from typing import Any
 from .interfaces import MethodContext
 
 
-BUILTIN_METHODS = ("ace", "ahe", "hyperagents")
 BUILTIN_ADAPTERS = {
     "ace": "rsi_methods.ACE.ACEAdaptor:ACEAdaptor",
     "ahe": "rsi_methods.AHE.AHEAdaptor:AHEAdaptor",
     "hyperagents": "rsi_methods.HyperAgents.HyperAgentsAdaptor:HyperAgentsAdaptor",
 }
+INTERFACE_ADAPTERS = {
+    "harness2": "rsi_methods.harness2.SelfImproveAdapter:Harness2Adapter",
+    "recuris": "rsi_methods.Recuris.SelfImproveAdapter:RecurisAdapter",
+    "rrsi": "rsi_methods.rrsi.SelfImproveAdapter:RRSIAdapter",
+    "skillevolver": "rsi_methods.skillevolver.SelfImproveAdapter:SkillEvolverAdapter",
+    "skillopt": "rsi_methods.SkillOpt.SelfImproveAdapter:SkillOptAdapter",
+}
+ADAPTER_IDENTITIES = {**BUILTIN_ADAPTERS, **INTERFACE_ADAPTERS}
+BUILTIN_METHODS = tuple(BUILTIN_ADAPTERS)
 RSI_PROVIDERS = (*BUILTIN_METHODS, "rsi")
+RSI_METHOD_IDENTITIES = (*BUILTIN_METHODS, *INTERFACE_ADAPTERS, "rsi")
 REQUIRED_HOOKS = ("init", "load", "refine", "export_state", "restore_state", "close")
 
 
@@ -52,7 +61,7 @@ DEFAULT_RUNTIME_POLICY = MethodRuntimePolicy()
 
 def runtime_policy(agent: Any) -> MethodRuntimePolicy:
     provider = agent.strip().lower() if isinstance(agent, str) else getattr(agent, "provider", None)
-    spec = BUILTIN_ADAPTERS.get(provider) if provider != "rsi" else getattr(agent, "adapter", None)
+    spec = ADAPTER_IDENTITIES.get(provider) if provider != "rsi" else getattr(agent, "adapter", None)
     if not spec:
         return DEFAULT_RUNTIME_POLICY
     module, name = validate_adapter_spec(spec).split(":")
@@ -76,7 +85,7 @@ def method_identity(agent: Any) -> str:
 
     provider = value("provider")
     if provider == "rsi":
-        return next((name for name, spec in BUILTIN_ADAPTERS.items()
+        return next((name for name, spec in ADAPTER_IDENTITIES.items()
                      if spec == value("adapter")), "rsi")
     return provider
 
