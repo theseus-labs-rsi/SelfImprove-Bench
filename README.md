@@ -18,7 +18,7 @@ The above project provides a benchmark for RSI. Its protocol supports multiple r
 
 - **Generalization Ladder**: Organize evaluation into generalization ladder levels G0 to G4: same instances (G0), unseen instances at the same difficulty (G1), new difficulty levels within the same task (G2), different tasks within the same capability category (G3), and tasks across capability categories (G4).
 - **Scalable Task Generation and Orchestration**: Automatic generate task istances based on templates and difficuly coefficients, enabling configurable task sequences for evaluating each level of the generalization ladder.
-- **High Resolution Trace Analysis**: Characterize refinement semantics, modification scope, capability dimension, and generalizability from evolution trajectories, enabling a more comprehensive reflection on the method pattern..
+- **High Resolution Trace Analysis**: Characterize refinement semantics, modification scope, capability dimension, and generalizability from evolution trajectories, enabling a more comprehensive reflection on the method pattern.
 
 The initial version covers following methods and games, while you can extend new ones based on the extensible framework.
 - **Methods:** RSI framework (ACE, AHE, HyperAgents) and baselines (Codex, Claude Code, Deepseek Harness).
