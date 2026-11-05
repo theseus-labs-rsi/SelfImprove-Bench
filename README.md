@@ -202,7 +202,15 @@ python -m benchmark configs/examples/minimal_rsi.json
 | `tests/` | Regression tests |
 
 ## 📚 Citation
-If you find this project useful for your research, please consider giving us a star and citing our paper.
+If you find this project useful for your research, please consider giving us a star and citing our paper:
+
+```bibtex
+@article{xu2026selfimprovebench,
+  title={SelfImprove-Bench: Evaluating Generalization in Self-Improving Agents},
+  author={Bangrui Xu and Jie Yang and Sidi Chen and Xuanhe Zhou and Jiantao Qiu and Qianyu Yang and Zijie Wang and Fan Wu and Zhoufutu Wen},
+  journal={arXiv preprint arXiv:2611.02797},
+  year={2026}
+```
 
 ## 📄 License
 This project is licensed under the MIT License. See the [LICENSE](./LICENSE) file for details.
