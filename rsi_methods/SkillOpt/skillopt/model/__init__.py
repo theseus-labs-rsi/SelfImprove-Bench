@@ -4,14 +4,26 @@ from __future__ import annotations
 
 from typing import Any
 
-from skillopt.model import azure_openai as _openai
-from skillopt.model import claude_backend as _claude
-from skillopt.model import claude_code_backend as _claude_code
-from skillopt.model import codex_backend as _codex
-from skillopt.model import copilot_backend as _copilot
-from skillopt.model import minimax_backend as _minimax
-from skillopt.model import openai_compatible_backend as _openai_compat
-from skillopt.model import qwen_backend as _qwen
+from importlib import import_module
+from skillopt.model.transport import optimizer_transport
+
+
+class _LazyBackend:
+    def __init__(self, name):
+        self.name = name
+
+    def __getattr__(self, name):
+        return getattr(import_module(f"skillopt.model.{self.name}"), name)
+
+
+_openai = _LazyBackend("azure_openai")
+_claude = _LazyBackend("claude_backend")
+_claude_code = _LazyBackend("claude_code_backend")
+_codex = _LazyBackend("codex_backend")
+_copilot = _LazyBackend("copilot_backend")
+_minimax = _LazyBackend("minimax_backend")
+_openai_compat = _LazyBackend("openai_compatible_backend")
+_qwen = _LazyBackend("qwen_backend")
 from skillopt.model.backend_config import (  # noqa: F401
     configure_claude_code_exec,
     configure_codex_exec,
@@ -127,6 +139,11 @@ def chat_optimizer(
     reasoning_effort: str | None = None,
     timeout: int | None = None,
 ) -> tuple[str, dict]:
+    transport = optimizer_transport.get()
+    if transport is not None:
+        return transport(system=system, user=user,
+            max_completion_tokens=max_completion_tokens, retries=retries,
+            stage=stage, reasoning_effort=reasoning_effort, timeout=timeout)
     if get_optimizer_backend() == "claude_chat":
         return _claude.chat_optimizer(
             system=system,

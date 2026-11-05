@@ -18,11 +18,12 @@ from .config import BenchmarkConfig
 from .contracts import normalized_score
 from .game_adapters import EvaluationOutcome, evaluate_task
 from .metrics import calculate_metrics, format_metrics, post_refinement_score, record_score
-from .tasks import GAMES, PlannedTask, TaskManifest, build_manifest
+from .tasks import GAMES, PlannedTask, TaskManifest, build_manifest, _make_task, _seed, task_fingerprint
 from .methods import BUILTIN_METHODS, RSI_METHOD_IDENTITIES, method_identity, runtime_policy
 
 
 RSI_METHODS = frozenset(RSI_METHOD_IDENTITIES)
+NATIVE_RSI_METHODS = frozenset({"harness2", "recuris", "rrsi", "skillevolver", "skillopt"})
 
 
 def _write_json(path: Path, value: Any) -> None:
@@ -101,6 +102,13 @@ def _must_stop_after_error(config: BenchmarkConfig, record: Mapping[str, Any]) -
     """Stop on fatal method errors even when ordinary errors may be tolerated."""
     if record.get("status") in {"ok", "skipped"}:
         return False
+    if method_identity(config.agent) in NATIVE_RSI_METHODS:
+        selection = record.get("selection") or {}
+        if selection.get("state_recovered") is True or selection.get("status") == "unchanged":
+            return False
+        if record.get("phase") in {"holdout", "replay"}:
+            return False
+        return True
     return (not config.continue_on_error or _is_fatal_method_error(config, record)
             or _is_provider_failure(record))
 
@@ -108,15 +116,21 @@ def _must_stop_after_error(config: BenchmarkConfig, record: Mapping[str, Any]) -
 def _checkpoint_is_stable(config: BenchmarkConfig, task: PlannedTask,
                           record: Mapping[str, Any]) -> bool:
     """A failed task attempt can still have a valid post-refinement RSI state."""
-    if _is_provider_failure(record):
+    selection = record.get("selection") or {}
+    known_state = selection.get("state_recovered") is True or selection.get("status") == "unchanged"
+    if method_identity(config.agent) in NATIVE_RSI_METHODS and task.phase == "holdout":
+        return record.get("status") in {"ok", "skipped", "error"}
+    if _is_provider_failure(record) and not known_state:
         return False
     if task.phase == "train" and not task.replay:
         status = (record.get("selection") or {}).get("status")
-        if status not in {"committed", "completed", "unchanged", "skipped"}:
+        if status not in {"committed", "completed", "unchanged", "skipped", "error_recovered"}:
             return False
     if record.get("status") in {"ok", "skipped"}:
         return True
-    return record.get("status") == "error" and not _is_fatal_method_error(config, record)
+    return (record.get("status") == "error"
+            and (method_identity(config.agent) in NATIVE_RSI_METHODS
+                 or not _is_fatal_method_error(config, record)))
 
 
 class AgentController:
@@ -126,12 +140,19 @@ class AgentController:
         self, config: BenchmarkConfig, output_dir: Path, training_count: int,
         *, resume_from: Path | None = None,
         batch_id: str | None = None, resume: bool = False,
+        reserved_tasks: tuple[PlannedTask, ...] = (),
     ) -> None:
         self.config = config
         self.provider = method_identity(config.agent)
         self.bridge: Any | None = None
         self.session: Any | None = None
         self.active_agent: Any | None = None
+        self._reserved_fingerprints = {task_fingerprint(t.task) for t in reserved_tasks}
+        self._reserved_gameworld_tasks = {
+            (t.task.get("game_id"), t.task.get("game_task_id"))
+            for t in reserved_tasks if t.game == "gameworld"
+        }
+        self._method_tasks: dict[tuple, PlannedTask] = {}
         if self.provider in RSI_METHODS:
             self.bridge = load_rsi_integration()
             resume_args = (
@@ -248,9 +269,75 @@ class AgentController:
             or task.replay
         ):
             return None
+        binder = getattr(self.session.adaptor, "bind_evaluator", None)
+        if callable(binder):
+            binder(lambda agent, **kw: self._method_rollout(task, agent, **kw))
         return self.session.refine(
             feedback if feedback is not None else self.make_feedback(task, record), task_index
         )
+
+    def _method_rollout(self, task, agent, *, label, split, index, output_dir):
+        """A fresh agent and deep-copied task for every native optimizer trial.
+
+        Selection tasks use their own seed namespace and never the public
+        holdout. GameWorld uses only the explicitly configured training pool.
+        """
+        if split not in {"train", "validation"} or index < 0:
+            raise ValueError("invalid method rollout split/index")
+        selected = task
+        if split == "validation":
+            key = (task.game, task.difficulty, index)
+            # Fill the deterministic prefix so request order and resume never
+            # change paired validation identities. All outer tasks are reserved.
+            for validation_index in range(index + 1):
+                current_key = (task.game, task.difficulty, validation_index)
+                if current_key in self._method_tasks:
+                    continue
+                used = set(self._reserved_fingerprints) | {task_fingerprint(task.task)}
+                used.update(task_fingerprint(t.task) for k, t in self._method_tasks.items()
+                            if k[:2] == current_key[:2])
+                if task.game == "gameworld":
+                    options = self.config.game_options.get("gameworld", {})
+                    # No independent generator exists for externally specified
+                    # tasks. Require a real additional training task.
+                    pool = options.get("train", [])
+                    used_external = self._reserved_gameworld_tasks | {
+                        (task.task.get("game_id"), task.task.get("game_task_id"))
+                    } | {(t.task.get("game_id"), t.task.get("game_task_id"))
+                         for t in self._method_tasks.values() if t.game == "gameworld"}
+                    choices = []
+                    for n in range(len(pool)):
+                        candidate = _make_task(phase="train", game=task.game,
+                            difficulty=task.difficulty, index=n, group_index=task.group_index,
+                            used=set(), seed_root=_seed(self.config.seed, "method-validation"),
+                            options=options)
+                        identity = (candidate.task.get("game_id"), candidate.task.get("game_task_id"))
+                        if identity not in used_external:
+                            choices.append(candidate)
+                    if not choices:
+                        raise RuntimeError("native selection requires additional GameWorld train tasks; public holdout is never reused")
+                    self._method_tasks[current_key] = choices[0]
+                else:
+                    self._method_tasks[current_key] = _make_task(phase="method-validation",
+                        game=task.game, difficulty=task.difficulty, index=validation_index,
+                        group_index=task.group_index, used=used,
+                        seed_root=_seed(self.config.seed, "method-validation"))
+            selected = self._method_tasks[key]
+        run_id = f"{task.run_id}__method_{label}"
+        trial = PlannedTask(run_id=run_id, phase="train", game=selected.game,
+            difficulty=selected.difficulty, task=deepcopy(selected.task),
+            task_seed=selected.task_seed, group_index=selected.group_index)
+        started = time.perf_counter()
+        outcome = _evaluate(trial, request=self.request_for_agent(agent), agent=agent,
+                            output_dir=output_dir)
+        record = outcome.record
+        _write_json(output_dir / "result.json", record)
+        _write_json(output_dir / "task.json", selected.manifest_record())
+        feedback = outcome.feedback or self.make_feedback(trial, record)
+        return {"record": record, "feedback": feedback,
+                "provider_failure": _is_provider_failure(record),
+                "seconds": time.perf_counter() - started,
+                "task_id": selected.run_id}
 
     def close(self) -> None:
         try:
@@ -505,6 +592,9 @@ def _execute_one(
         and not _is_fatal_method_error(controller.config, result)
         and not _is_provider_failure(result)
     ):
+        adapter = getattr(controller.session, "adaptor", None)
+        export_state = getattr(adapter, "export_state", None)
+        state_snapshot = export_state() if callable(export_state) else None
         try:
             previous_telemetry = controller.session.refinement_telemetry
             refinement_started = time.perf_counter()
@@ -586,8 +676,19 @@ def _execute_one(
                 ),
             }
         except Exception as exc:
+            recovered = False
+            try:
+                restore_state = getattr(adapter, "restore_state", None)
+                if state_snapshot is None or not callable(restore_state):
+                    raise RuntimeError("adapter does not support state recovery")
+                restore_state(state_snapshot)
+                recovered = True
+            except Exception as recovery_error:
+                exc.add_note(f"Could not restore pre-task RSI state: {recovery_error}")
             error = runtime_policy(controller.config.agent).selection_error(exc)
-            selection_summary = {"status": "error", "error_type": type(exc).__name__, "error": error}
+            selection_summary = {"status": "error_recovered" if recovered else "error",
+                                 "state_recovered": recovered,
+                                 "error_type": type(exc).__name__, "error": error}
             result = {
                 **result,
                 "parent_status": result.get("status"),
@@ -600,6 +701,11 @@ def _execute_one(
     if (selection_summary is None and outcome is None and controller.provider == "rsi"
             and task.phase == "train" and not task.replay):
         selection_summary = {"status": "completed"}
+    if (selection_summary is None and task.phase == "train"
+            and controller.session is not None and controller.provider in NATIVE_RSI_METHODS
+            and result.get("status") == "error"
+            ):
+        selection_summary = {"status": "unchanged", "reason": "evaluation_failed_no_refinement"}
     refinement_seconds = float(refinement.get("duration_seconds", 0.0)) if isinstance(refinement, dict) else 0.0
     refinement_tokens: int | None = 0
     if isinstance(refinement, dict):
@@ -750,6 +856,7 @@ def _run_target_benchmark(
     controller = AgentController(
         config, output_dir, refinement_count,
         resume_from=source_dir if target_dir is not None else None,
+        reserved_tasks=manifest.holdout_pool + manifest.training,
     )
     if target_dir is not None:
         _discard_copied_latest(output_dir, controller)
@@ -771,10 +878,11 @@ def _run_target_benchmark(
 
         # Holdout starts only after all scheduled evolution/refinement has
         # finished. AgentController.begin loads but never refines the final RSI version.
+        rsi_run = method_identity(config.agent) in NATIVE_RSI_METHODS
         if len(training_records) == len(manifest.training) and (
-            resuming_holdout or config.continue_on_error
+            rsi_run or resuming_holdout or config.continue_on_error
             or all(item["status"] in {"ok", "skipped"} for item in training_records)
-        ) and not any(_is_fatal_method_error(config, item) for item in training_records):
+        ) and (rsi_run or not any(_is_fatal_method_error(config, item) for item in training_records)):
             for index, task in enumerate(manifest.holdout, start=1):
                 if index <= len(holdout_records):
                     continue
@@ -994,7 +1102,8 @@ def _run_checkpoint_benchmark(config, output_dir, *, resume, max_new_train_runs)
         _persist_tasks(output_dir, manifest)
         initial = None
     controller = AgentController(config, output_dir, sum(not t.replay for t in manifest.training),
-        batch_id=initial["batch_id"] if resume else None, resume=resume)
+        batch_id=initial["batch_id"] if resume else None, resume=resume,
+        reserved_tasks=manifest.holdout_pool + manifest.training)
     return _run_checkpoint_controller(config, output_dir, manifest, controller,
                                       initial, resume, max_new_train_runs)
 

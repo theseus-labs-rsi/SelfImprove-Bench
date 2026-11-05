@@ -24,6 +24,7 @@ COMMON_OPTIONS = frozenset({
     "actor_model", "optimizer_model", "api_key_env", "base_url_env", "api_mode",
     "actor_max_output_tokens", "optimizer_max_output_tokens", "actor_reasoning_effort",
     "optimizer_reasoning_effort", "temperature", "selection_margin",
+    "actor_tool_steps",
 })
 
 
@@ -84,6 +85,17 @@ def _parse_json_object(text: str) -> dict[str, Any]:
     start = stripped.find("{")
     if start < 0:
         raise ValueError("optimizer response did not contain a JSON object")
+    # Model responses sometimes append a note or a second, malformed fragment
+    # after an otherwise complete object. Decode exactly one JSON value and
+    # deliberately ignore anything after its closing delimiter.
+    try:
+        value, _ = json.JSONDecoder().raw_decode(stripped[start:])
+    except json.JSONDecodeError:
+        value = None
+    else:
+        if not isinstance(value, dict):
+            raise ValueError("optimizer response must be a JSON object")
+        return value
     candidates = [stripped]
     end = stripped.rfind("}")
     if start > 0 or (end >= start and end < len(stripped) - 1):
@@ -106,6 +118,32 @@ def _parse_json_object(text: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ValueError("optimizer response must be a JSON object")
     return value
+
+
+def _mapping_value(value: Any, label: str) -> dict[str, Any]:
+    """Accept an object or a model-stringified JSON object, never arbitrary text."""
+    if isinstance(value, Mapping):
+        return dict(value)
+    if isinstance(value, str):
+        try:
+            return _parse_json_object(value)
+        except ValueError as exc:
+            raise ValueError(f"{label} must be a JSON object, not a string") from exc
+    raise ValueError(f"{label} must be a JSON object")
+
+
+def _list_value(value: Any, label: str) -> list[Any]:
+    """Accept an array or a model-stringified JSON array."""
+    if isinstance(value, list):
+        return value
+    if isinstance(value, str):
+        try:
+            decoded = json.loads(value)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"{label} must be a JSON array, not a string") from exc
+        if isinstance(decoded, list):
+            return decoded
+    raise ValueError(f"{label} must be a JSON array")
 
 
 def _usage_report(usage: TokenUsage | None) -> dict[str, Any]:
@@ -240,10 +278,9 @@ class StructuredStateAdapter:
     def normalize_candidate(
         self, payload: Mapping[str, Any], *, current: Mapping[str, Any],
     ) -> dict[str, Any]:
-        state = payload.get("state")
-        if not isinstance(state, Mapping):
-            raise ValueError("optimizer response must contain an object field named 'state'")
-        return dict(state)
+        if not isinstance(payload, Mapping):
+            payload = _mapping_value(payload, "optimizer response")
+        return _mapping_value(payload.get("state"), "optimizer response.state")
 
     def accept_candidate(self, parent: Any, candidate: Any) -> tuple[bool, str]:
         parent_score = getattr(parent, "relative_score", None)

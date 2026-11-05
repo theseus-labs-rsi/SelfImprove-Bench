@@ -157,6 +157,12 @@ class ExternalMethodTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "invalid JSON"):
             _parse_json_object('{"state":"dangling escape\\')
 
+    def test_optimizer_json_ignores_trailing_text(self):
+        self.assertEqual(_parse_json_object('{"state": {"ok": true}}\nDone.'),
+                         {"state": {"ok": True}})
+        self.assertEqual(_parse_json_object('{"state": {"ok": true}}```unexpected'),
+                         {"state": {"ok": True}})
+
     def test_skillopt_empty_patch_is_a_noop_candidate(self):
         from rsi_methods.SkillOpt.SelfImproveAdapter import SkillOptAdapter
 

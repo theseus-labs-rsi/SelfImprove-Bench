@@ -25,7 +25,8 @@ import json
 import os
 import random
 import traceback
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import as_completed
+from skillopt.model.transport import ContextExecutor as ThreadPoolExecutor
 
 from skillopt.model import chat_optimizer
 from skillopt.optimizer.meta_skill import format_meta_skill_context

@@ -372,6 +372,8 @@ class RSIBatchSession:
             raise ValueError("feedback task_id does not match the active RSI task")
         output_dir = self.artifact_dir / f"task_{task_index:04d}_{_safe_name(feedback.task_id)}"
         previous_report = getattr(self.adaptor, "last_refinement_report", None)
+        export_state = getattr(self.adaptor, "export_state", None)
+        state_snapshot = export_state() if callable(export_state) else None
         refinement_called = False
         started = time.perf_counter()
         try:
@@ -389,6 +391,15 @@ class RSIBatchSession:
                 self._pending_batch = batch
                 self._pending_output_dir = output_dir
         except Exception as exc:
+            try:
+                restore_state = getattr(self.adaptor, "restore_state", None)
+                if state_snapshot is None or not callable(restore_state):
+                    raise RuntimeError("adapter does not support state recovery")
+                restore_state(state_snapshot)
+                recovered = True
+            except Exception as recovery_error:
+                recovered = False
+                exc.add_note(f"Could not restore pre-refinement state: {recovery_error}")
             report = getattr(self.adaptor, "last_refinement_report", None)
             if not refinement_called:
                 report = {"token_usage_report": {"total_tokens": 0, "complete": True, "no_model_calls": True}}
@@ -402,6 +413,7 @@ class RSIBatchSession:
                 "artifact_dir": str(output_dir),
                 "error_type": type(exc).__name__,
                 "error": str(exc),
+                "state_recovered": recovered,
                 "tokens": refinement_token_metrics(report),
             }
             try:

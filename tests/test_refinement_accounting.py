@@ -154,6 +154,35 @@ def test_successful_candidate_cost_is_not_double_counted(tmp_path, monkeypatch):
     assert record["candidate_validation_seconds"] == 2
 
 
+def test_recovered_refinement_error_is_a_stable_unchanged_training_round(tmp_path, monkeypatch):
+    record = {"status": "error", "error": "synthetic method stage failure",
+              "selection": {"status": "error_recovered", "state_recovered": True}}
+    config = SimpleNamespace(agent=SimpleNamespace(provider="offline-test"))
+    task = PlannedTask("synthetic-cost-test", "train", "farm", 1, {}, 1, 0)
+    assert runner._checkpoint_is_stable(config, task, record)
+    assert not runner._must_stop_after_error(
+        SimpleNamespace(continue_on_error=True, agent=config.agent), record)
+
+
+def test_rsi_non_provider_errors_continue_even_when_generic_policy_would_stop():
+    agent = SimpleNamespace(provider="rsi", adapter="rsi_methods.harness2.SelfImproveAdapter:Harness2Adapter")
+    config = SimpleNamespace(continue_on_error=False, agent=agent)
+    record = {"status": "error", "error": "ordinary failed rollout",
+              "selection": {"status": "unchanged"}}
+    assert not runner._must_stop_after_error(config, record)
+
+
+def test_recovered_rsi_optimizer_provider_error_can_commit_unchanged_state():
+    agent = SimpleNamespace(provider="rsi", adapter="rsi_methods.harness2.SelfImproveAdapter:Harness2Adapter")
+    config = SimpleNamespace(continue_on_error=False, agent=agent)
+    task = PlannedTask("synthetic-cost-test", "train", "farm", 1, {}, 1, 0)
+    record = {"status": "error", "error_type": "APITimeoutError",
+              "error": "API request timed out",
+              "selection": {"status": "error_recovered", "state_recovered": True}}
+    assert runner._checkpoint_is_stable(config, task, record)
+    assert not runner._must_stop_after_error(config, record)
+
+
 @pytest.mark.parametrize("status,tokens", [("ok", 17), ("skipped", 0)])
 def test_success_and_explicit_zero_usage_stay_recorded(tmp_path, monkeypatch, status, tokens):
     def refine(session):

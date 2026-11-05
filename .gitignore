@@ -17,6 +17,8 @@ venv/
 # --- env / secrets ---
 .env
 .env.*
+!rsi_methods/harness2/.env.example
+!rsi_methods/SkillOpt/.env.example
 *.pem
 *.key
 
