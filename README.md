@@ -44,8 +44,7 @@ Additional dependencies depend on the method and games:
 pip install -r rsi_methods/HyperAgents/requirements.txt
 
 # Minecraft and Astray
-pip install -e ./benches/gameworld/assets/core/code
-playwright install chromium
+python -m playwright install --with-deps chromium
 
 # AHE (Linux; unprivileged user namespaces must also be enabled)
 sudo apt-get install bubblewrap
@@ -54,6 +53,9 @@ sudo apt-get install bubblewrap
 AHE requires filesystem sandbox support and a successful Agent Debugger
 diagnosis before each refinement. It stops if either is unavailable.
 NexAU is bundled locally and installed by `requirements.txt`.
+GameWorld's Python dependencies are also installed by `requirements.txt`.
+On Linux, Playwright's `--with-deps` installs Chromium's required system
+libraries and may request sudo access.
 
 **Headless Linux rendering:** If Chromium fails to initialize WebGL or a game
 remains stuck on its loading screen, set `GAMEWORLD_RENDERER=swiftshader`

@@ -46,7 +46,7 @@ In the Python environment that runs the benchmark, run from the `code` directory
 
 ```powershell
 python -m pip install --upgrade -e ./benches/gameworld/assets/core/code --only-binary=greenlet,pillow,pyzmq,cryptography
-python -m playwright install chromium
+python -m playwright install --with-deps chromium
 ```
 
 GameWorld dependencies are declared centrally in `assets/core/code/pyproject.toml`;

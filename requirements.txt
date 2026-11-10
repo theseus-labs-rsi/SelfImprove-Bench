@@ -1,4 +1,6 @@
 ./third_party/nexau/nexau-0.3.9-1rsibench-py3-none-any.whl
+# Install GameWorld's Python dependencies from its package declaration.
+-e ./benches/gameworld/assets/core/code
 ag-ui-protocol==0.1.22
 openai==2.54.0
 docker==7.1.0
