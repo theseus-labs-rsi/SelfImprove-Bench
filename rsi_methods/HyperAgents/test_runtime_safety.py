@@ -172,7 +172,19 @@ class RuntimeSafetyTests(unittest.TestCase):
 
     def test_runtime_agent_launches_a_fresh_task_agent_process_per_step(self):
         import base64
+        import io
+        import tarfile
         from rsi_methods.HyperAgents.runtime_agent import RuntimeAgent
+
+        requests = []
+
+        def put_archive(destination, archive):
+            self.assertEqual(destination, "/tmp")
+            with tarfile.open(fileobj=io.BytesIO(archive.read()), mode="r") as tar:
+                member = tar.getmembers()[0]
+                with tar.extractfile(member) as stream:
+                    requests.append((member.name, json.load(stream)))
+            return True
 
         payload = base64.b64encode(json.dumps({
             "prediction": "ok",
@@ -180,7 +192,7 @@ class RuntimeSafetyTests(unittest.TestCase):
         }).encode()).decode()
         container = SimpleNamespace(exec_run=Mock(return_value=SimpleNamespace(
             exit_code=0, output=f"__RUNTIME_AGENT_RESULT__{payload}\n".encode()
-        )))
+        )), put_archive=put_archive)
         agent = RuntimeAgent(
             container=container, agent_path="/RSI-Bench/task_agent.py",
             repo_path="/RSI-Bench", model="test", reasoning_effort="low",
@@ -189,13 +201,20 @@ class RuntimeSafetyTests(unittest.TestCase):
             artifact_dir="/tmp/runtime-test",
         )
         agent.run({"instruction": "step one"})
-        agent.run({"instruction": "step two"})
+        large_prompt = "长输入" * 100000
+        agent.run({"instruction": large_prompt})
 
         self.assertEqual(container.exec_run.call_count, 2)
         commands = [call.kwargs["cmd"] for call in container.exec_run.call_args_list]
         self.assertTrue(all(command[:2] == ["python", "-c"] for command in commands))
         self.assertTrue(all("task_agent = TaskAgentClass(" in command[2] for command in commands))
         self.assertNotEqual(commands[0][5], commands[1][5])
+        self.assertEqual([item[1]["instruction"] for item in requests],
+                         ["step one", large_prompt])
+        self.assertEqual([command[-1] for command in commands],
+                         [f"/tmp/{item[0]}" for item in requests])
+        self.assertNotEqual(commands[0][-1], commands[1][-1])
+        self.assertTrue(all(len(command[-1]) < 128 for command in commands))
 
     def test_bash_heredoc_without_trailing_newline(self):
         bash = load_overlay("test_safe_bash_heredoc", "agent/tools/bash.py")

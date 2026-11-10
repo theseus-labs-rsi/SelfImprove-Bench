@@ -17,14 +17,18 @@ _RUN_TASK_AGENT = r"""
 import base64
 import importlib.util
 import json
+import os
 import sys
 
-agent_path, encoded_model_config, history_path, encoded_inputs = sys.argv[1:]
-inputs = json.loads(base64.b64decode(encoded_inputs).decode("utf-8"))
+agent_path, encoded_model_config, history_path, inputs_path = sys.argv[1:]
+try:
+    with open(inputs_path, encoding="utf-8") as stream:
+        inputs = json.load(stream)
+finally:
+    os.unlink(inputs_path)
 
 # Launcher transport bounds (execution option): default the SDK client's
 # timeout/retries without touching the candidate repository's backend copy.
-import os
 if os.environ.get("RSI_OPENAI_REQUEST_TIMEOUT") or os.environ.get("RSI_OPENAI_MAX_RETRIES"):
     import openai
     _original_init = openai.OpenAI.__init__
@@ -100,9 +104,7 @@ class RuntimeAgent:
 
     def run(self, inputs):
         """Load and instantiate TaskAgent by path, then run one structured input."""
-        encoded_inputs = base64.b64encode(
-            json.dumps(inputs, ensure_ascii=False).encode("utf-8")
-        ).decode("ascii")
+        inputs_path = self._stage_inputs(inputs)
         model_config = {
             "model": self.model,
             "reasoning_effort": self.reasoning_effort,
@@ -124,7 +126,7 @@ class RuntimeAgent:
             self.agent_path,
             encoded_model_config,
             history_path,
-            encoded_inputs,
+            inputs_path,
         ]
         environment = container_model_environment(self.llm_environment)
         for name in ("RSI_OPENAI_REQUEST_TIMEOUT", "RSI_OPENAI_MAX_RETRIES"):
@@ -175,6 +177,22 @@ class RuntimeAgent:
             raise RuntimeError(
                 "TaskAgent returned a malformed structured result frame."
             ) from exc
+
+    def _stage_inputs(self, inputs):
+        """Keep request bodies out of exec arguments and isolate parallel calls."""
+        payload = json.dumps(inputs, ensure_ascii=False).encode("utf-8")
+        name = f"task_agent_inputs_{uuid.uuid4().hex}.json"
+        with io.BytesIO() as archive:
+            with tarfile.open(fileobj=archive, mode="w") as tar:
+                info = tarfile.TarInfo(name)
+                info.size = len(payload)
+                info.mode = 0o600
+                with io.BytesIO(payload) as source:
+                    tar.addfile(info, source)
+            archive.seek(0)
+            if not self.container.put_archive("/tmp", archive):
+                raise RuntimeError("Failed to stage TaskAgent inputs into container")
+        return f"/tmp/{name}"
 
     def _stage_images(
         self, image_paths: Sequence[str | os.PathLike[str]],
